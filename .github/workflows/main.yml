@@ -163,6 +163,17 @@ jobs:
   c-ffi:
     runs-on: ubuntu-latest
     needs: build-yrs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: none
+            cxx_flags: ''
+          # ASan intercepts malloc/free for the whole process, so it also catches heap misuse of
+          # memory allocated on the Rust side of the C API.
+          - sanitizer: asan-ubsan
+            cxx_flags: '-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
+    name: c-ffi (${{ matrix.sanitizer }})
     steps:
       - name: checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -193,10 +204,19 @@ jobs:
         run: cargo build -p yffi
 
       - name: generate Makefile
-        run: mkdir ./tests-ffi/cmake-build-debug && cd ./tests-ffi && cmake -DCMAKE_BUILD_TYPE=Debug .
+        run: >-
+          mkdir ./tests-ffi/cmake-build-debug && cd ./tests-ffi &&
+          cmake -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="${{ matrix.cxx_flags }}"
+          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.cxx_flags }}" .
 
       - name: build c-ffi test project
         run: cd ./tests-ffi && make all
 
+      # Leak detection stays off for now: the C API has known leaks (e.g. ytransaction_subdocs
+      # results cannot be freed) that are tracked separately.
       - name: run tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1
         run: ./tests-ffi/yrs-ffi-tests

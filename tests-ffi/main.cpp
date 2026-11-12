@@ -1497,7 +1497,7 @@ TEST_CASE("YDoc observe after transaction") {
 
     t.delete_set.entries_count = 1;
     t.delete_set.client_ids = &CLIENT_ID;
-    t.delete_set.ranges = (YIdRangeSeq *) malloc(sizeof(YIdRangeSeq *) * 1);
+    t.delete_set.ranges = (YIdRangeSeq *) malloc(sizeof(YIdRangeSeq) * 1);
     t.delete_set.ranges[0].len = 1;
     YIdRange range;
     range.start = 2;
