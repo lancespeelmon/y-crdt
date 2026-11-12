@@ -484,6 +484,11 @@ struct StringDecoder<'a> {
     buf: &'a str,
     len_decoder: UIntOptRleDecoder<'a>,
     pos: usize,
+    /// The previous string ended halfway through a surrogate pair, so the next one starts with
+    /// the pair's second half.
+    split_pair: bool,
+    /// Holds a string that had to be rebuilt around a split surrogate pair.
+    scratch: String,
 }
 
 impl<'a> StringDecoder<'a> {
@@ -498,23 +503,60 @@ impl<'a> StringDecoder<'a> {
             pos: 0,
             buf: str,
             len_decoder,
+            split_pair: false,
+            scratch: String::new(),
         })
     }
 
-    fn read_str(&mut self) -> Result<&'a str, Error> {
+    /// Reads the next string. Yjs writes all strings into one column and stores their lengths in
+    /// UTF-16 code units, so a length can end between the two halves of a surrogate pair: Yjs
+    /// lets an item hold a lone surrogate, and two such items written in a row join into one
+    /// valid character in the column. Rust strings can't hold a lone surrogate, so each half is
+    /// read as U+FFFD, which is also one UTF-16 unit and keeps item lengths and clocks as in Yjs.
+    fn read_str(&mut self) -> Result<&str, Error> {
         let mut remaining = self.len_decoder.read_u64()? as usize;
-        let mut i = 0;
+        let leading_half = self.split_pair && remaining > 0;
+        if leading_half {
+            self.split_pair = false;
+            remaining -= 1;
+        }
         let start = &self.buf[self.pos..];
+        let mut i = 0;
+        let mut trailing_half = false;
         for c in start.chars() {
             if remaining == 0 {
                 break;
             }
-            i += c.len_utf8(); // rust uses offsets as utf-8 bytes
-            remaining -= c.len_utf16(); // but yjs provides them as utf-16
+            let units = c.len_utf16(); // Yjs counts UTF-16 code units...
+            if units > remaining {
+                // ...and this length ends inside a surrogate pair
+                trailing_half = true;
+                remaining = 0;
+                break;
+            }
+            i += c.len_utf8(); // ...while Rust offsets are UTF-8 bytes
+            remaining -= units;
         }
-        let result = &start[..i];
+        let whole = &start[..i];
         self.pos += i;
-        Ok(result)
+        if trailing_half {
+            // skip the split character; its second half starts the next string
+            let c = start[i..].chars().next().map_or(0, char::len_utf8);
+            self.pos += c;
+            self.split_pair = true;
+        }
+        if !leading_half && !trailing_half {
+            return Ok(whole);
+        }
+        self.scratch.clear();
+        if leading_half {
+            self.scratch.push(char::REPLACEMENT_CHARACTER);
+        }
+        self.scratch.push_str(whole);
+        if trailing_half {
+            self.scratch.push(char::REPLACEMENT_CHARACTER);
+        }
+        Ok(&self.scratch)
     }
 }
 

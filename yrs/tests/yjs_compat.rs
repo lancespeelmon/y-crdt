@@ -344,3 +344,39 @@ fn xml_hook_keeps_its_hook_name() {
         emit("xml_hook", format, &reencoded, "roots", expect);
     }
 }
+
+#[test]
+fn surrogate_pair_split_across_items_decodes_like_yjs() {
+    // Two items each holding half of a surrogate pair. In v2 their halves join into one 4-byte
+    // character in the string column, while the item lengths still split it.
+    let f = fixture("surrogate_split");
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        let text = doc.get_or_insert_text("t");
+        let txn = doc.transact();
+        assert_eq!(text.get_string(&txn), str_field(f, "text"), "v{}", format);
+        let utf16_len = f["utf16_len"].as_u64().unwrap() as u32;
+        assert_eq!(text.len(&txn), utf16_len, "v{}", format);
+        // Both items keep their lengths, so clocks match Yjs.
+        assert_eq!(
+            txn.state_vector().get(&yrs::ClientID::new(4)),
+            utf16_len,
+            "v{}",
+            format
+        );
+
+        let sv = StateVector::default();
+        let reencoded = if format == 1 {
+            txn.encode_state_as_update_v1(&sv)
+        } else {
+            txn.encode_state_as_update_v2(&sv)
+        };
+        let expect = serde_json::json!({ "t": { "type": "text", "value": f["text"] } });
+        emit("surrogate_split", format, &reencoded, "roots", expect);
+    }
+}

@@ -21,6 +21,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- A v2 update in which Yjs split a surrogate pair across two text items (each holding a lone
+  surrogate) decoded into the wrong item lengths and clocks. Each half now reads as U+FFFD,
+  keeping lengths and clocks as in Yjs.
 - `YXmlHook` nodes were encoded and decoded without their hook name. A v1 update holding one
   failed to decode, and in v2 every key after it (element tags, attribute names) was read from
   the wrong position.
