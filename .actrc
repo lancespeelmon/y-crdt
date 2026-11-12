@@ -1,0 +1,18 @@
+# Default flags for nektos/act (https://nektosact.com) when run from the repo root.
+# act also reads ~/.actrc and ~/.config/act/actrc; put machine-specific
+# settings (e.g. --container-daemon-socket for Docker Desktop) there.
+
+# Run ubuntu-latest jobs in the medium catthehacker image (has node, git, build tools).
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# macOS and Windows jobs can't run in Linux containers, so act skips them.
+# To run macOS jobs directly on a Mac host instead, uncomment:
+# -P macos-latest=-self-hosted
+
+# Runs containers natively (arm64 on Apple silicon), which is much faster than
+# emulation. GitHub's ubuntu-latest is amd64; for an exact match use:
+# --container-architecture linux/amd64
+
+# Reuse already-pulled images and actions instead of re-fetching on every run.
+--pull=false
+--action-offline-mode
