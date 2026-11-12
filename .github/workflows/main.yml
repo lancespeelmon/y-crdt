@@ -28,7 +28,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Stable rustfmt; nightly rustfmt also splits some macro arguments differently.
+      # Latest stable rustfmt. Formatting can change between Rust releases (1.100 started
+      # splitting macro arguments onto separate lines), so reformat after a toolchain bump.
       - name: install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
