@@ -33,6 +33,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- A v1 update whose embed or format JSON held an integer too large for an i64 (Yjs writes
+  `1e19` as twenty digits) was rejected as a whole. Such numbers now read as floats, as
+  `JSON.parse` reads them.
 - Clocks of 2^31 and above (left and right origins, map key clocks) were encoded wrongly in v2,
   and Yjs' v2 encoding of them failed to decode: the run-length column encoder used 32-bit
   differences. It now uses 64-bit ones, as Yjs' numbers allow.

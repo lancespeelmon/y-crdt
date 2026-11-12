@@ -547,3 +547,57 @@ fn clocks_above_2_pow_31_survive_v2_like_yjs() {
     // ...and back: the second item's origin, clock 2^31 + 6, is intact
     assert_eq!(to_hex(&from_v2.encode_v1()), str_field(f, "v1"));
 }
+
+#[test]
+fn unusual_json_numbers_in_formats_decode_like_yjs() {
+    // JSON.stringify(1e19) is "10000000000000000000", beyond i64.
+    let f = fixture("json_edge");
+    let expected: Value = serde_json::from_str(str_field(f, "delta")).unwrap();
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        let text = doc.get_or_insert_text("t");
+        let txn = doc.transact();
+        let delta: Vec<Value> = text
+            .diff(&txn, yrs::types::text::YChange::identity)
+            .into_iter()
+            .map(|d| {
+                let insert = match d.insert {
+                    yrs::Out::Any(Any::String(s)) => Value::String(s.to_string()),
+                    yrs::Out::Any(any) => json_of(any),
+                    other => panic!("unexpected insert {:?}", other),
+                };
+                let mut entry = serde_json::json!({ "insert": insert });
+                if let Some(attrs) = d.attributes {
+                    let attrs: serde_json::Map<String, Value> = attrs
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), json_of(v.clone())))
+                        .collect();
+                    entry["attributes"] = Value::Object(attrs);
+                }
+                entry
+            })
+            .collect();
+        // JavaScript has one number type, so compare numbers by value.
+        fn numbers_as_f64(v: Value) -> Value {
+            match v {
+                Value::Number(n) => serde_json::json!(n.as_f64().unwrap()),
+                Value::Array(a) => Value::Array(a.into_iter().map(numbers_as_f64).collect()),
+                Value::Object(o) => {
+                    Value::Object(o.into_iter().map(|(k, v)| (k, numbers_as_f64(v))).collect())
+                }
+                other => other,
+            }
+        }
+        assert_eq!(
+            numbers_as_f64(Value::Array(delta)),
+            numbers_as_f64(expected.clone()),
+            "v{}",
+            format
+        );
+    }
+}

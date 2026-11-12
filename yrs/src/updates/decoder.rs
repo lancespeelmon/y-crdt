@@ -72,6 +72,40 @@ pub trait Decoder: Read {
     fn read_to_end(&mut self) -> Result<&[u8], Error>;
 }
 
+/// Parses JSON text written by Yjs (`JSON.stringify`), reading numbers the way `JSON.parse` does:
+/// an integer too large for an i64 (`JSON.stringify(1e19)` writes all twenty digits) becomes a
+/// float, where [Any::from_json] fails.
+fn parse_js_json(src: &str) -> Result<Any, Error> {
+    let error = match Any::from_json(src) {
+        Ok(any) => return Ok(any),
+        Err(error) => error,
+    };
+    let value: serde_json::Value = serde_json::from_str(src).map_err(|_| error)?;
+    Ok(js_json_value(value))
+}
+
+fn js_json_value(value: serde_json::Value) -> Any {
+    use serde_json::Value;
+    match value {
+        Value::Null => Any::Null,
+        Value::Bool(b) => Any::from(b),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => Any::from(i),
+            None => Any::from(n.as_f64().unwrap_or(f64::NAN)),
+        },
+        Value::String(s) => Any::from(s),
+        Value::Array(values) => {
+            Any::from(values.into_iter().map(js_json_value).collect::<Vec<_>>())
+        }
+        Value::Object(entries) => Any::from(
+            entries
+                .into_iter()
+                .map(|(k, v)| (k, js_json_value(v)))
+                .collect::<std::collections::HashMap<_, _>>(),
+        ),
+    }
+}
+
 /// Version 1 of lib0 decoder.
 pub struct DecoderV1<'a> {
     cursor: Cursor<'a>,
@@ -185,7 +219,7 @@ impl<'a> Decoder for DecoderV1<'a> {
 
     fn read_json(&mut self) -> Result<Any, Error> {
         let src = self.read_string()?;
-        Any::from_json(src)
+        parse_js_json(src)
     }
 
     #[inline]
