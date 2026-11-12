@@ -9,7 +9,8 @@ members = [
 
 # Lint gate: CI runs `cargo clippy --workspace --all-targets -- -D warnings`.
 # Every lint below was already firing when the gate was introduced, so it is allowed
-# explicitly; the number is how many sites it had (clippy 1.99.0). Burn this list down:
+# explicitly; the number is how many sites it had (clippy 1.99.0; CI now pins 1.100.0,
+# which adds none). Burn this list down:
 # fix a lint everywhere, delete its line, and CI keeps it from coming back. Any lint not
 # listed here fails CI immediately.
 [workspace.lints.rust]
