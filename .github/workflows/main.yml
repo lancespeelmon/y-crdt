@@ -56,6 +56,18 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
 
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Advisories, licenses, banned crates and allowed sources, configured in deny.toml.
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
   build-yrs:
     runs-on: ${{ matrix.os }}
     strategy:

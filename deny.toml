@@ -1,0 +1,35 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+# CI runs `cargo deny check` on every push and PR.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # smallstr is unmaintained. It is only used for SplittableString in yrs/src/block.rs and has
+    # no known vulnerability. Remove this entry once it is replaced.
+    { id = "RUSTSEC-2026-0215", reason = "unmaintained, no known vulnerability; replacement planned" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+# Exactly the licenses in the current dependency tree; a new one needs a deliberate addition.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "CC0-1.0",
+    "Unicode-3.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace crates depend on each other by path (with a version), which counts as a wildcard.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
