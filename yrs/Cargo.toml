@@ -49,6 +49,10 @@ harness = false
 name = "text_utf16"
 harness = false
 
+[[bench]]
+name = "serialization"
+harness = false
+
 [lib]
 doctest = true
 bench = true
