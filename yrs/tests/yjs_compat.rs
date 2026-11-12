@@ -265,3 +265,42 @@ fn binary_content_survives_a_v2_merge() {
     let array = json_of(doc.get_or_insert_array("a").to_json(&doc.transact()));
     assert_eq!(array, f["array"]);
 }
+
+#[test]
+fn legacy_content_json_decodes_like_yjs() {
+    // ContentJSON is what Yjs <= 12 wrote for array and map values; stored documents still hold it.
+    let f = fixture("content_json");
+    let expected: Value = serde_json::from_str(str_field(f, "json")).unwrap();
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        let array = doc.get_or_insert_array("a");
+        let txn = doc.transact();
+        assert_eq!(
+            array.len(&txn) as u64,
+            f["len"].as_u64().unwrap(),
+            "v{}",
+            format
+        );
+        // Yjs' toJSON() turns undefined into null; yrs keeps it as Any::Undefined.
+        let values: Vec<Any> = array.iter(&txn).map(|v| v.to_json(&txn)).collect();
+        assert_eq!(values[2], Any::Undefined, "v{}", format);
+        assert_eq!(json_of(Any::from(values)), expected, "v{}", format);
+
+        // The JSON texts are kept as Yjs wrote them, so re-encoding is byte-identical.
+        let sv = StateVector::default();
+        let reencoded = if format == 1 {
+            txn.encode_state_as_update_v1(&sv)
+        } else {
+            txn.encode_state_as_update_v2(&sv)
+        };
+        let original = if format == 1 { "v1" } else { "v2" };
+        assert_eq!(to_hex(&reencoded), str_field(f, original), "v{}", format);
+        let expect = serde_json::json!({ "a": { "type": "array", "value": expected } });
+        emit("content_json", format, &reencoded, "roots", expect);
+    }
+}

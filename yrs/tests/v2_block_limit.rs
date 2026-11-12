@@ -68,11 +68,11 @@ fn frame(streams: [&[u8]; 9]) -> Vec<u8> {
 }
 
 /// A v2 update of one item block with JSON content, parented by id. `strings` is the whole
-/// string stream and `last_index` the entry count minus one, as the format stores it.
-fn json_block(strings: &[u8], last_index: u64) -> Vec<u8> {
+/// string stream and `count` the number of JSON entries.
+fn json_block(strings: &[u8], count: u64) -> Vec<u8> {
     const INFO_JSON: u8 = 2;
     let mut len = Vec::new();
-    len.write_var_signed(&Signed::new(last_index as i64, false));
+    len.write_var_signed(&Signed::new(count as i64, false));
     let client = [0x40 | 1, 0]; // client id 1, read twice
     let mut input = frame([
         &[],
@@ -188,7 +188,7 @@ fn json_block_of_empty_strings_is_refused() {
     let _serial = serial();
     let mut strings = vec![0, 0x40]; // no text, then a run of zero lengths
     strings.extend(varint(2_000_000 - 2));
-    let input = json_block(&strings, 2_000_000 - 1);
+    let input = json_block(&strings, 2_000_000);
     assert!(is_refused(Update::decode_v2_with_block_limit(&input, 1)));
     assert!(is_refused(Update::decode_v2(&input)));
 }
@@ -197,7 +197,7 @@ fn json_block_of_empty_strings_is_refused() {
 fn json_block_with_text_decodes() {
     let _serial = serial();
     let strings = [2, b'1', b'2', 0x40 | 1, 0]; // "12", then a run of two lengths of 1
-    let input = json_block(&strings, 1);
+    let input = json_block(&strings, 2);
     assert!(Update::decode_v2_with_block_limit(&input, 1).is_ok());
 }
 

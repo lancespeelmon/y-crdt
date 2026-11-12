@@ -17,6 +17,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- `ContentJSON` (what Yjs 12 and early 13 wrote for array and map values) could not be decoded:
+  the decoder read one entry more than Yjs writes. Its values are now also returned parsed, as
+  Yjs does (`undefined` as `Any::Undefined`), instead of as raw JSON text.
 - V2 encoding wrote binary content (`Uint8Array` values from Yjs) with a second length prefix,
   so any v2 re-encode, merge or diff of such a document produced bytes that neither Yjs nor yrs
   could decode.
