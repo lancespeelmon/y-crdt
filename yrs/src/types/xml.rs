@@ -285,12 +285,16 @@ impl XmlElementRef {
 impl GetString for XmlElementRef {
     /// Converts current XML node into a textual representation. This representation if flat, it
     /// doesn't include any indentation.
+    ///
+    /// Like Yjs' `YXmlElement.toString()`, the tag name is lowercased and attributes are sorted
+    /// by name (comparing UTF-16 code units, as JavaScript's `sort` does).
     fn get_string<T: ReadTxn>(&self, txn: &T) -> String {
-        let tag: &str = self.tag();
+        let tag = self.tag().to_lowercase();
         let inner = self.0;
         let mut s = String::new();
         write!(&mut s, "<{}", tag).unwrap();
-        let attributes = Attributes(inner.entries(txn));
+        let mut attributes: Vec<_> = Attributes(inner.entries(txn)).collect();
+        attributes.sort_by(|(a, _), (b, _)| a.encode_utf16().cmp(b.encode_utf16()));
         for (k, v) in attributes {
             write!(&mut s, " {}=\"{}\"", k, v).unwrap();
         }
@@ -1859,6 +1863,21 @@ mod test {
                 "key1".into(),
                 EntryChange::Inserted(Any::String("value11".into()).into())
             )])))
+        );
+    }
+
+    #[test]
+    fn xml_to_string_sorts_attributes_and_lowercases_the_tag_like_yjs() {
+        let doc = Doc::new();
+        let f = doc.get_or_insert_xml_fragment("f");
+        let mut txn = doc.transact_mut();
+        let e = f.insert(&mut txn, 0, XmlElementPrelim::empty("DIV"));
+        for key in ["z", "b", "a", "y", "c", "x", "d", "w", "e", "v"] {
+            e.insert_attribute(&mut txn, key, key);
+        }
+        assert_eq!(
+            e.get_string(&txn),
+            r#"<div a="a" b="b" c="c" d="d" e="e" v="v" w="w" x="x" y="y" z="z"></div>"#
         );
     }
 
