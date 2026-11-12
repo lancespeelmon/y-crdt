@@ -23,6 +23,7 @@ repository and its release notes.
   whole-v2-update frame yrs wrote before.
 - `XmlElementRef::get_string` renders like Yjs' `YXmlElement.toString()`: attributes sorted by
   name and the tag name lowercased. Attribute order used to follow hash-map order.
+  `XmlTextRef::get_string` sorts the attributes of each format the same way.
 - **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook
   name, like `TypeRef::XmlElement` carries its tag. `XmlHookRef::hook_name` returns it.
 

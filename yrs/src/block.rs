@@ -772,7 +772,7 @@ fn json_content_value(text: &str) -> Any {
     if text == "undefined" {
         return Any::Undefined;
     }
-    Any::from_json(text).unwrap_or_else(|_| Any::from(text))
+    crate::updates::decoder::parse_js_json(text).unwrap_or_else(|_| Any::from(text))
 }
 
 impl TryFrom<ItemPtr> for Any {
@@ -2482,6 +2482,15 @@ mod test {
     use crate::block::{split_str, SplittableString};
     use crate::doc::OffsetKind;
     use std::ops::Deref;
+
+    #[test]
+    fn json_content_reads_numbers_like_json_parse() {
+        use super::json_content_value;
+        use crate::Any;
+        assert_eq!(json_content_value("undefined"), Any::Undefined);
+        assert_eq!(json_content_value("10000000000000000000"), Any::from(1e19));
+        assert_eq!(json_content_value("not json"), Any::from("not json"));
+    }
 
     #[test]
     fn splittable_string_len() {

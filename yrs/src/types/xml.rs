@@ -546,14 +546,17 @@ impl XmlTextRef {
                 for (key, value) in attributes.iter() {
                     attrs.push((key, value));
                 }
-                attrs.sort_by(|x, y| x.0.cmp(y.0))
+                // sorted like Yjs' YXmlText.toString (JS string order: UTF-16 code units)
+                attrs.sort_by(|x, y| x.0.encode_utf16().cmp(y.0.encode_utf16()))
             }
 
             // write attributes as xml opening tags
             for (node, at) in attrs.iter() {
                 write!(buf, "<{}", node).unwrap();
                 if let Any::Map(at) = at {
-                    for (k, v) in at.iter() {
+                    let mut at: Vec<_> = at.iter().collect();
+                    at.sort_by(|x, y| x.0.encode_utf16().cmp(y.0.encode_utf16()));
+                    for (k, v) in at {
                         write!(buf, " {}=\"{}\"", k, v).unwrap();
                     }
                 }
@@ -1863,6 +1866,26 @@ mod test {
                 "key1".into(),
                 EntryChange::Inserted(Any::String("value11".into()).into())
             )])))
+        );
+    }
+
+    #[test]
+    fn xml_text_to_string_sorts_format_attributes_like_yjs() {
+        let doc = Doc::new();
+        let f = doc.get_or_insert_xml_fragment("f");
+        let mut txn = doc.transact_mut();
+        let t = f.insert(&mut txn, 0, XmlTextPrelim::new("hi"));
+        let attrs = ["z", "b", "a", "y", "c", "x", "d", "w"]
+            .iter()
+            .map(|k| (k.to_string(), Any::from(k.to_string())))
+            .collect::<HashMap<_, _>>();
+        let mut fmt = Attrs::new();
+        fmt.insert("m".into(), Any::from(attrs));
+        fmt.insert("b".into(), Any::from(HashMap::<String, Any>::new()));
+        t.format(&mut txn, 0, 2, fmt);
+        assert_eq!(
+            t.get_string(&txn),
+            r#"<b><m a="a" b="b" c="c" d="d" w="w" x="x" y="y" z="z">hi</m></b>"#
         );
     }
 

@@ -163,15 +163,17 @@ impl Encode for StateVector {
 
 /// Decodes `data` with `yjs` and returns the result if it consumed every byte. Otherwise decodes
 /// it as the whole-v2-update frame that yrs wrote for state vectors and snapshots before it
-/// matched Yjs, and returns that if it succeeds (or the original error).
+/// matched Yjs, and returns that if it succeeds. Failing that, returns the Yjs result with its
+/// trailing bytes ignored (as Yjs does), or the original error.
 fn decode_yjs_or_legacy_v2<T: Decode>(
     data: &[u8],
     yjs: impl Fn(&[u8]) -> Result<(T, usize), Error>,
 ) -> Result<T, Error> {
-    let error = match yjs(data) {
+    // Yjs ignores bytes after a complete value; keep such a value unless the legacy frame fits
+    let (value, error) = match yjs(data) {
         Ok((value, 0)) => return Ok(value),
-        Ok(_) => Error::UnexpectedValue,
-        Err(e) => e,
+        Ok((value, _)) => (Some(value), Error::UnexpectedValue),
+        Err(e) => (None, e),
     };
     let legacy = DecoderV2::new(Cursor::new(data)).and_then(|mut decoder| {
         let value = T::decode(&mut decoder)?;
@@ -181,7 +183,7 @@ fn decode_yjs_or_legacy_v2<T: Decode>(
             Err(Error::UnexpectedValue)
         }
     });
-    legacy.map_err(|_| error)
+    legacy.or_else(|_| value.ok_or(error))
 }
 
 impl PartialOrd for StateVector {
@@ -276,6 +278,15 @@ mod test {
     use crate::{Doc, ReadTxn, StateVector, Text, Transact, WriteTxn};
     use std::cmp::Ordering;
     use std::iter::FromIterator;
+
+    #[test]
+    fn decode_v2_ignores_trailing_bytes_like_yjs() {
+        use crate::updates::encoder::Encode;
+        let sv = StateVector::from_iter([(ClientID::new(1), 5), (ClientID::new(2), 7)]);
+        let mut bytes = sv.encode_v2();
+        bytes.push(0xff);
+        assert_eq!(StateVector::decode_v2(&bytes).unwrap(), sv);
+    }
 
     #[test]
     fn decode_rejects_length_amplification() {

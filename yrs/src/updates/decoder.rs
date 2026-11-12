@@ -75,7 +75,7 @@ pub trait Decoder: Read {
 /// Parses JSON text written by Yjs (`JSON.stringify`), reading numbers the way `JSON.parse` does:
 /// an integer too large for an i64 (`JSON.stringify(1e19)` writes all twenty digits) becomes a
 /// float, where [Any::from_json] fails.
-fn parse_js_json(src: &str) -> Result<Any, Error> {
+pub(crate) fn parse_js_json(src: &str) -> Result<Any, Error> {
     let error = match Any::from_json(src) {
         Ok(any) => return Ok(any),
         Err(error) => error,
