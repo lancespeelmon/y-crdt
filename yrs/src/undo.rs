@@ -318,28 +318,36 @@ where
 
     define_undo_observer!(
         /// Registers a callback to be called every time a new [StackItem] is created.
-        observe_item_added, unobserve_item_added,
-        observer_added, FnMut(&TransactionMut, &mut Event<M>)
+        observe_item_added,
+        unobserve_item_added,
+        observer_added,
+        FnMut(&TransactionMut, &mut Event<M>)
     );
 
     define_undo_observer!(
         /// Registers a callback to be called every time an existing [StackItem] is extended.
-        observe_item_updated, unobserve_item_updated,
-        observer_updated, FnMut(&TransactionMut, &mut Event<M>)
+        observe_item_updated,
+        unobserve_item_updated,
+        observer_updated,
+        FnMut(&TransactionMut, &mut Event<M>)
     );
 
     define_undo_observer!(
         /// Registers a callback to be called every time a [StackItem] is popped
         /// via [UndoManager::undo] or [UndoManager::redo].
-        observe_item_popped, unobserve_item_popped,
-        observer_popped, FnMut(&TransactionMut, &mut Event<M>)
+        observe_item_popped,
+        unobserve_item_popped,
+        observer_popped,
+        FnMut(&TransactionMut, &mut Event<M>)
     );
 
     define_undo_observer!(
         /// Registers a callback to be called every time undo/redo stacks are cleared.
         /// The callback receives two booleans: `(undo_stack_cleared, redo_stack_cleared)`.
-        observe_stack_cleared, unobserve_stack_cleared,
-        observer_cleared, FnMut(&StackClearedEvent)
+        observe_stack_cleared,
+        unobserve_stack_cleared,
+        observer_cleared,
+        FnMut(&StackClearedEvent)
     );
 
     /// Extends a list of origins tracked by current undo manager by given `origin`. Origin markers
