@@ -11,6 +11,11 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Subdocument references are written like Yjs' `ContentDoc`: `gc` only when it is off,
+  `autoLoad` only when it is on, and never `shouldLoad`, so Yjs peers no longer load every
+  yrs-created subdocument eagerly. On read, `shouldLoad` is `shouldLoad || autoLoad`, as in Yjs.
+- **Breaking:** `Options` has a new `meta: Option<Any>` field (Yjs' `Doc.meta`, kept across
+  re-encodes and returned by `Doc::meta`), and no longer implements `Eq` since `Any` doesn't.
 - "v2" state vectors and snapshots now use Yjs' formats: `StateVector::encode_v2` writes the
   same bytes as `encode_v1` (Yjs has one state vector format), and `Snapshot::encode_v2` writes
   Yjs' `encodeSnapshotV2` layout. `encode_state_vector_from_update_v2` returns a plain state

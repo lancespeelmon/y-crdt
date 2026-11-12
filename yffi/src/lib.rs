@@ -335,6 +335,7 @@ impl Into<Options> for YOptions {
             should_load,
             offset_kind,
             cleanup_formatting,
+            meta: None,
         }
     }
 }

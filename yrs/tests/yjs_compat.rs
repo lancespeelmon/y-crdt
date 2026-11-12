@@ -428,3 +428,82 @@ fn v2_state_vectors_and_snapshots_match_yjs() {
     let legacy_snapshot = legacy(&|e| snapshot_v2.encode(e));
     assert_eq!(Snapshot::decode_v2(&legacy_snapshot).unwrap(), snapshot_v2);
 }
+
+#[test]
+fn subdocument_options_round_trip_with_yjs() {
+    let f = fixture("subdoc");
+    let subdocs = |doc: &Doc| -> Vec<(String, Doc)> {
+        let map = doc.get_or_insert_map("m");
+        let txn = doc.transact();
+        ["sub", "sub2"]
+            .iter()
+            .map(|key| match map.get(&txn, key) {
+                Some(yrs::Out::YDoc(sub)) => (key.to_string(), sub),
+                other => panic!("m.{} is not a subdocument: {:?}", key, other),
+            })
+            .collect()
+    };
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        let subs = subdocs(&doc);
+        let (_, sub) = &subs[0];
+        assert_eq!(sub.guid().as_ref(), "sub-guid");
+        assert!(!sub.auto_load() && !sub.should_load(), "v{}", format);
+        let meta = sub.meta().expect("meta of a Yjs subdocument");
+        assert_eq!(
+            json_of(meta),
+            serde_json::json!({ "title": "x" }),
+            "v{}",
+            format
+        );
+        let (_, sub2) = &subs[1];
+        // Yjs: shouldLoad = opts.shouldLoad || opts.autoLoad
+        assert!(sub2.auto_load() && sub2.should_load(), "v{}", format);
+        assert_eq!(sub2.meta(), None);
+
+        let sv = StateVector::default();
+        let txn = doc.transact();
+        let reencoded = if format == 1 {
+            txn.encode_state_as_update_v1(&sv)
+        } else {
+            txn.encode_state_as_update_v2(&sv)
+        };
+        let expect = serde_json::json!({ "m": {
+            "sub": { "guid": "sub-guid", "autoLoad": false, "shouldLoad": false, "meta": { "title": "x" } },
+            "sub2": { "guid": "sub-guid-2", "autoLoad": true, "shouldLoad": true, "meta": null },
+        }});
+        emit("subdoc", format, &reencoded, "subdocs", expect);
+    }
+}
+
+#[test]
+fn yrs_subdocuments_are_not_loaded_eagerly_by_yjs() {
+    let doc = js_doc();
+    let map = doc.get_or_insert_map("m");
+    let sub = Doc::with_options(Options {
+        guid: "yrs-sub".into(),
+        ..Options::default()
+    });
+    assert!(sub.should_load(), "a new local document should load");
+    map.insert(&mut doc.transact_mut(), "sub", sub);
+    let txn = doc.transact();
+    let update = txn.encode_state_as_update_v1(&StateVector::default());
+
+    // A peer receiving the reference must not load it unless it is marked autoLoad.
+    let remote = js_doc();
+    apply_v1(&remote, &update);
+    let remote_map = remote.get_or_insert_map("m");
+    match remote_map.get(&remote.transact(), "sub") {
+        Some(yrs::Out::YDoc(sub)) => assert!(!sub.should_load()),
+        other => panic!("not a subdocument: {:?}", other),
+    }
+    let expect = serde_json::json!({ "m": {
+        "sub": { "guid": "yrs-sub", "autoLoad": false, "shouldLoad": false, "meta": null },
+    }});
+    emit("yrs_subdoc", 1, &update, "subdocs", expect);
+}

@@ -3,8 +3,10 @@
 //
 //   node check-yrs-output.mjs <yrs-output.json>
 //
-// Each entry: { format: 1 | 2, update: hex, check: "roots", expect: { <root>: { type, value } } }
-// where type is "text" | "array" | "map" | "xml" and value is the expected toJSON()/toString().
+// Each entry: { format: 1 | 2, update: hex, check, expect } with check one of
+//   "roots":   expect = { <root>: { type, value } }, type "text" | "array" | "map" | "xml", value the
+//              expected toJSON()/toString();
+//   "subdocs": expect = { <map root>: { <key>: { guid, autoLoad, shouldLoad, meta } } }.
 import * as Y from 'yjs'
 import fs from 'node:fs'
 import { isDeepStrictEqual } from 'node:util'
@@ -36,12 +38,26 @@ for (const name of names) {
     if (format === 1) Y.applyUpdate(doc, bytes)
     else if (format === 2) Y.applyUpdateV2(doc, bytes)
     else throw new Error(`unknown format ${format}`)
-    if (check !== 'roots') throw new Error(`unknown check ${check}`)
-    for (const [rootName, { type, value }] of Object.entries(expect)) {
-      const actual = root(doc, rootName, type)
+    const compare = (what, actual, value) => {
       if (!isDeepStrictEqual(actual, value)) {
-        throw new Error(`root ${rootName}: expected ${JSON.stringify(value)}, got ${JSON.stringify(actual)}`)
+        throw new Error(`${what}: expected ${JSON.stringify(value)}, got ${JSON.stringify(actual)}`)
       }
+    }
+    if (check === 'roots') {
+      for (const [rootName, { type, value }] of Object.entries(expect)) {
+        compare(`root ${rootName}`, root(doc, rootName, type), value)
+      }
+    } else if (check === 'subdocs') {
+      for (const [rootName, keys] of Object.entries(expect)) {
+        for (const [key, value] of Object.entries(keys)) {
+          const sub = doc.getMap(rootName).get(key)
+          if (!(sub instanceof Y.Doc)) throw new Error(`${rootName}.${key} is not a subdocument`)
+          const { guid, autoLoad, shouldLoad, meta } = sub
+          compare(`${rootName}.${key}`, { guid, autoLoad, shouldLoad, meta }, value)
+        }
+      }
+    } else {
+      throw new Error(`unknown check ${check}`)
     }
     console.log(`ok   ${name}`)
   } catch (e) {
