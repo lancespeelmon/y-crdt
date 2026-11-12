@@ -33,6 +33,10 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- Relative positions: `sticky_index(len, Assoc::After)` (a caret at the end of a sequence)
+  returned `None`; it now returns the end-of-type position Yjs creates. Positions without a
+  trailing assoc (written by Yjs before it had one) decode as "after" instead of failing, and
+  any non-negative assoc means "after", as in Yjs.
 - A v2 update in which Yjs split a surrogate pair across two text items (each holding a lone
   surrogate) decoded into the wrong item lengths and clocks. Each half now reads as U+FFFD,
   keeping lengths and clocks as in Yjs.

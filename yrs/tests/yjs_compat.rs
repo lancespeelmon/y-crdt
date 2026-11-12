@@ -507,3 +507,31 @@ fn yrs_subdocuments_are_not_loaded_eagerly_by_yjs() {
     }});
     emit("yrs_subdoc", 1, &update, "subdocs", expect);
 }
+
+#[test]
+fn relative_positions_match_yjs() {
+    use yrs::{Assoc, IndexScope, IndexedSequence, StickyIndex, ID};
+
+    let f = fixture("relative_position");
+    let doc = js_doc();
+    apply_v1(&doc, &bytes(f, "doc_v1"));
+    let text = doc.get_or_insert_text("t");
+    let txn = doc.transact();
+
+    // The caret at the end of the text: Yjs gives a position for the type itself.
+    let end = text
+        .sticky_index(&txn, 3, Assoc::After)
+        .expect("end position");
+    assert_eq!(to_hex(&end.encode_v1()), str_field(f, "end_after"));
+    let decoded = StickyIndex::decode_v1(&bytes(f, "end_after")).unwrap();
+    assert_eq!(decoded.get_offset(&txn).map(|o| o.index), Some(3));
+
+    let mid = text.sticky_index(&txn, 1, Assoc::Before).unwrap();
+    assert_eq!(to_hex(&mid.encode_v1()), str_field(f, "mid_before"));
+
+    // Positions stored before Yjs added assoc have no trailing assoc; Yjs reads them as "after".
+    let legacy = StickyIndex::decode_v1(&bytes(f, "legacy_no_assoc")).unwrap();
+    assert_eq!(legacy.assoc, Assoc::After);
+    let item = ID::new(yrs::ClientID::new(7), 1);
+    assert_eq!(legacy.scope(), &IndexScope::Relative(item));
+}
