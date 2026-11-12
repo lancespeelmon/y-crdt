@@ -211,3 +211,57 @@ fn yrs_text_is_readable_by_yjs() {
         expected,
     );
 }
+
+#[test]
+fn binary_content_round_trips_with_yjs() {
+    let f = fixture("binary");
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        // Roots first: get_or_insert_* takes the write lock, which an open transaction holds.
+        let (array, map) = (doc.get_or_insert_array("a"), doc.get_or_insert_map("m"));
+        let txn = doc.transact();
+        let array = json_of(array.to_json(&txn));
+        assert_eq!(array, f["array"], "array, v{}", format);
+        let map = json_of(map.to_json(&txn));
+        assert_eq!(map["bin"], f["map_bin"], "map, v{}", format);
+
+        // A single writer's state re-encodes to exactly what Yjs wrote.
+        let sv = StateVector::default();
+        assert_eq!(
+            to_hex(&txn.encode_state_as_update_v1(&sv)),
+            str_field(f, "v1")
+        );
+        assert_eq!(
+            to_hex(&txn.encode_state_as_update_v2(&sv)),
+            str_field(f, "v2")
+        );
+
+        let expect = serde_json::json!({
+            "a": { "type": "array", "value": f["array"] },
+            "m": { "type": "map", "value": { "bin": f["map_bin"] } },
+        });
+        let reencoded = if format == 1 {
+            txn.encode_state_as_update_v1(&sv)
+        } else {
+            txn.encode_state_as_update_v2(&sv)
+        };
+        emit("binary", format, &reencoded, "roots", expect);
+    }
+}
+
+#[test]
+fn binary_content_survives_a_v2_merge() {
+    // A relay merging or diffing v2 updates re-encodes them; binary content must survive it.
+    let f = fixture("binary");
+    let merged = yrs::merge_updates_v2([bytes(f, "v2")]).unwrap();
+    assert_eq!(to_hex(&merged), str_field(f, "v2"));
+    let doc = js_doc();
+    apply_v2(&doc, &merged);
+    let array = json_of(doc.get_or_insert_array("a").to_json(&doc.transact()));
+    assert_eq!(array, f["array"]);
+}

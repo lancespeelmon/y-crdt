@@ -216,9 +216,11 @@ impl EncoderV2 {
 }
 
 impl Write for EncoderV2 {
+    /// Writes raw bytes to the rest buffer. Length-prefixed content goes through
+    /// [Write::write_buf], which writes the length and then calls this.
     #[inline]
     fn write_all(&mut self, buf: &[u8]) {
-        self.buf.write_buf(buf)
+        self.buf.write_all(buf)
     }
 
     #[inline]

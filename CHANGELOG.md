@@ -17,6 +17,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- V2 encoding wrote binary content (`Uint8Array` values from Yjs) with a second length prefix,
+  so any v2 re-encode, merge or diff of such a document produced bytes that neither Yjs nor yrs
+  could decode.
 - Deleting and garbage-collecting deeply nested shared types no longer recurses, so it cannot
   overflow the stack.
 - Decoding reserves memory in proportion to the remaining input rather than to lengths read
