@@ -206,6 +206,11 @@ impl Doc {
         self.store.options().should_load
     }
 
+    /// Application data attached to this document as a subdocument (Yjs' `Doc.meta`), if any.
+    pub fn meta(&self) -> Option<Any> {
+        self.store.options().meta.clone()
+    }
+
     /// Returns encoding used to count offsets and lengths in text operations.
     pub fn offset_kind(&self) -> OffsetKind {
         self.store.options().offset_kind
@@ -478,7 +483,7 @@ impl ToJson for Doc {
 }
 
 /// Configuration options of [Doc] instance.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// Globally unique client identifier. This value must be unique across all active collaborating
     /// peers, otherwise a update collisions will happen, causing document store state to be corrupted.
@@ -519,6 +524,12 @@ pub struct Options {
     ///
     /// This flag orders cleanup of dangling formatting attributes.
     pub cleanup_formatting: bool,
+
+    /// Application data attached to a subdocument (Yjs' `Doc.meta`). It travels with the
+    /// subdocument's reference in its parent and is not used by yrs itself.
+    ///
+    /// Default value: `None`.
+    pub meta: Option<Any>,
 }
 
 impl Options {
@@ -532,6 +543,7 @@ impl Options {
             auto_load: false,
             should_load: true,
             cleanup_formatting: true,
+            meta: None,
         }
     }
 
@@ -545,12 +557,25 @@ impl Options {
             auto_load: false,
             should_load: true,
             cleanup_formatting: false,
+            meta: None,
         }
     }
 
+    /// The options a subdocument reference carries, as Yjs' `ContentDoc` writes them: `gc` only
+    /// when it is off, `autoLoad` only when it is on, and `meta` when present. `shouldLoad` is
+    /// never written; a peer derives it from `autoLoad`. `encoding` and `collectionId` are yrs
+    /// extensions, which Yjs ignores.
     fn as_any(&self) -> Any {
         let mut m = HashMap::new();
-        m.insert("gc".to_owned(), (!self.skip_gc).into());
+        if self.skip_gc {
+            m.insert("gc".to_owned(), false.into());
+        }
+        if self.auto_load {
+            m.insert("autoLoad".to_owned(), true.into());
+        }
+        if let Some(meta) = self.meta.as_ref() {
+            m.insert("meta".to_owned(), meta.clone());
+        }
         if let Some(collection_id) = self.collection_id.as_ref() {
             m.insert("collectionId".to_owned(), collection_id.clone().into());
         }
@@ -559,8 +584,6 @@ impl Options {
             OffsetKind::Utf16 => 0, // 0 for compatibility with Yjs, which doesn't have this option
         };
         m.insert("encoding".to_owned(), Any::from(encoding));
-        m.insert("autoLoad".to_owned(), self.auto_load.into());
-        m.insert("shouldLoad".to_owned(), self.should_load.into());
         Any::from(m)
     }
 }
@@ -594,6 +617,9 @@ impl Decode for Options {
                 match (k.as_str(), v) {
                     ("gc", Any::Bool(gc)) => options.skip_gc = !*gc,
                     ("autoLoad", Any::Bool(auto_load)) => options.auto_load = *auto_load,
+                    // written by older yrs versions; Yjs reads it too
+                    ("shouldLoad", Any::Bool(should_load)) => options.should_load = *should_load,
+                    ("meta", meta) => options.meta = Some(meta.clone()),
                     ("collectionId", Any::String(cid)) => options.collection_id = Some(cid.clone()),
                     ("encoding", Any::Number(Number::Int(1))) => {
                         options.offset_kind = OffsetKind::Bytes
@@ -603,6 +629,8 @@ impl Decode for Options {
                 }
             }
         }
+        // Yjs' createDocFromOpts: `shouldLoad: opts.shouldLoad || opts.autoLoad || false`
+        options.should_load |= options.auto_load;
 
         Ok(options)
     }

@@ -72,7 +72,8 @@ pub enum TypeRef {
     Text = TYPE_REFS_TEXT,
     XmlElement(Arc<str>) = TYPE_REFS_XML_ELEMENT,
     XmlFragment = TYPE_REFS_XML_FRAGMENT,
-    XmlHook = TYPE_REFS_XML_HOOK,
+    /// An XML hook, with its hook name.
+    XmlHook(Arc<str>) = TYPE_REFS_XML_HOOK,
     XmlText = TYPE_REFS_XML_TEXT,
     SubDoc = TYPE_REFS_DOC,
     #[cfg(feature = "weak")]
@@ -88,7 +89,7 @@ impl TypeRef {
             TypeRef::Text => TYPE_REFS_TEXT,
             TypeRef::XmlElement(_) => TYPE_REFS_XML_ELEMENT,
             TypeRef::XmlFragment => TYPE_REFS_XML_FRAGMENT,
-            TypeRef::XmlHook => TYPE_REFS_XML_HOOK,
+            TypeRef::XmlHook(_) => TYPE_REFS_XML_HOOK,
             TypeRef::XmlText => TYPE_REFS_XML_TEXT,
             TypeRef::SubDoc => TYPE_REFS_DOC,
             #[cfg(feature = "weak")]
@@ -216,7 +217,7 @@ impl std::fmt::Display for TypeRef {
             TypeRef::Text => write!(f, "Text"),
             TypeRef::XmlElement(name) => write!(f, "XmlElement({})", name),
             TypeRef::XmlFragment => write!(f, "XmlFragment"),
-            TypeRef::XmlHook => write!(f, "XmlHook"),
+            TypeRef::XmlHook(name) => write!(f, "XmlHook({})", name),
             TypeRef::XmlText => write!(f, "XmlText"),
             TypeRef::SubDoc => write!(f, "Doc"),
             #[cfg(feature = "weak")]
@@ -250,7 +251,10 @@ impl Encode for TypeRef {
                 encoder.write_key(&name);
             }
             TypeRef::XmlFragment => encoder.write_type_ref(TYPE_REFS_XML_FRAGMENT),
-            TypeRef::XmlHook => encoder.write_type_ref(TYPE_REFS_XML_HOOK),
+            TypeRef::XmlHook(name) => {
+                encoder.write_type_ref(TYPE_REFS_XML_HOOK);
+                encoder.write_key(name);
+            }
             TypeRef::XmlText => encoder.write_type_ref(TYPE_REFS_XML_TEXT),
             TypeRef::SubDoc => encoder.write_type_ref(TYPE_REFS_DOC),
             #[cfg(feature = "weak")]
@@ -269,7 +273,7 @@ impl Decode for TypeRef {
             TYPE_REFS_TEXT => Ok(TypeRef::Text),
             TYPE_REFS_XML_ELEMENT => Ok(TypeRef::XmlElement(decoder.read_key()?)),
             TYPE_REFS_XML_FRAGMENT => Ok(TypeRef::XmlFragment),
-            TYPE_REFS_XML_HOOK => Ok(TypeRef::XmlHook),
+            TYPE_REFS_XML_HOOK => Ok(TypeRef::XmlHook(decoder.read_key()?)),
             TYPE_REFS_XML_TEXT => Ok(TypeRef::XmlText),
             TYPE_REFS_DOC => Ok(TypeRef::SubDoc),
             #[cfg(feature = "weak")]
@@ -481,7 +485,7 @@ impl std::fmt::Display for Branch {
                 }
                 Ok(())
             }
-            TypeRef::XmlHook => {
+            TypeRef::XmlHook(_) => {
                 write!(f, "YXmlHook(")?;
                 let mut iter = self.map.iter();
                 if let Some((k, v)) = iter.next() {

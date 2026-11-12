@@ -72,6 +72,40 @@ pub trait Decoder: Read {
     fn read_to_end(&mut self) -> Result<&[u8], Error>;
 }
 
+/// Parses JSON text written by Yjs (`JSON.stringify`), reading numbers the way `JSON.parse` does:
+/// an integer too large for an i64 (`JSON.stringify(1e19)` writes all twenty digits) becomes a
+/// float, where [Any::from_json] fails.
+pub(crate) fn parse_js_json(src: &str) -> Result<Any, Error> {
+    let error = match Any::from_json(src) {
+        Ok(any) => return Ok(any),
+        Err(error) => error,
+    };
+    let value: serde_json::Value = serde_json::from_str(src).map_err(|_| error)?;
+    Ok(js_json_value(value))
+}
+
+fn js_json_value(value: serde_json::Value) -> Any {
+    use serde_json::Value;
+    match value {
+        Value::Null => Any::Null,
+        Value::Bool(b) => Any::from(b),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => Any::from(i),
+            None => Any::from(n.as_f64().unwrap_or(f64::NAN)),
+        },
+        Value::String(s) => Any::from(s),
+        Value::Array(values) => {
+            Any::from(values.into_iter().map(js_json_value).collect::<Vec<_>>())
+        }
+        Value::Object(entries) => Any::from(
+            entries
+                .into_iter()
+                .map(|(k, v)| (k, js_json_value(v)))
+                .collect::<std::collections::HashMap<_, _>>(),
+        ),
+    }
+}
+
 /// Version 1 of lib0 decoder.
 pub struct DecoderV1<'a> {
     cursor: Cursor<'a>,
@@ -185,7 +219,7 @@ impl<'a> Decoder for DecoderV1<'a> {
 
     fn read_json(&mut self) -> Result<Any, Error> {
         let src = self.read_string()?;
-        Any::from_json(src)
+        parse_js_json(src)
     }
 
     #[inline]
@@ -217,6 +251,26 @@ pub struct DecoderV2<'a> {
 }
 
 impl<'a> DecoderV2<'a> {
+    /// Decodes only a rest buffer, with no v2 feature flag or column encoders: Yjs'
+    /// `DSDecoderV2`, used for v2 snapshots. Reading anything that lives in a column fails.
+    pub(crate) fn rest_only(data: &'a [u8]) -> Self {
+        let empty = || Cursor::new(&[]);
+        DecoderV2 {
+            cursor: Cursor::new(data),
+            keys: Vec::new(),
+            ds_curr_val: 0,
+            key_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            client_decoder: UIntOptRleDecoder::new(empty()),
+            left_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            right_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            info_decoder: RleDecoder::new(empty()),
+            string_decoder: StringDecoder::empty(),
+            parent_info_decoder: RleDecoder::new(empty()),
+            type_ref_decoder: UIntOptRleDecoder::new(empty()),
+            len_decoder: UIntOptRleDecoder::new(empty()),
+        }
+    }
+
     pub fn new(mut cursor: Cursor<'a>) -> Result<Self, Error> {
         if cursor.has_content() {
             // read feature flag - currently unused
@@ -387,7 +441,8 @@ struct IntDiffOptRleDecoder<'a> {
     cursor: Cursor<'a>,
     last: u32,
     count: u32,
-    diff: i32,
+    // i64: the difference of two u32 clocks doesn't fit an i32 (Yjs uses JS numbers)
+    diff: i64,
 }
 
 impl<'a> IntDiffOptRleDecoder<'a> {
@@ -402,17 +457,18 @@ impl<'a> IntDiffOptRleDecoder<'a> {
 
     fn read_u32(&mut self) -> Result<u32, Error> {
         if self.count == 0 {
-            let diff = self.cursor.read_var::<i32>()?;
+            let diff = self.cursor.read_var::<i64>()?;
             // if the first bit is set, we read more data
             let has_count = diff & 1;
-            self.diff = (diff >> 1) as i32;
+            self.diff = diff >> 1; // floor(diff / 2), as in Yjs
             self.count = if has_count != 0 {
                 self.cursor.read_var::<u32>()? + 2
             } else {
                 1
             };
         }
-        self.last = ((self.last as i32) + self.diff) as u32;
+        self.last = std::convert::TryFrom::try_from(self.last as i64 + self.diff)
+            .map_err(|_| Error::UnexpectedValue)?;
         self.count -= 1;
         Ok(self.last)
     }
@@ -484,6 +540,11 @@ struct StringDecoder<'a> {
     buf: &'a str,
     len_decoder: UIntOptRleDecoder<'a>,
     pos: usize,
+    /// The previous string ended halfway through a surrogate pair, so the next one starts with
+    /// the pair's second half.
+    split_pair: bool,
+    /// Holds a string that had to be rebuilt around a split surrogate pair.
+    scratch: String,
 }
 
 impl<'a> StringDecoder<'a> {
@@ -498,23 +559,70 @@ impl<'a> StringDecoder<'a> {
             pos: 0,
             buf: str,
             len_decoder,
+            split_pair: false,
+            scratch: String::new(),
         })
     }
 
-    fn read_str(&mut self) -> Result<&'a str, Error> {
+    fn empty() -> Self {
+        StringDecoder {
+            buf: "",
+            len_decoder: UIntOptRleDecoder::new(Cursor::new(&[])),
+            pos: 0,
+            split_pair: false,
+            scratch: String::new(),
+        }
+    }
+
+    /// Reads the next string. Yjs writes all strings into one column and stores their lengths in
+    /// UTF-16 code units, so a length can end between the two halves of a surrogate pair: Yjs
+    /// lets an item hold a lone surrogate, and two such items written in a row join into one
+    /// valid character in the column. Rust strings can't hold a lone surrogate, so each half is
+    /// read as U+FFFD, which is also one UTF-16 unit and keeps item lengths and clocks as in Yjs.
+    fn read_str(&mut self) -> Result<&str, Error> {
         let mut remaining = self.len_decoder.read_u64()? as usize;
-        let mut i = 0;
+        let leading_half = self.split_pair && remaining > 0;
+        if leading_half {
+            self.split_pair = false;
+            remaining -= 1;
+        }
         let start = &self.buf[self.pos..];
+        let mut i = 0;
+        let mut trailing_half = false;
         for c in start.chars() {
             if remaining == 0 {
                 break;
             }
-            i += c.len_utf8(); // rust uses offsets as utf-8 bytes
-            remaining -= c.len_utf16(); // but yjs provides them as utf-16
+            let units = c.len_utf16(); // Yjs counts UTF-16 code units...
+            if units > remaining {
+                // ...and this length ends inside a surrogate pair
+                trailing_half = true;
+                remaining = 0;
+                break;
+            }
+            i += c.len_utf8(); // ...while Rust offsets are UTF-8 bytes
+            remaining -= units;
         }
-        let result = &start[..i];
+        let whole = &start[..i];
         self.pos += i;
-        Ok(result)
+        if trailing_half {
+            // skip the split character; its second half starts the next string
+            let c = start[i..].chars().next().map_or(0, char::len_utf8);
+            self.pos += c;
+            self.split_pair = true;
+        }
+        if !leading_half && !trailing_half {
+            return Ok(whole);
+        }
+        self.scratch.clear();
+        if leading_half {
+            self.scratch.push(char::REPLACEMENT_CHARACTER);
+        }
+        self.scratch.push_str(whole);
+        if trailing_half {
+            self.scratch.push(char::REPLACEMENT_CHARACTER);
+        }
+        Ok(&self.scratch)
     }
 }
 

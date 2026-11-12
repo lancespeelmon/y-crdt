@@ -10,6 +10,23 @@ repository and its release notes.
 
 ## [Unreleased]
 
+### Changed
+- Subdocument references are written like Yjs' `ContentDoc`: `gc` only when it is off,
+  `autoLoad` only when it is on, and never `shouldLoad`, so Yjs peers no longer load every
+  yrs-created subdocument eagerly. On read, `shouldLoad` is `shouldLoad || autoLoad`, as in Yjs.
+- **Breaking:** `Options` has a new `meta: Option<Any>` field (Yjs' `Doc.meta`, kept across
+  re-encodes and returned by `Doc::meta`), and no longer implements `Eq` since `Any` doesn't.
+- "v2" state vectors and snapshots now use Yjs' formats: `StateVector::encode_v2` writes the
+  same bytes as `encode_v1` (Yjs has one state vector format), and `Snapshot::encode_v2` writes
+  Yjs' `encodeSnapshotV2` layout. `encode_state_vector_from_update_v2` returns a plain state
+  vector, and `diff_updates_v2` accepts the one Yjs sends. The decoders still accept the
+  whole-v2-update frame yrs wrote before.
+- `XmlElementRef::get_string` renders like Yjs' `YXmlElement.toString()`: attributes sorted by
+  name and the tag name lowercased. Attribute order used to follow hash-map order.
+  `XmlTextRef::get_string` sorts the attributes of each format the same way.
+- **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook
+  name, like `TypeRef::XmlElement` carries its tag. `XmlHookRef::hook_name` returns it.
+
 ### Added
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
@@ -17,6 +34,28 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- A v1 update whose embed or format JSON held an integer too large for an i64 (Yjs writes
+  `1e19` as twenty digits) was rejected as a whole. Such numbers now read as floats, as
+  `JSON.parse` reads them.
+- Clocks of 2^31 and above (left and right origins, map key clocks) were encoded wrongly in v2,
+  and Yjs' v2 encoding of them failed to decode: the run-length column encoder used 32-bit
+  differences. It now uses 64-bit ones, as Yjs' numbers allow.
+- Relative positions: `sticky_index(len, Assoc::After)` (a caret at the end of a sequence)
+  returned `None`; it now returns the end-of-type position Yjs creates. Positions without a
+  trailing assoc (written by Yjs before it had one) decode as "after" instead of failing, and
+  any non-negative assoc means "after", as in Yjs.
+- A v2 update in which Yjs split a surrogate pair across two text items (each holding a lone
+  surrogate) decoded into the wrong item lengths and clocks. Each half now reads as U+FFFD,
+  keeping lengths and clocks as in Yjs.
+- `YXmlHook` nodes were encoded and decoded without their hook name. A v1 update holding one
+  failed to decode, and in v2 every key after it (element tags, attribute names) was read from
+  the wrong position.
+- `ContentJSON` (what Yjs 12 and early 13 wrote for array and map values) could not be decoded:
+  the decoder read one entry more than Yjs writes. Its values are now also returned parsed, as
+  Yjs does (`undefined` as `Any::Undefined`), instead of as raw JSON text.
+- V2 encoding wrote binary content (`Uint8Array` values from Yjs) with a second length prefix,
+  so any v2 re-encode, merge or diff of such a document produced bytes that neither Yjs nor yrs
+  could decode.
 - Deleting and garbage-collecting deeply nested shared types no longer recurses, so it cannot
   overflow the stack.
 - Decoding reserves memory in proportion to the remaining input rather than to lengths read

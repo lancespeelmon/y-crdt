@@ -335,6 +335,7 @@ impl Into<Options> for YOptions {
             should_load,
             offset_kind,
             cleanup_formatting,
+            meta: None,
         }
     }
 }
@@ -5113,7 +5114,7 @@ pub unsafe extern "C" fn ytype_kind(branch: *const Branch) -> i8 {
             TypeRef::XmlFragment => Y_XML_FRAG,
             TypeRef::SubDoc => Y_DOC,
             TypeRef::WeakLink(_) => Y_WEAK_LINK,
-            TypeRef::XmlHook => 0,
+            TypeRef::XmlHook(_) => 0,
             TypeRef::Undefined => 0,
         }
     } else {
@@ -6123,7 +6124,7 @@ pub unsafe extern "C" fn ybranch_json(branch: *mut Branch, txn: *mut Transaction
                 .get_string(txn)
                 .into(),
             TypeRef::XmlText => XmlTextRef::from_raw_branch(branch).get_string(txn).into(),
-            TypeRef::SubDoc | TypeRef::XmlHook | TypeRef::WeakLink(_) | TypeRef::Undefined => {
+            TypeRef::SubDoc | TypeRef::XmlHook(_) | TypeRef::WeakLink(_) | TypeRef::Undefined => {
                 return std::ptr::null_mut()
             }
         };

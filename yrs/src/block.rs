@@ -765,6 +765,16 @@ impl std::hash::Hash for ItemPtr {
     }
 }
 
+/// The value of one [ItemContent::JSON] entry. Yjs stores each one as `JSON.stringify` text, with
+/// `undefined` written as the text `undefined`, and parses it when read. Text that isn't JSON
+/// (never written by Yjs) is returned as a string.
+fn json_content_value(text: &str) -> Any {
+    if text == "undefined" {
+        return Any::Undefined;
+    }
+    crate::updates::decoder::parse_js_json(text).unwrap_or_else(|_| Any::from(text))
+}
+
 impl TryFrom<ItemPtr> for Any {
     type Error = ItemPtr;
 
@@ -773,7 +783,7 @@ impl TryFrom<ItemPtr> for Any {
             ItemContent::Any(v) => Ok(v[0].clone()),
             ItemContent::Embed(v) => Ok(v.clone()),
             ItemContent::Binary(v) => Ok(v.clone().into()),
-            ItemContent::JSON(v) => Ok(v[0].clone().into()),
+            ItemContent::JSON(v) => Ok(json_content_value(&v[0])),
             ItemContent::String(v) => Ok(v.to_string().into()),
             _ => Err(item),
         }
@@ -1906,8 +1916,7 @@ impl ItemContent {
                     let mut i = offset;
                     let mut j = 0;
                     while i < elements.len() && j < buf.len() {
-                        let elem = elements[i].as_str();
-                        buf[j] = Out::Any(Any::from(elem));
+                        buf[j] = Out::Any(json_content_value(&elements[i]));
                         i += 1;
                         j += 1;
                     }
@@ -1956,7 +1965,7 @@ impl ItemContent {
             ItemContent::Binary(v) => Some(Out::Any(Any::from(v.deref()))),
             ItemContent::Deleted(_) => None,
             ItemContent::Doc(_, v) => Some(Out::YDoc(v.clone())),
-            ItemContent::JSON(v) => v.first().map(|v| Out::Any(Any::from(v.deref()))),
+            ItemContent::JSON(v) => v.first().map(|v| Out::Any(json_content_value(v))),
             ItemContent::Embed(v) => Some(Out::Any(v.clone())),
             ItemContent::Format(_, _) => None,
             ItemContent::String(v) => Some(Out::Any(Any::from(v.clone().as_str()))),
@@ -1971,7 +1980,7 @@ impl ItemContent {
             ItemContent::Binary(v) => Some(Out::Any(Any::from(v.deref()))),
             ItemContent::Deleted(_) => None,
             ItemContent::Doc(_, v) => Some(Out::YDoc(v.clone())),
-            ItemContent::JSON(v) => v.last().map(|v| Out::Any(Any::from(v.as_str()))),
+            ItemContent::JSON(v) => v.last().map(|v| Out::Any(json_content_value(v))),
             ItemContent::Embed(v) => Some(Out::Any(v.clone())),
             ItemContent::Format(_, _) => None,
             ItemContent::String(v) => Some(Out::Any(Any::from(v.as_str()))),
@@ -2058,14 +2067,11 @@ impl ItemContent {
         match ref_num & 0b1111 {
             BLOCK_ITEM_DELETED_REF_NUMBER => Ok(ItemContent::Deleted(decoder.read_len()?)),
             BLOCK_ITEM_JSON_REF_NUMBER => {
-                let mut remaining = decoder.read_len()? as i32;
-                if remaining < 0 {
-                    return Err(Error::UnexpectedValue);
-                }
+                // `len` JSON texts, as Yjs' ContentJSON writes them.
+                let len = decoder.read_len()? as usize;
                 let mut buf = Vec::new();
-                buf.try_reserve((remaining as usize).min(decoder.remaining()))?;
-
-                while remaining >= 0 {
+                buf.try_reserve(len.min(decoder.remaining()))?;
+                for _ in 0..len {
                     let value = decoder.read_string()?;
                     // No JSON value has an empty text form. Refusing one means every entry takes
                     // input, even when a v2 run-length stream supplies the string lengths.
@@ -2073,7 +2079,6 @@ impl ItemContent {
                         return Err(Error::UnexpectedValue);
                     }
                     buf.push(value.to_owned());
-                    remaining -= 1;
                 }
                 Ok(ItemContent::JSON(buf))
             }
@@ -2322,7 +2327,7 @@ impl std::fmt::Display for ItemContent {
                     write!(f, "<xml element: {}>", name)
                 }
                 TypeRef::XmlFragment => write!(f, "<xml fragment>"),
-                TypeRef::XmlHook => write!(f, "<xml hook>"),
+                TypeRef::XmlHook(_) => write!(f, "<xml hook>"),
                 TypeRef::XmlText => write!(f, "<xml text>"),
                 #[cfg(feature = "weak")]
                 TypeRef::WeakLink(s) => write!(f, "<weak({}..{})>", s.quote_start, s.quote_end),
@@ -2477,6 +2482,15 @@ mod test {
     use crate::block::{split_str, SplittableString};
     use crate::doc::OffsetKind;
     use std::ops::Deref;
+
+    #[test]
+    fn json_content_reads_numbers_like_json_parse() {
+        use super::json_content_value;
+        use crate::Any;
+        assert_eq!(json_content_value("undefined"), Any::Undefined);
+        assert_eq!(json_content_value("10000000000000000000"), Any::from(1e19));
+        assert_eq!(json_content_value("not json"), Any::from("not json"));
+    }
 
     #[test]
     fn splittable_string_len() {

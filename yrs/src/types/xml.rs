@@ -285,12 +285,16 @@ impl XmlElementRef {
 impl GetString for XmlElementRef {
     /// Converts current XML node into a textual representation. This representation if flat, it
     /// doesn't include any indentation.
+    ///
+    /// Like Yjs' `YXmlElement.toString()`, the tag name is lowercased and attributes are sorted
+    /// by name (comparing UTF-16 code units, as JavaScript's `sort` does).
     fn get_string<T: ReadTxn>(&self, txn: &T) -> String {
-        let tag: &str = self.tag();
+        let tag = self.tag().to_lowercase();
         let inner = self.0;
         let mut s = String::new();
         write!(&mut s, "<{}", tag).unwrap();
-        let attributes = Attributes(inner.entries(txn));
+        let mut attributes: Vec<_> = Attributes(inner.entries(txn)).collect();
+        attributes.sort_by(|(a, _), (b, _)| a.encode_utf16().cmp(b.encode_utf16()));
         for (k, v) in attributes {
             write!(&mut s, " {}=\"{}\"", k, v).unwrap();
         }
@@ -542,14 +546,17 @@ impl XmlTextRef {
                 for (key, value) in attributes.iter() {
                     attrs.push((key, value));
                 }
-                attrs.sort_by(|x, y| x.0.cmp(y.0))
+                // sorted like Yjs' YXmlText.toString (JS string order: UTF-16 code units)
+                attrs.sort_by(|x, y| x.0.encode_utf16().cmp(y.0.encode_utf16()))
             }
 
             // write attributes as xml opening tags
             for (node, at) in attrs.iter() {
                 write!(buf, "<{}", node).unwrap();
                 if let Any::Map(at) = at {
-                    for (k, v) in at.iter() {
+                    let mut at: Vec<_> = at.iter().collect();
+                    at.sort_by(|x, y| x.0.encode_utf16().cmp(y.0.encode_utf16()));
+                    for (k, v) in at {
                         write!(buf, " {}=\"{}\"", k, v).unwrap();
                     }
                 }
@@ -967,6 +974,16 @@ impl Eq for XmlHookRef {}
 impl PartialEq for XmlHookRef {
     fn eq(&self, other: &Self) -> bool {
         self.0.id() == other.0.id()
+    }
+}
+
+impl XmlHookRef {
+    /// The hook name this node was created with (Yjs' `YXmlHook.hookName`).
+    pub fn hook_name(&self) -> &str {
+        match &self.0.type_ref {
+            TypeRef::XmlHook(name) => name,
+            _ => "",
+        }
     }
 }
 
@@ -1849,6 +1866,41 @@ mod test {
                 "key1".into(),
                 EntryChange::Inserted(Any::String("value11".into()).into())
             )])))
+        );
+    }
+
+    #[test]
+    fn xml_text_to_string_sorts_format_attributes_like_yjs() {
+        let doc = Doc::new();
+        let f = doc.get_or_insert_xml_fragment("f");
+        let mut txn = doc.transact_mut();
+        let t = f.insert(&mut txn, 0, XmlTextPrelim::new("hi"));
+        let attrs = ["z", "b", "a", "y", "c", "x", "d", "w"]
+            .iter()
+            .map(|k| (k.to_string(), Any::from(k.to_string())))
+            .collect::<HashMap<_, _>>();
+        let mut fmt = Attrs::new();
+        fmt.insert("m".into(), Any::from(attrs));
+        fmt.insert("b".into(), Any::from(HashMap::<String, Any>::new()));
+        t.format(&mut txn, 0, 2, fmt);
+        assert_eq!(
+            t.get_string(&txn),
+            r#"<b><m a="a" b="b" c="c" d="d" w="w" x="x" y="y" z="z">hi</m></b>"#
+        );
+    }
+
+    #[test]
+    fn xml_to_string_sorts_attributes_and_lowercases_the_tag_like_yjs() {
+        let doc = Doc::new();
+        let f = doc.get_or_insert_xml_fragment("f");
+        let mut txn = doc.transact_mut();
+        let e = f.insert(&mut txn, 0, XmlElementPrelim::empty("DIV"));
+        for key in ["z", "b", "a", "y", "c", "x", "d", "w", "e", "v"] {
+            e.insert_attribute(&mut txn, key, key);
+        }
+        assert_eq!(
+            e.get_string(&txn),
+            r#"<div a="a" b="b" c="c" d="d" e="e" v="v" w="w" x="x" y="y" z="z"></div>"#
         );
     }
 

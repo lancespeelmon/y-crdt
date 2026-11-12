@@ -147,6 +147,47 @@ jobs:
           CARGO_PROFILE_BENCH_CODEGEN_UNITS: '16'
         run: cargo bench -p yrs -- --test
 
+  yjs-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: install nodejs
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: install pinned yjs
+        run: cd ./tests-compat && npm ci
+
+      # Fixtures are generated deterministically, so regenerating must not change them.
+      - name: check Yjs fixtures are up to date
+        run: |
+          cd ./tests-compat && npm run gen
+          git diff --exit-code -- ../yrs/tests/fixtures || {
+            echo "::error::yrs/tests/fixtures is stale; run 'npm run gen' in tests-compat"
+            exit 1
+          }
+
+      - name: decode Yjs fixtures with yrs
+        env:
+          YRS_COMPAT_OUT: ${{ runner.temp }}/yrs-output.json
+        run: cargo test -p yrs --all-features --test yjs_compat
+
+      - name: decode yrs output with Yjs
+        run: node ./tests-compat/check-yrs-output.mjs "${{ runner.temp }}/yrs-output.json"
+
   wasm:
     runs-on: ubuntu-latest
     needs: build-yrs

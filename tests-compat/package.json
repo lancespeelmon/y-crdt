@@ -1,0 +1,16 @@
+{
+  "name": "yrs-tests-compat",
+  "private": true,
+  "description": "Golden fixtures from real Yjs, and checks that real Yjs decodes what yrs encodes",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "gen": "node gen-fixtures.mjs ../yrs/tests/fixtures/yjs-13.json",
+    "check": "node check-yrs-output.mjs"
+  },
+  "dependencies": {
+    "lib0": "0.2.120",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
+  }
+}

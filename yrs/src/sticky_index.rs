@@ -264,7 +264,8 @@ impl StickyIndex {
                 };
                 Some(Self::new(context, assoc))
             } else {
-                None
+                // the end of the sequence, like Yjs' createRelativePositionFromTypeIndex
+                Some(Self::new(IndexScope::from_branch(branch), assoc))
             }
         } else {
             let context = if let Some(ptr) = walker.next_item() {
@@ -353,7 +354,12 @@ impl Encode for StickyIndex {
 impl Decode for StickyIndex {
     fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, Error> {
         let context = IndexScope::decode(decoder)?;
-        let assoc = Assoc::decode(decoder)?;
+        // Yjs added assoc later and reads it only if present, defaulting to "after".
+        let assoc = if decoder.remaining() == 0 {
+            Assoc::After
+        } else {
+            Assoc::decode(decoder)?
+        };
         Ok(Self::new(context, assoc))
     }
 }
@@ -615,7 +621,8 @@ impl Encode for Assoc {
 
 impl Decode for Assoc {
     fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, Error> {
-        let tag: i8 = decoder.read_var()?;
+        // any non-negative value means "after", as in Yjs
+        let tag: i64 = decoder.read_var()?;
         Ok(if tag >= 0 {
             Assoc::After
         } else {
@@ -628,8 +635,9 @@ impl Decode for Assoc {
 /// Unlike standard indexes [StickyIndex] enables to track the location inside of a shared
 /// y-types, even in the face of concurrent updates.
 pub trait IndexedSequence: AsRef<Branch> {
-    /// Returns a [StickyIndex] equivalent to a human-readable `index`.
-    /// Returns `None` if `index` is beyond the length of current sequence.
+    /// Returns a [StickyIndex] equivalent to a human-readable `index`. An `index` equal to the
+    /// length gives the end of the sequence, as in Yjs. Returns `None` if `index` is beyond the
+    /// length of current sequence.
     fn sticky_index<T: ReadTxn>(&self, txn: &T, index: u32, assoc: Assoc) -> Option<StickyIndex> {
         StickyIndex::at(txn, BranchPtr::from(self.as_ref()), index, assoc)
     }
@@ -886,11 +894,17 @@ mod test {
             }
         }
 
-        // index at string length differs depending on assoc
+        // the index at the string length (the end) resolves back for both assocs, as in Yjs
         let resolved = sticky_index_roundtrip(s.len() as u32, Assoc::Before);
         assert_eq!(resolved, Some(s.len() as u32));
 
         let resolved = sticky_index_roundtrip(s.len() as u32, Assoc::After);
-        assert_eq!(resolved, None);
+        assert_eq!(resolved, Some(s.len() as u32));
+
+        // beyond the end there is no position
+        assert_eq!(
+            sticky_index_roundtrip(s.len() as u32 + 1, Assoc::After),
+            None
+        );
     }
 }
