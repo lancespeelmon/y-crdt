@@ -39,7 +39,9 @@ jobs:
             lib_name: yrs.dll
     steps:
       - name: checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
@@ -59,7 +61,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.lib_name }}" "dist/"
       - name: generate C bindings
         run: cbindgen --config ./yffi/cbindgen.toml --crate yffi --output "dist/libyrs.h" --lang C
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bins-${{ matrix.build }}
           path: dist
@@ -69,11 +71,13 @@ jobs:
     needs: [ dist ]
     runs-on: ubuntu-latest
     permissions:
-      contents: write # upload binaries to the GitHub release
+      contents: write # create the GitHub release and upload binaries to it
     steps:
       - name: checkout sources
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       - run: ls -al bins-*
       - name: Calculate tag name
         run: |
@@ -81,8 +85,8 @@ jobs:
           if [[ $GITHUB_REF == refs/tags/v* ]]; then
             name=${GITHUB_REF:10}
           fi
-          echo "val=$name" >> $GITHUB_OUTPUT
-          echo TAG=$name >> $GITHUB_ENV
+          echo "val=$name" >> "$GITHUB_OUTPUT"
+          echo "TAG=$name" >> "$GITHUB_ENV"
         id: tagname
       - name: Build archive
         shell: bash
@@ -99,29 +103,29 @@ jobs:
               if [[ $platform =~ "windows" ]]; then
                   exe=".exe"
               fi
-              pkgname=yffi-$TAG-$platform
-              mkdir tmp/$pkgname
+              pkgname="yffi-$TAG-$platform"
+              mkdir "tmp/$pkgname"
               # cp LICENSE README.md tmp/$pkgname
-              mv bins-$platform/* tmp/$pkgname/
+              mv "bins-$platform"/* "tmp/$pkgname/"
 
               if [ "$exe" = "" ]; then
-                  tar cJf dist/$pkgname.tar.xz -C tmp $pkgname
+                  tar cJf "dist/$pkgname.tar.xz" -C tmp "$pkgname"
               else
-                  (cd tmp && 7z a -r ../dist/$pkgname.zip $pkgname)
+                  (cd tmp && 7z a -r "../dist/$pkgname.zip" "$pkgname")
               fi
           done
       - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # 2.11.5
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/*
-          file_glob: true
-          tag: ${{ steps.tagname.outputs.val }}
-          overwrite: true
-      - name: Extract version
-        id: extract-version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.tagname.outputs.val }}
         run: |
-          printf "val=%s\n" "${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          set -e
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "" --verify-tag
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
 
   publish-crate:
     name: publish to crates.io
@@ -129,7 +133,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
@@ -137,14 +143,14 @@ jobs:
           toolchain: stable
 
       - name: cargo publish yrs
-        run: cd ./yrs && cargo publish --all-features --token ${CRATES_TOKEN}
+        run: cd ./yrs && cargo publish --all-features
         env:
-          CRATES_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: cargo publish yffi
-        run: sleep 20 && cd ./yffi && cargo publish --token ${CRATES_TOKEN}
+        run: sleep 20 && cd ./yffi && cargo publish
         env:
-          CRATES_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-npm:
     name: publish to npmjs.org
@@ -152,7 +158,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
@@ -160,10 +168,11 @@ jobs:
           toolchain: stable
 
       - name: install nodejs
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: install wasm-pack
         uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
