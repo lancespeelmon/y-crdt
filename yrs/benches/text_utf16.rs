@@ -15,30 +15,34 @@ fn bench_insert_at_end(c: &mut Criterion) {
             .collect();
         // rebuild the doc (untimed) before the inserts grow the text by more than 1%
         let max_inserts = (chars / 100) as u64;
-        g.bench_with_input(BenchmarkId::from_parameter(chars), &initial, |b, initial| {
-            b.iter_custom(|iters| {
-                let mut elapsed = Duration::ZERO;
-                let mut remaining = iters;
-                while remaining > 0 {
-                    let doc = Doc::with_options(Options {
-                        offset_kind: OffsetKind::Utf16,
-                        ..Options::default()
-                    });
-                    let text = doc.get_or_insert_text("text");
-                    text.insert(&mut doc.transact_mut(), 0, initial);
-                    let batch = remaining.min(max_inserts);
-                    let start = Instant::now();
-                    for _ in 0..batch {
-                        let mut txn = doc.transact_mut();
-                        let end = text.len(&txn);
-                        text.insert(&mut txn, end, "x");
+        g.bench_with_input(
+            BenchmarkId::from_parameter(chars),
+            &initial,
+            |b, initial| {
+                b.iter_custom(|iters| {
+                    let mut elapsed = Duration::ZERO;
+                    let mut remaining = iters;
+                    while remaining > 0 {
+                        let doc = Doc::with_options(Options {
+                            offset_kind: OffsetKind::Utf16,
+                            ..Options::default()
+                        });
+                        let text = doc.get_or_insert_text("text");
+                        text.insert(&mut doc.transact_mut(), 0, initial);
+                        let batch = remaining.min(max_inserts);
+                        let start = Instant::now();
+                        for _ in 0..batch {
+                            let mut txn = doc.transact_mut();
+                            let end = text.len(&txn);
+                            text.insert(&mut txn, end, "x");
+                        }
+                        elapsed += start.elapsed();
+                        remaining -= batch;
                     }
-                    elapsed += start.elapsed();
-                    remaining -= batch;
-                }
-                elapsed
-            });
-        });
+                    elapsed
+                });
+            },
+        );
     }
     g.finish();
 }

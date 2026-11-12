@@ -18,6 +18,22 @@ env:
 
 # Third-party actions are pinned by commit SHA; the trailing comment names the release.
 jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Stable rustfmt; nightly rustfmt also splits some macro arguments differently.
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: check formatting
+        run: cargo fmt --all --check
+
   build-yrs:
     runs-on: ${{ matrix.os }}
     strategy:
