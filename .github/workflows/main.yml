@@ -2,13 +2,21 @@ name: Main
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, next ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, next ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
 
+# Third-party actions are pinned by commit SHA; the trailing comment names the release.
 jobs:
   build-yrs:
     runs-on: ${{ matrix.os }}
@@ -17,13 +25,14 @@ jobs:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: build default
         run: cargo build --verbose --release -p yrs -p yffi
@@ -36,13 +45,14 @@ jobs:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: test default
         run: cargo test --release -p yrs
@@ -55,21 +65,22 @@ jobs:
     needs: build-yrs
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: install nodejs
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '23'
 
       - name: install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
         with:
           version: 'v0.15.0'
 
@@ -84,13 +95,14 @@ jobs:
     needs: build-yrs
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: install cbindgen
         run: cargo install cbindgen
@@ -99,7 +111,7 @@ jobs:
         run: cbindgen --config ./yffi/cbindgen.toml --crate yffi --output ./tests-ffi/include/libyrs.h --lang C
 
       - name: install cmake
-        uses: lukka/get-cmake@latest
+        uses: lukka/get-cmake@f86dd60acae0d132056913e248bdabf0e0580b7a # v4.4.5
 
       - name: build libyrs
         run: cargo build -p yffi
