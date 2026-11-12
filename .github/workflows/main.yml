@@ -2,9 +2,12 @@ name: Main
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, next ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, next ]
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,13 +20,14 @@ jobs:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
 
       - name: build default
         run: cargo build --verbose --release -p yrs -p yffi
@@ -36,13 +40,14 @@ jobs:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
 
       - name: test default
         run: cargo test --release -p yrs
@@ -55,21 +60,23 @@ jobs:
     needs: build-yrs
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
 
       - name: install nodejs
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '23'
+          package-manager-cache: false
 
       - name: install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
         with:
           version: 'v0.15.0'
 
@@ -84,13 +91,14 @@ jobs:
     needs: build-yrs
     steps:
       - name: checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          override: true
 
       - name: install cbindgen
         run: cargo install cbindgen
@@ -99,7 +107,7 @@ jobs:
         run: cbindgen --config ./yffi/cbindgen.toml --crate yffi --output ./tests-ffi/include/libyrs.h --lang C
 
       - name: install cmake
-        uses: lukka/get-cmake@latest
+        uses: lukka/get-cmake@f86dd60acae0d132056913e248bdabf0e0580b7a # v4.4.5
 
       - name: build libyrs
         run: cargo build -p yffi
