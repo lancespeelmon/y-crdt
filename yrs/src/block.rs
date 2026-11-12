@@ -1562,9 +1562,25 @@ impl Item {
         info
     }
 
-    pub(crate) fn gc(&mut self, collector: &mut GCCollector, parent_gc: bool) {
+    pub(crate) fn gc(&mut self, collector: &mut GCCollector) {
+        // An explicit worklist rather than recursion: shared types can nest to
+        // any depth, and running out of stack aborts the process.
+        let mut worklist = Vec::new();
+        self.gc_shallow(collector, false, &mut worklist);
+        while let Some(mut item) = worklist.pop() {
+            item.gc_shallow(collector, true, &mut worklist);
+        }
+    }
+
+    /// Collects a single item and moves its children onto `worklist`.
+    fn gc_shallow(
+        &mut self,
+        collector: &mut GCCollector,
+        parent_gc: bool,
+        worklist: &mut Vec<ItemPtr>,
+    ) {
         if self.is_deleted() {
-            self.content.gc(collector);
+            self.content.take_children(worklist);
             let len = self.len();
             if parent_gc {
                 collector.mark(&self.id);
@@ -2143,21 +2159,21 @@ impl ItemContent {
         }
     }
 
-    pub(crate) fn gc(&mut self, collector: &mut GCCollector) {
+    /// Detaches every child of a shared type, moving them onto `worklist`.
+    fn take_children(&mut self, worklist: &mut Vec<ItemPtr>) {
         match self {
             ItemContent::Type(branch) => {
                 let mut curr = branch.start.take();
-                while let Some(mut item) = curr {
+                while let Some(item) = curr {
                     curr = item.right.clone();
-                    item.gc(collector, true);
+                    worklist.push(item);
                 }
 
                 for (_, ptr) in branch.map.drain() {
                     curr = Some(ptr);
-                    while let Some(mut item) = curr {
+                    while let Some(item) = curr {
                         curr = item.left.clone();
-                        item.gc(collector, true);
-                        continue;
+                        worklist.push(item);
                     }
                 }
             }
