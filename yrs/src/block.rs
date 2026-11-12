@@ -436,7 +436,7 @@ impl From<Box<Item>> for Block {
 /// A raw [Item] pointer. As the underlying block doesn't move it's in-memory location, [ItemPtr]
 /// can be considered a pinned object.
 #[repr(transparent)]
-#[derive(Clone, Copy, Hash)]
+#[derive(Clone, Copy)]
 pub struct ItemPtr(NonNull<Item>);
 
 unsafe impl Send for ItemPtr {}
@@ -754,6 +754,13 @@ impl PartialEq for ItemPtr {
     fn eq(&self, other: &Self) -> bool {
         // BlockPtr.pivot may differ, but logically it doesn't affect block equality
         self.id() == other.id()
+    }
+}
+
+impl std::hash::Hash for ItemPtr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // must agree with `PartialEq`, which compares by ID rather than by address
+        self.id().hash(state)
     }
 }
 

@@ -39,3 +39,5 @@ js-sys = "0.3"
 
 [dev-dependencies]
 
+[lints]
+workspace = true

@@ -3073,7 +3073,7 @@ impl YOutput {
         YOutput {
             tag: Y_JSON_NULL,
             len: 0,
-            value: MaybeUninit::uninit().assume_init(),
+            value: MaybeUninit::zeroed().assume_init(),
         }
     }
 
@@ -3082,7 +3082,7 @@ impl YOutput {
         YOutput {
             tag: Y_JSON_UNDEF,
             len: 0,
-            value: MaybeUninit::uninit().assume_init(),
+            value: MaybeUninit::zeroed().assume_init(),
         }
     }
 }
@@ -3469,7 +3469,7 @@ pub unsafe extern "C" fn yinput_null() -> YInput {
     YInput {
         tag: Y_JSON_NULL,
         len: 0,
-        value: MaybeUninit::uninit().assume_init(),
+        value: MaybeUninit::zeroed().assume_init(),
     }
 }
 
@@ -3480,7 +3480,7 @@ pub unsafe extern "C" fn yinput_undefined() -> YInput {
     YInput {
         tag: Y_JSON_UNDEF,
         len: 0,
-        value: MaybeUninit::uninit().assume_init(),
+        value: MaybeUninit::zeroed().assume_init(),
     }
 }
 

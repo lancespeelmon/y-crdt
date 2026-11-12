@@ -57,3 +57,6 @@ harness = false
 doctest = true
 bench = true
 doc = true
+
+[lints]
+workspace = true

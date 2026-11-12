@@ -541,11 +541,16 @@ mod test {
             buf.extend(std::iter::repeat(0xFF).take(len));
             assert!(
                 Update::decode_v2(&buf).is_err(),
-                "unterminated, {len} bytes"
+                "unterminated, {} bytes",
+                len
             );
 
             buf.push(0x01);
-            assert!(Update::decode_v2(&buf).is_err(), "terminated, {len} bytes");
+            assert!(
+                Update::decode_v2(&buf).is_err(),
+                "terminated, {} bytes",
+                len
+            );
         }
     }
 
