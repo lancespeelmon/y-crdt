@@ -5,6 +5,8 @@ on:
     branches: [ main, next ]
   pull_request:
     branches: [ main, next ]
+  # Called by release.yml so a tag is only published after the full suite passes.
+  workflow_call:
 
 permissions:
   contents: read
@@ -173,10 +175,16 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: install cbindgen
-        run: cargo install cbindgen
+        run: cargo install cbindgen --version 0.29.4 --locked
 
-      - name: generate C bindings
-        run: cbindgen --config ./yffi/cbindgen.toml --crate yffi --output ./tests-ffi/include/libyrs.h --lang C
+      # The header is checked in, so fail when it no longer matches the Rust source.
+      - name: check C header is up to date
+        run: |
+          cbindgen --config ./yffi/cbindgen.toml --crate yffi --output ./tests-ffi/include/libyrs.h --lang C
+          git diff --exit-code -- tests-ffi/include/libyrs.h || {
+            echo "::error::tests-ffi/include/libyrs.h is stale; regenerate it with cbindgen 0.29.4"
+            exit 1
+          }
 
       - name: install cmake
         uses: lukka/get-cmake@f86dd60acae0d132056913e248bdabf0e0580b7a # v4.4.5
