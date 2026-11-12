@@ -2327,7 +2327,7 @@ impl std::fmt::Display for ItemContent {
                     write!(f, "<xml element: {}>", name)
                 }
                 TypeRef::XmlFragment => write!(f, "<xml fragment>"),
-                TypeRef::XmlHook => write!(f, "<xml hook>"),
+                TypeRef::XmlHook(_) => write!(f, "<xml hook>"),
                 TypeRef::XmlText => write!(f, "<xml text>"),
                 #[cfg(feature = "weak")]
                 TypeRef::WeakLink(s) => write!(f, "<weak({}..{})>", s.quote_start, s.quote_end),

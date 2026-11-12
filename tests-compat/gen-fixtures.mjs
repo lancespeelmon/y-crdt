@@ -69,6 +69,7 @@ const F = {}
     v2: hex(Y.encodeStateAsUpdateV2(d)),
     hook_name: hook.hookName,
     element: p.toString(),
+    fragment: frag.toString(),
   }
 }
 

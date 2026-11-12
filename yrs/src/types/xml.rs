@@ -970,6 +970,16 @@ impl PartialEq for XmlHookRef {
     }
 }
 
+impl XmlHookRef {
+    /// The hook name this node was created with (Yjs' `YXmlHook.hookName`).
+    pub fn hook_name(&self) -> &str {
+        match &self.0.type_ref {
+            TypeRef::XmlHook(name) => name,
+            _ => "",
+        }
+    }
+}
+
 impl From<BranchPtr> for XmlHookRef {
     fn from(inner: BranchPtr) -> Self {
         XmlHookRef(inner)

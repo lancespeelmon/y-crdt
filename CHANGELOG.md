@@ -10,6 +10,10 @@ repository and its release notes.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook
+  name, like `TypeRef::XmlElement` carries its tag. `XmlHookRef::hook_name` returns it.
+
 ### Added
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
@@ -17,6 +21,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- `YXmlHook` nodes were encoded and decoded without their hook name. A v1 update holding one
+  failed to decode, and in v2 every key after it (element tags, attribute names) was read from
+  the wrong position.
 - `ContentJSON` (what Yjs 12 and early 13 wrote for array and map values) could not be decoded:
   the decoder read one entry more than Yjs writes. Its values are now also returned parsed, as
   Yjs does (`undefined` as `Any::Undefined`), instead of as raw JSON text.

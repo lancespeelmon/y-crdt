@@ -12,7 +12,7 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{
     Any, Array, Doc, GetString, Map, OffsetKind, Options, ReadTxn, StateVector, Text, Transact,
-    Update,
+    Update, XmlFragment,
 };
 
 fn fixtures() -> &'static Value {
@@ -302,5 +302,45 @@ fn legacy_content_json_decodes_like_yjs() {
         assert_eq!(to_hex(&reencoded), str_field(f, original), "v{}", format);
         let expect = serde_json::json!({ "a": { "type": "array", "value": expected } });
         emit("content_json", format, &reencoded, "roots", expect);
+    }
+}
+
+#[test]
+fn xml_hook_keeps_its_hook_name() {
+    let f = fixture("xml_hook");
+    for format in [1, 2] {
+        let doc = js_doc();
+        if format == 1 {
+            apply_v1(&doc, &bytes(f, "v1"));
+        } else {
+            apply_v2(&doc, &bytes(f, "v2"));
+        }
+        let fragment = doc.get_or_insert_xml_fragment("f");
+        let txn = doc.transact();
+        assert_eq!(fragment.len(&txn), 2, "v{}", format);
+        // Before the hook name was read, the element after the hook came out shifted
+        // (`<k b="1" P="2">` instead of `<p a="1" b="2">` in v2) or the update failed (v1).
+        let element = match fragment.get(&txn, 1) {
+            Some(yrs::XmlOut::Element(element)) => element,
+            other => panic!("expected an element after the hook, got {:?}", other),
+        };
+        assert_eq!(
+            element.get_string(&txn),
+            str_field(f, "element"),
+            "v{}",
+            format
+        );
+
+        // Re-encoding is byte-identical, so the hook name round-trips.
+        let sv = StateVector::default();
+        let reencoded = if format == 1 {
+            txn.encode_state_as_update_v1(&sv)
+        } else {
+            txn.encode_state_as_update_v2(&sv)
+        };
+        let original = if format == 1 { "v1" } else { "v2" };
+        assert_eq!(to_hex(&reencoded), str_field(f, original), "v{}", format);
+        let expect = serde_json::json!({ "f": { "type": "xml", "value": f["fragment"] } });
+        emit("xml_hook", format, &reencoded, "roots", expect);
     }
 }
