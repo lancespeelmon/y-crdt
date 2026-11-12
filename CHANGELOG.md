@@ -33,6 +33,9 @@ repository and its release notes.
 - `SECURITY.md` describing how to report vulnerabilities privately.
 
 ### Fixed
+- Clocks of 2^31 and above (left and right origins, map key clocks) were encoded wrongly in v2,
+  and Yjs' v2 encoding of them failed to decode: the run-length column encoder used 32-bit
+  differences. It now uses 64-bit ones, as Yjs' numbers allow.
 - Relative positions: `sticky_index(len, Assoc::After)` (a caret at the end of a sequence)
   returned `None`; it now returns the end-of-type position Yjs creates. Positions without a
   trailing assoc (written by Yjs before it had one) decode as "after" instead of failing, and

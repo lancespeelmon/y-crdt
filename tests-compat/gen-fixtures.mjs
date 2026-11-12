@@ -137,6 +137,37 @@ const F = {}
   }
 }
 
+// Clocks of 2^31 and above (one client after ~2 billion operations). The v1 update is written by
+// hand; Yjs itself converts it to v2.
+{
+  const e = encoding.createEncoder()
+  encoding.writeVarUint(e, 1) // clients
+  encoding.writeVarUint(e, 2) // structs
+  encoding.writeVarUint(e, 16) // client
+  encoding.writeVarUint(e, 2 ** 31 + 5) // first clock
+  encoding.writeUint8(e, 4) // string content, parent follows
+  encoding.writeVarUint(e, 1) // parent is a root type
+  encoding.writeVarString(e, 't')
+  encoding.writeVarString(e, 'ab')
+  encoding.writeUint8(e, 4 | 128) // string content with an origin
+  encoding.writeVarUint(e, 16)
+  encoding.writeVarUint(e, 2 ** 31 + 6)
+  encoding.writeVarString(e, 'c')
+  encoding.writeVarUint(e, 0) // delete set
+  const v1 = encoding.toUint8Array(e)
+  F.big_clock = { v1: hex(v1), v2: hex(Y.convertUpdateFormatV1ToV2(v1)) }
+}
+
+// Format and embed values that JSON.stringify writes in unusual ways.
+{
+  const d = doc(18)
+  const t = d.getText('t')
+  t.insert(0, 'ab')
+  t.format(0, 1, { size: 1e19 })
+  t.insertEmbed(2, { k: 'x' })
+  F.json_edge = { v1: hex(Y.encodeStateAsUpdate(d)), v2: hex(Y.encodeStateAsUpdateV2(d)), delta: JSON.stringify(t.toDelta()) }
+}
+
 // Any values of every lib0 type that yrs maps without loss.
 {
   const d = doc(8)

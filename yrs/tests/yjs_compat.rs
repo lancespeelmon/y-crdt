@@ -535,3 +535,15 @@ fn relative_positions_match_yjs() {
     let item = ID::new(yrs::ClientID::new(7), 1);
     assert_eq!(legacy.scope(), &IndexScope::Relative(item));
 }
+
+#[test]
+fn clocks_above_2_pow_31_survive_v2_like_yjs() {
+    let f = fixture("big_clock");
+    let from_v1 = Update::decode_v1(&bytes(f, "v1")).unwrap();
+    let from_v2 = Update::decode_v2(&bytes(f, "v2")).expect("decode Yjs v2 with big clocks");
+    assert_eq!(from_v1.encode_v1(), from_v2.encode_v1());
+    // v1 -> v2 like Yjs' convertUpdateFormatV1ToV2, byte for byte
+    assert_eq!(to_hex(&from_v1.encode_v2()), str_field(f, "v2"));
+    // ...and back: the second item's origin, clock 2^31 + 6, is intact
+    assert_eq!(to_hex(&from_v2.encode_v1()), str_field(f, "v1"));
+}

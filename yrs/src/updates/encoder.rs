@@ -363,7 +363,8 @@ struct IntDiffOptRleEncoder {
     buf: Vec<u8>,
     last: u32,
     count: u32,
-    diff: i32,
+    // i64: the difference of two u32 clocks doesn't fit an i32 (Yjs uses JS numbers)
+    diff: i64,
 }
 
 impl IntDiffOptRleEncoder {
@@ -377,7 +378,7 @@ impl IntDiffOptRleEncoder {
     }
 
     fn write_u32(&mut self, value: u32) {
-        let diff = value as i32 - self.last as i32;
+        let diff = value as i64 - self.last as i64;
         if self.diff == diff {
             self.last = value;
             self.count += 1;
@@ -391,12 +392,12 @@ impl IntDiffOptRleEncoder {
 
     fn flush(&mut self) {
         if self.count > 0 {
-            // 31 bit making up the diff | wether to write the counter
-            let encode_diff = self.diff << 1 | (if self.count == 1 { 0 } else { 1 });
+            // the diff, shifted left by one | whether a count follows (Yjs: diff * 2 + bit)
+            let encode_diff = self.diff * 2 + if self.count == 1 { 0 } else { 1 };
             // flush counter, unless this is the first value (count = 0)
             // case 1: just a single value. set first bit to positive
             // case 2: write several values. set first bit to negative to indicate that there is a length coming
-            self.buf.write_var(encode_diff as i64);
+            self.buf.write_var(encode_diff);
             if self.count > 1 {
                 self.buf.write_var(self.count - 2);
             }

@@ -407,7 +407,8 @@ struct IntDiffOptRleDecoder<'a> {
     cursor: Cursor<'a>,
     last: u32,
     count: u32,
-    diff: i32,
+    // i64: the difference of two u32 clocks doesn't fit an i32 (Yjs uses JS numbers)
+    diff: i64,
 }
 
 impl<'a> IntDiffOptRleDecoder<'a> {
@@ -422,17 +423,18 @@ impl<'a> IntDiffOptRleDecoder<'a> {
 
     fn read_u32(&mut self) -> Result<u32, Error> {
         if self.count == 0 {
-            let diff = self.cursor.read_var::<i32>()?;
+            let diff = self.cursor.read_var::<i64>()?;
             // if the first bit is set, we read more data
             let has_count = diff & 1;
-            self.diff = (diff >> 1) as i32;
+            self.diff = diff >> 1; // floor(diff / 2), as in Yjs
             self.count = if has_count != 0 {
                 self.cursor.read_var::<u32>()? + 2
             } else {
                 1
             };
         }
-        self.last = ((self.last as i32) + self.diff) as u32;
+        self.last = std::convert::TryFrom::try_from(self.last as i64 + self.diff)
+            .map_err(|_| Error::UnexpectedValue)?;
         self.count -= 1;
         Ok(self.last)
     }
