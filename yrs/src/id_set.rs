@@ -477,22 +477,27 @@ impl DeleteSet for IdSet {
         for (&client, range) in self.0.iter() {
             let blocks = store.blocks.get_client_blocks_mut(client);
             for (r, _) in range.iter().rev() {
+                let Some(last) = blocks.len().checked_sub(1) else {
+                    break;
+                };
                 // start with merging the item next to the last deleted item
-                let mut si =
-                    (blocks.len() - 1).min(1 + blocks.find_index(r.end - 1).unwrap_or_default());
+                let mut si = last.min(1 + blocks.find_index(r.end - 1).unwrap_or_default());
                 let mut block = &blocks[si];
 
-                let mut valid_range = usize::MAX..usize::MIN;
+                // inclusive range of block indexes that can be squashed with their left neighbour
+                let mut valid_range: Option<(usize, usize)> = None;
 
                 while si > 0 && block.clock_start() >= r.start {
-                    valid_range.start = valid_range.start.min(si);
-                    valid_range.end = valid_range.end.max(si);
+                    valid_range = Some(match valid_range {
+                        None => (si, si),
+                        Some((start, end)) => (start.min(si), end.max(si)),
+                    });
                     si -= 1;
                     block = &blocks[si];
                 }
 
-                if valid_range.start != usize::MAX && valid_range.end != usize::MIN {
-                    blocks.squash_left_range_compaction(valid_range.start..=valid_range.end);
+                if let Some((start, end)) = valid_range {
+                    blocks.squash_left_range_compaction(start..=end);
                 }
             }
         }

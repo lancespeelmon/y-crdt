@@ -3025,7 +3025,7 @@ mod test {
         let last = last.unwrap();
         match &last.content {
             ItemContent::String(s) => assert_eq!(s.as_str(), "é😀".repeat(20), "squashed run"),
-            other => panic!("expected a string item, got {other}"),
+            other => panic!("expected a string item, got {}", other),
         }
         assert_eq!(last.len, 60);
 

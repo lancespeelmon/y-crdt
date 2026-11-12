@@ -29,6 +29,12 @@ impl Awareness {
         unsafe { &*self.inner.get() }
     }
 
+    // FIXME: this hands out `&mut` from `&self`, which aliases when a JS observer re-enters the
+    // awareness (yrs fires observers synchronously inside `&mut self` methods). Taking
+    // `&mut self` instead would make wasm-bindgen throw on the common pattern of reading
+    // `getStates()` from a 'change' handler, so it stays until yrs dispatches awareness events
+    // after the mutation completes.
+    #[allow(clippy::mut_from_ref)]
     fn inner_mut(&self) -> &mut YAwareness {
         unsafe { &mut *self.inner.get() }
     }

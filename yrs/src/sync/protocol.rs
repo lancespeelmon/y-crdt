@@ -160,10 +160,7 @@ pub trait Protocol {
 
     /// Returns an [AwarenessUpdate] which is a serializable representation of a current `awareness`
     /// instance.
-    fn handle_awareness_query(
-        &self,
-        awareness: &mut Awareness,
-    ) -> Result<Option<Message>, Error> {
+    fn handle_awareness_query(&self, awareness: &mut Awareness) -> Result<Option<Message>, Error> {
         let update = awareness.update()?;
         Ok(Some(Message::Awareness(update)))
     }

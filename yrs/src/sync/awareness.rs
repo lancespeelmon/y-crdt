@@ -781,9 +781,7 @@ mod test {
                 removed: vec![]
             })
         );
-        let local_states: HashMap<_, _> = local.iter().collect();
-        let remote_states: HashMap<_, _> = remote.iter().collect();
-        assert_eq!(local_states, remote_states);
+        assert_eq!(comparable_states(&local), comparable_states(&remote));
 
         local.clean_local_state();
         let update = local.update_with_clients([local.client_id()])?;
@@ -797,9 +795,21 @@ mod test {
             })
         );
         assert!(local.state::<Value>(ClientID::new(1)).is_none());
-        let local_states: HashMap<_, _> = local.iter().collect();
-        let remote_states: HashMap<_, _> = remote.iter().collect();
-        assert_eq!(local_states, remote_states);
+        assert_eq!(comparable_states(&local), comparable_states(&remote));
         Ok(())
+    }
+
+    /// Client states without `last_updated`: that is wall-clock time taken separately by each
+    /// peer, so comparing it makes the test fail whenever the millisecond ticks in between.
+    fn comparable_states(awareness: &Awareness) -> HashMap<ClientID, (u32, Option<String>)> {
+        awareness
+            .iter()
+            .map(|(client, state)| {
+                (
+                    client,
+                    (state.clock, state.data.as_deref().map(String::from)),
+                )
+            })
+            .collect()
     }
 }

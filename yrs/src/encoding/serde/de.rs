@@ -868,7 +868,8 @@ mod test {
             test: i8,
         }
 
-        let any: Any = HashMap::from([("test".to_string(), Any::Number(Number::Float(1000.1)))]).into();
+        let any: Any =
+            HashMap::from([("test".to_string(), Any::Number(Number::Float(1000.1)))]).into();
 
         let error = from_any::<Test>(&any).unwrap_err();
         match error {

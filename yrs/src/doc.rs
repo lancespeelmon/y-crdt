@@ -889,7 +889,9 @@ mod test {
         for clock in 0..end {
             assert!(
                 txn.delete_set().contains(&ID::new(ClientID::new(1), clock)),
-                "clock {clock} of {end} was not deleted"
+                "clock {} of {} was not deleted",
+                clock,
+                end
             );
         }
     }

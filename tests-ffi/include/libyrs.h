@@ -292,6 +292,11 @@ typedef struct StickyIndex {} StickyIndex;
 #define ERR_CUSTOM 9
 
 /**
+ * Error code: malformed update.
+ */
+#define ERR_MALFORMED 10
+
+/**
  * Error code: update block assigned to parent that is not a valid shared ref of deleted block.
  */
 #define ERR_INVALID_PARENT 9

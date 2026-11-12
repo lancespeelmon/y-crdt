@@ -6,6 +6,96 @@ members = [
   "yffi"
 ]
 
+
+# Lint gate: CI runs `cargo clippy --workspace --all-targets -- -D warnings`.
+# Every lint below was already firing when the gate was introduced, so it is allowed
+# explicitly; the number is how many sites it had (clippy 1.99.0). Burn this list down:
+# fix a lint everywhere, delete its line, and CI keeps it from coming back. Any lint not
+# listed here fails CI immediately.
+[workspace.lints.rust]
+mismatched_lifetime_syntaxes = "allow" # 23
+dead_code = "allow" # 19
+unused_variables = "allow" # 15
+unused_imports = "allow" # 12
+unused_mut = "allow" # 5
+unused_assignments = "allow" # 2
+unused_parens = "allow" # 1
+
+[workspace.lints.clippy]
+missing_safety_doc = "allow" # 214
+single_range_in_vec_init = "allow" # 136
+unnecessary_cast = "allow" # 71
+doc_lazy_continuation = "allow" # 70
+clone_on_copy = "allow" # 68
+needless_borrow = "allow" # 41
+field_reassign_with_default = "allow" # 22
+from_over_into = "allow" # 21
+unnecessary_mut_passed = "allow" # 21
+into_iter_on_ref = "allow" # 19
+while_let_on_iterator = "allow" # 19
+unnecessary_to_owned = "allow" # 18
+explicit_auto_deref = "allow" # 17
+redundant_static_lifetimes = "allow" # 17
+default_constructed_unit_structs = "allow" # 13
+multiple_bound_locations = "allow" # 11
+needless_return = "allow" # 11
+useless_conversion = "allow" # 10
+type_complexity = "allow" # 9
+borrow_deref_ref = "allow" # 8
+assign_op_pattern = "allow" # 6
+manual_map = "allow" # 6
+needless_borrows_for_generic_args = "allow" # 6
+doc_overindented_list_items = "allow" # 5
+match_like_matches_macro = "allow" # 5
+wrong_self_convention = "allow" # 5
+char_lit_as_u8 = "allow" # 4
+collapsible_if = "allow" # 4
+explicit_counter_loop = "allow" # 4
+for_kv_map = "allow" # 4
+mem_replace_with_default = "allow" # 4
+ptr_arg = "allow" # 4
+collapsible_match = "allow" # 3
+double_ended_iterator_last = "allow" # 3
+needless_lifetimes = "allow" # 3
+new_without_default = "allow" # 3
+unnecessary_sort_by = "allow" # 3
+useless_asref = "allow" # 3
+arc_with_non_send_sync = "allow" # 2
+expect_fun_call = "allow" # 2
+len_without_is_empty = "allow" # 2
+let_and_return = "allow" # 2
+manual_range_contains = "allow" # 2
+missing_transmute_annotations = "allow" # 2
+op_ref = "allow" # 2
+partialeq_to_none = "allow" # 2
+ptr_offset_with_cast = "allow" # 2
+to_string_in_format_args = "allow" # 2
+too_many_arguments = "allow" # 2
+unit_arg = "allow" # 2
+upper_case_acronyms = "allow" # 2
+useless_borrows_in_formatting = "allow" # 2
+bool_assert_comparison = "allow" # 1
+boxed_local = "allow" # 1
+byte_char_slices = "allow" # 1
+cast_abs_to_unsigned = "allow" # 1
+empty_line_after_doc_comments = "allow" # 1
+extra_unused_type_parameters = "allow" # 1
+iter_kv_map = "allow" # 1
+large_enum_variant = "allow" # 1
+manual_flatten = "allow" # 1
+manual_repeat_n = "allow" # 1
+needless_bool = "allow" # 1
+needless_range_loop = "allow" # 1
+ptr_eq = "allow" # 1
+redundant_closure = "allow" # 1
+redundant_pattern_matching = "allow" # 1
+should_implement_trait = "allow" # 1
+single_match = "allow" # 1
+unnecessary_get_then_check = "allow" # 1
+unwrap_or_default = "allow" # 1
+vec_init_then_push = "allow" # 1
+while_let_loop = "allow" # 1
+
 [profile.release]
 # optimization over all codebase ( better optimization, slower build )
 codegen-units = 1

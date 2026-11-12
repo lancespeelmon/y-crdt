@@ -9,9 +9,16 @@ name: Release packages
 permissions:
   contents: read
 
+# Third-party actions are pinned by commit SHA; the trailing comment names the release.
 jobs:
+  # The full CI suite (tests, lints, deny, wasm, C FFI) must pass before anything is built or
+  # published from a tag.
+  ci:
+    uses: ./.github/workflows/main.yml
+
   dist:
     name: create ${{ matrix.target }} C-FFI distribution
+    needs: [ ci ]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,7 +48,7 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
       - name: install cbindgen
-        run: cargo install cbindgen
+        run: cargo install cbindgen --version 0.29.4 --locked
       - name: build release binary
         run: cargo build -p yffi --release --locked --target ${{ matrix.target }}
       - name: Strip release binary (linux and macos)
@@ -122,6 +129,7 @@ jobs:
 
   publish-crate:
     name: publish to crates.io
+    needs: [ ci, dist ]
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
@@ -146,6 +154,7 @@ jobs:
 
   publish-npm:
     name: publish to npmjs.org
+    needs: [ ci, dist ]
     runs-on: ubuntu-latest
     steps:
       - name: checkout code

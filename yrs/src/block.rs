@@ -436,7 +436,7 @@ impl From<Box<Item>> for Block {
 /// A raw [Item] pointer. As the underlying block doesn't move it's in-memory location, [ItemPtr]
 /// can be considered a pinned object.
 #[repr(transparent)]
-#[derive(Clone, Copy, Hash)]
+#[derive(Clone, Copy)]
 pub struct ItemPtr(NonNull<Item>);
 
 unsafe impl Send for ItemPtr {}
@@ -750,10 +750,18 @@ impl<'a> From<&'a Item> for ItemPtr {
 
 impl Eq for ItemPtr {}
 
+// Equality and hashing are both by address. Every live item has exactly one allocation and one
+// ID, so this matches ID equality, and neither needs to dereference the pointer (rehashing a map
+// keyed by `ItemPtr` must not read the items).
 impl PartialEq for ItemPtr {
     fn eq(&self, other: &Self) -> bool {
-        // BlockPtr.pivot may differ, but logically it doesn't affect block equality
-        self.id() == other.id()
+        self.0 == other.0
+    }
+}
+
+impl std::hash::Hash for ItemPtr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
     }
 }
 
