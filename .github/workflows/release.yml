@@ -119,10 +119,6 @@ jobs:
             gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "" --verify-tag
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
-      - name: Extract version
-        id: extract-version
-        run: |
-          printf "val=%s\n" "${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
   publish-crate:
     name: publish to crates.io
@@ -139,14 +135,14 @@ jobs:
           toolchain: stable
 
       - name: cargo publish yrs
-        run: cd ./yrs && cargo publish --all-features --token "${CRATES_TOKEN}"
+        run: cd ./yrs && cargo publish --all-features
         env:
-          CRATES_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: cargo publish yffi
-        run: sleep 20 && cd ./yffi && cargo publish --token "${CRATES_TOKEN}"
+        run: sleep 20 && cd ./yffi && cargo publish
         env:
-          CRATES_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-npm:
     name: publish to npmjs.org
