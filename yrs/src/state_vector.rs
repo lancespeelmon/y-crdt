@@ -163,17 +163,17 @@ impl Encode for StateVector {
 
 /// Decodes `data` with `yjs` and returns the result if it consumed every byte. Otherwise decodes
 /// it as the whole-v2-update frame that yrs wrote for state vectors and snapshots before it
-/// matched Yjs, and returns that if it succeeds. Failing that, returns the Yjs result with its
-/// trailing bytes ignored (as Yjs does), or the original error.
+/// matched Yjs, and returns that if it succeeds (or the original error).
 fn decode_yjs_or_legacy_v2<T: Decode>(
     data: &[u8],
     yjs: impl Fn(&[u8]) -> Result<(T, usize), Error>,
 ) -> Result<T, Error> {
-    // Yjs ignores bytes after a complete value; keep such a value unless the legacy frame fits
-    let (value, error) = match yjs(data) {
+    let error = match yjs(data) {
         Ok((value, 0)) => return Ok(value),
-        Ok((value, _)) => (Some(value), Error::UnexpectedValue),
-        Err(e) => (None, e),
+        // Trailing bytes are refused, unlike Yjs: a legacy frame starts with a 0 byte, which also
+        // reads as an empty state vector, so a corrupt legacy input must not decode as "empty".
+        Ok(_) => Error::UnexpectedValue,
+        Err(e) => e,
     };
     let legacy = DecoderV2::new(Cursor::new(data)).and_then(|mut decoder| {
         let value = T::decode(&mut decoder)?;
@@ -183,7 +183,7 @@ fn decode_yjs_or_legacy_v2<T: Decode>(
             Err(Error::UnexpectedValue)
         }
     });
-    legacy.or_else(|_| value.ok_or(error))
+    legacy.map_err(|_| error)
 }
 
 impl PartialOrd for StateVector {
@@ -280,12 +280,13 @@ mod test {
     use std::iter::FromIterator;
 
     #[test]
-    fn decode_v2_ignores_trailing_bytes_like_yjs() {
+    fn decode_v2_refuses_trailing_bytes() {
         use crate::updates::encoder::Encode;
         let sv = StateVector::from_iter([(ClientID::new(1), 5), (ClientID::new(2), 7)]);
         let mut bytes = sv.encode_v2();
-        bytes.push(0xff);
         assert_eq!(StateVector::decode_v2(&bytes).unwrap(), sv);
+        bytes.push(0xff);
+        assert!(StateVector::decode_v2(&bytes).is_err());
     }
 
     #[test]
