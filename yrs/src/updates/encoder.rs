@@ -196,6 +196,13 @@ pub struct EncoderV2 {
 }
 
 impl EncoderV2 {
+    /// Only what was written to the rest buffer, without the v2 feature flag and column
+    /// encoders. This is Yjs' `DSEncoderV2.toUint8Array()`, used for v2 snapshots: delete sets
+    /// and state vectors only ever write there.
+    pub(crate) fn into_rest(self) -> Vec<u8> {
+        self.buf
+    }
+
     pub fn new() -> Self {
         EncoderV2 {
             key_table: HashMap::new(),

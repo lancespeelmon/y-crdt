@@ -1,7 +1,8 @@
 use crate::block::ClientID;
 use crate::encoding::read::Error;
-use crate::updates::decoder::{Decode, Decoder};
-use crate::updates::encoder::{Encode, Encoder};
+use crate::encoding::read::{Cursor, Read};
+use crate::updates::decoder::{Decode, Decoder, DecoderV1, DecoderV2};
+use crate::updates::encoder::{Encode, Encoder, EncoderV2};
 use crate::utils::client_hasher::ClientHasher;
 use crate::{IdSet, ID};
 use std::cmp::Ordering;
@@ -131,6 +132,17 @@ impl Decode for StateVector {
         }
         Ok(StateVector(sv))
     }
+
+    /// Decodes a state vector sent as "v2". Yjs has a single state vector format, so this is the
+    /// same as [Decode::decode_v1]. yrs used to wrap it in a whole v2 update frame instead,
+    /// which is still accepted when the input is not a complete Yjs state vector.
+    fn decode_v2(data: &[u8]) -> Result<Self, Error> {
+        decode_yjs_or_legacy_v2(data, |data| {
+            let mut decoder = DecoderV1::from(data);
+            let sv = Self::decode(&mut decoder)?;
+            Ok((sv, decoder.remaining()))
+        })
+    }
 }
 
 impl Encode for StateVector {
@@ -141,6 +153,35 @@ impl Encode for StateVector {
             encoder.write_var(clock);
         }
     }
+
+    /// Yjs has a single state vector format (`encodeStateVectorV2` writes the same bytes as
+    /// `encodeStateVector`), so this is the same as [Encode::encode_v1].
+    fn encode_v2(&self) -> Vec<u8> {
+        self.encode_v1()
+    }
+}
+
+/// Decodes `data` with `yjs` and returns the result if it consumed every byte. Otherwise decodes
+/// it as the whole-v2-update frame that yrs wrote for state vectors and snapshots before it
+/// matched Yjs, and returns that if it succeeds (or the original error).
+fn decode_yjs_or_legacy_v2<T: Decode>(
+    data: &[u8],
+    yjs: impl Fn(&[u8]) -> Result<(T, usize), Error>,
+) -> Result<T, Error> {
+    let error = match yjs(data) {
+        Ok((value, 0)) => return Ok(value),
+        Ok(_) => Error::UnexpectedValue,
+        Err(e) => e,
+    };
+    let legacy = DecoderV2::new(Cursor::new(data)).and_then(|mut decoder| {
+        let value = T::decode(&mut decoder)?;
+        if decoder.remaining() == 0 {
+            Ok(value)
+        } else {
+            Err(Error::UnexpectedValue)
+        }
+    });
+    legacy.map_err(|_| error)
 }
 
 impl PartialOrd for StateVector {
@@ -200,6 +241,14 @@ impl Encode for Snapshot {
         self.delete_set.encode(encoder);
         self.state_map.encode(encoder)
     }
+
+    /// Yjs' `encodeSnapshotV2`: the delete set in the v2 delete set encoding (clock differences
+    /// and lengths minus one) followed by the state vector, without a v2 update frame.
+    fn encode_v2(&self) -> Vec<u8> {
+        let mut encoder = EncoderV2::new();
+        self.encode(&mut encoder);
+        encoder.into_rest()
+    }
 }
 
 impl Decode for Snapshot {
@@ -207,6 +256,16 @@ impl Decode for Snapshot {
         let ds = IdSet::decode(decoder)?;
         let sm = StateVector::decode(decoder)?;
         Ok(Snapshot::new(sm, ds))
+    }
+
+    /// Yjs' `decodeSnapshotV2`. The whole-v2-update frame yrs used to write is still accepted
+    /// when the input is not a complete Yjs v2 snapshot.
+    fn decode_v2(data: &[u8]) -> Result<Self, Error> {
+        decode_yjs_or_legacy_v2(data, |data| {
+            let mut decoder = DecoderV2::rest_only(data);
+            let snapshot = Self::decode(&mut decoder)?;
+            Ok((snapshot, decoder.remaining()))
+        })
     }
 }
 

@@ -11,6 +11,11 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- "v2" state vectors and snapshots now use Yjs' formats: `StateVector::encode_v2` writes the
+  same bytes as `encode_v1` (Yjs has one state vector format), and `Snapshot::encode_v2` writes
+  Yjs' `encodeSnapshotV2` layout. `encode_state_vector_from_update_v2` returns a plain state
+  vector, and `diff_updates_v2` accepts the one Yjs sends. The decoders still accept the
+  whole-v2-update frame yrs wrote before.
 - `XmlElementRef::get_string` renders like Yjs' `YXmlElement.toString()`: attributes sorted by
   name and the tag name lowercased. Attribute order used to follow hash-map order.
 - **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook

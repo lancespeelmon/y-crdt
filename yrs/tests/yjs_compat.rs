@@ -380,3 +380,51 @@ fn surrogate_pair_split_across_items_decodes_like_yjs() {
         emit("surrogate_split", format, &reencoded, "roots", expect);
     }
 }
+
+#[test]
+fn v2_state_vectors_and_snapshots_match_yjs() {
+    use yrs::updates::encoder::{Encoder, EncoderV2};
+    use yrs::Snapshot;
+
+    let f = fixture("state_vector");
+    let update_v2 = bytes(f, "update_v2");
+
+    // Yjs has one state vector format; encodeStateVectorFromUpdateV2 returns it.
+    let sv = yrs::encode_state_vector_from_update_v2(&update_v2).unwrap();
+    assert_eq!(to_hex(&sv), str_field(f, "sv_from_update_v2"));
+    assert_eq!(to_hex(&sv), str_field(f, "sv"));
+    let decoded = StateVector::decode_v2(&bytes(f, "sv")).unwrap();
+    assert_eq!(decoded, StateVector::decode_v1(&bytes(f, "sv")).unwrap());
+
+    // diffUpdateV2 takes that state vector; [0] is the empty one.
+    let diff = yrs::diff_updates_v2(&update_v2, &[0]).unwrap();
+    assert_eq!(to_hex(&diff), str_field(f, "diff_v2_empty_sv"));
+    let diff = yrs::diff_updates_v2(&update_v2, &bytes(f, "sv")).unwrap();
+    assert!(Update::decode_v2(&diff).unwrap().state_vector().is_empty());
+
+    // Snapshots: the v2 form is a v2-style delete set and the state vector, unframed.
+    let snapshot_v1 = Snapshot::decode_v1(&bytes(f, "snapshot_v1")).unwrap();
+    let snapshot_v2 = Snapshot::decode_v2(&bytes(f, "snapshot_v2")).unwrap();
+    assert_eq!(snapshot_v1, snapshot_v2);
+    assert!(!snapshot_v2.delete_set.is_empty());
+    assert_eq!(
+        to_hex(&snapshot_v2.encode_v2()),
+        str_field(f, "snapshot_v2")
+    );
+    assert_eq!(
+        to_hex(&snapshot_v1.encode_v1()),
+        str_field(f, "snapshot_v1")
+    );
+
+    // What yrs used to write (a whole v2 update frame) still decodes.
+    let legacy = |encode: &dyn Fn(&mut EncoderV2)| {
+        let mut encoder = EncoderV2::new();
+        encode(&mut encoder);
+        encoder.to_vec()
+    };
+    let legacy_sv = legacy(&|e| decoded.encode(e));
+    assert_ne!(legacy_sv, bytes(f, "sv"));
+    assert_eq!(StateVector::decode_v2(&legacy_sv).unwrap(), decoded);
+    let legacy_snapshot = legacy(&|e| snapshot_v2.encode(e));
+    assert_eq!(Snapshot::decode_v2(&legacy_snapshot).unwrap(), snapshot_v2);
+}

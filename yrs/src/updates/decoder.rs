@@ -217,6 +217,26 @@ pub struct DecoderV2<'a> {
 }
 
 impl<'a> DecoderV2<'a> {
+    /// Decodes only a rest buffer, with no v2 feature flag or column encoders: Yjs'
+    /// `DSDecoderV2`, used for v2 snapshots. Reading anything that lives in a column fails.
+    pub(crate) fn rest_only(data: &'a [u8]) -> Self {
+        let empty = || Cursor::new(&[]);
+        DecoderV2 {
+            cursor: Cursor::new(data),
+            keys: Vec::new(),
+            ds_curr_val: 0,
+            key_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            client_decoder: UIntOptRleDecoder::new(empty()),
+            left_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            right_clock_decoder: IntDiffOptRleDecoder::new(empty()),
+            info_decoder: RleDecoder::new(empty()),
+            string_decoder: StringDecoder::empty(),
+            parent_info_decoder: RleDecoder::new(empty()),
+            type_ref_decoder: UIntOptRleDecoder::new(empty()),
+            len_decoder: UIntOptRleDecoder::new(empty()),
+        }
+    }
+
     pub fn new(mut cursor: Cursor<'a>) -> Result<Self, Error> {
         if cursor.has_content() {
             // read feature flag - currently unused
@@ -506,6 +526,16 @@ impl<'a> StringDecoder<'a> {
             split_pair: false,
             scratch: String::new(),
         })
+    }
+
+    fn empty() -> Self {
+        StringDecoder {
+            buf: "",
+            len_decoder: UIntOptRleDecoder::new(Cursor::new(&[])),
+            pos: 0,
+            split_pair: false,
+            scratch: String::new(),
+        }
     }
 
     /// Reads the next string. Yjs writes all strings into one column and stores their lengths in
