@@ -126,8 +126,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      # Runs every benchmark once (criterion test mode) so the harness itself can't rot.
+      # Runs every benchmark once (criterion test mode) so the harness itself can't rot. The bench
+      # profile inherits the release profile's fat LTO, which a single run doesn't need.
       - name: run benchmarks in test mode
+        env:
+          CARGO_PROFILE_BENCH_LTO: 'false'
+          CARGO_PROFILE_BENCH_CODEGEN_UNITS: '16'
         run: cargo bench -p yrs -- --test
 
   wasm:

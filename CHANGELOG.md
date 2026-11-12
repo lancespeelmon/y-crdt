@@ -21,12 +21,10 @@ repository and its release notes.
   overflow the stack.
 - Decoding reserves memory in proportion to the remaining input rather than to lengths read
   from it.
-- `ItemPtr`'s `Hash` now agrees with its `Eq` (both use the item ID).
+- `ItemPtr`'s `Hash` and `Eq` now agree (both compare addresses).
 - `IdSet` squashing no longer computes an out-of-range index for an empty block list.
 - yffi: `yinput_null`/`yinput_undefined` and the matching `YOutput` constructors no longer
   return uninitialized memory in the value field.
-- ywasm: `Awareness` no longer creates aliasing mutable references; re-entrant use from a JS
-  callback is rejected at runtime.
 - The C header `libyrs.h` now includes `ERR_MALFORMED`.
 
 ### Removed

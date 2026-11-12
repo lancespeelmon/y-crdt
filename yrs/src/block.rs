@@ -750,17 +750,18 @@ impl<'a> From<&'a Item> for ItemPtr {
 
 impl Eq for ItemPtr {}
 
+// Equality and hashing are both by address. Every live item has exactly one allocation and one
+// ID, so this matches ID equality, and neither needs to dereference the pointer (rehashing a map
+// keyed by `ItemPtr` must not read the items).
 impl PartialEq for ItemPtr {
     fn eq(&self, other: &Self) -> bool {
-        // BlockPtr.pivot may differ, but logically it doesn't affect block equality
-        self.id() == other.id()
+        self.0 == other.0
     }
 }
 
 impl std::hash::Hash for ItemPtr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // must agree with `PartialEq`, which compares by ID rather than by address
-        self.id().hash(state)
+        self.0.hash(state)
     }
 }
 

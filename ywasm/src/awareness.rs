@@ -1,5 +1,6 @@
 use js_sys::Uint8Array;
 use serde::Serialize;
+use std::cell::UnsafeCell;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
@@ -13,25 +14,29 @@ use crate::js::{Callback, Js};
 
 #[wasm_bindgen]
 pub struct Awareness {
-    inner: YAwareness,
+    inner: UnsafeCell<YAwareness>,
 }
 
 #[wasm_bindgen]
 impl Awareness {
     #[wasm_bindgen(constructor)]
     pub fn new(doc: YDoc) -> Awareness {
-        let inner = YAwareness::with_clock(doc.0.clone(), JsClock);
+        let inner = UnsafeCell::new(YAwareness::with_clock(doc.0.clone(), JsClock));
         Awareness { inner }
     }
 
     fn inner(&self) -> &YAwareness {
-        &self.inner
+        unsafe { &*self.inner.get() }
     }
 
-    // Mutating methods take `&mut self`: wasm-bindgen then rejects re-entrant use from JS
-    // callbacks at runtime instead of handing out aliasing `&mut` references.
-    fn inner_mut(&mut self) -> &mut YAwareness {
-        &mut self.inner
+    // FIXME: this hands out `&mut` from `&self`, which aliases when a JS observer re-enters the
+    // awareness (yrs fires observers synchronously inside `&mut self` methods). Taking
+    // `&mut self` instead would make wasm-bindgen throw on the common pattern of reading
+    // `getStates()` from a 'change' handler, so it stays until yrs dispatches awareness events
+    // after the mutation completes.
+    #[allow(clippy::mut_from_ref)]
+    fn inner_mut(&self) -> &mut YAwareness {
+        unsafe { &mut *self.inner.get() }
     }
 
     #[wasm_bindgen(getter, js_name = doc)]
@@ -59,7 +64,7 @@ impl Awareness {
     }
 
     #[wasm_bindgen(js_name = destroy)]
-    pub fn destroy(&mut self) {
+    pub fn destroy(&self) {
         self.inner_mut().clean_local_state();
     }
 
@@ -72,7 +77,7 @@ impl Awareness {
     }
 
     #[wasm_bindgen(js_name = setLocalState)]
-    pub fn set_local_state(&mut self, state: JsValue) -> crate::Result<()> {
+    pub fn set_local_state(&self, state: JsValue) -> crate::Result<()> {
         let inner = self.inner_mut();
         if state.is_null() {
             inner.clean_local_state();
@@ -84,7 +89,7 @@ impl Awareness {
     }
 
     #[wasm_bindgen(js_name = setLocalStateField)]
-    pub fn set_field(&mut self, key: &str, value: JsValue) -> crate::Result<()> {
+    pub fn set_field(&self, key: &str, value: JsValue) -> crate::Result<()> {
         let state = self.local_state()?;
         js_sys::Reflect::set(&state, &JsValue::from_str(key), &value)?;
         self.set_local_state(state)
@@ -103,7 +108,7 @@ impl Awareness {
     }
 
     #[wasm_bindgen(js_name = on)]
-    pub fn on(&mut self, event: &str, callback: js_sys::Function) -> crate::Result<()> {
+    pub fn on(&self, event: &str, callback: js_sys::Function) -> crate::Result<()> {
         let abi = callback.subscription_key();
         let inner = self.inner_mut();
         match event {
@@ -129,7 +134,7 @@ impl Awareness {
     }
 
     #[wasm_bindgen(js_name = off)]
-    pub fn off(&mut self, event: &str, callback: js_sys::Function) -> crate::Result<bool> {
+    pub fn off(&self, event: &str, callback: js_sys::Function) -> crate::Result<bool> {
         let abi = callback.subscription_key();
         let inner = self.inner_mut();
         match event {

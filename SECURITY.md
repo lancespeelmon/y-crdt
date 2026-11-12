@@ -17,7 +17,7 @@ for this repository. Please include:
   exhaustion),
 - a reproducer, ideally the smallest input bytes or program that triggers it.
 
-You'll get an acknowledgement within a few days. Fixes are developed privately, and the details
+We aim to acknowledge reports promptly. Fixes are developed privately, and the details
 are published after a fix is available. If the issue also affects upstream y-crdt, we coordinate
 disclosure with its maintainers before publishing anything.
 
