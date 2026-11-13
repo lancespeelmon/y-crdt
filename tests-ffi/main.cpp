@@ -2668,6 +2668,8 @@ TEST_CASE("ybranch_get returns NULL for a root name that isn't UTF-8") {
     id.variant.name = bad_name;
     YTransaction *txn = ydoc_read_transaction(doc);
     REQUIRE(ybranch_get(&id, txn) == NULL);
+    REQUIRE(ybranch_get(NULL, txn) == NULL);
+    REQUIRE(ybranch_get(&id, NULL) == NULL);
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }

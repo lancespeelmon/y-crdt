@@ -73,13 +73,7 @@ impl YTransaction {
         if brand.as_bool() != Some(true) {
             return Err(JsValue::from_str(crate::js::errors::NON_TRANSACTION));
         }
-        let ptr = js_sys::Reflect::get(value, &JsValue::from_str(crate::js::JS_PTR))?
-            .as_f64()
-            .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))? as usize;
-        if ptr == 0 {
-            return Err(JsValue::from_str(crate::js::errors::FREED_WASM_OBJ));
-        }
-        Ok(ptr)
+        crate::js::convert::wasm_ptr(value)
     }
 
     pub fn try_ref_from_js_value(value: &JsValue) -> Result<RcRef<Self>> {
@@ -135,7 +129,7 @@ const TRANSACTION_BRAND: &str = "__ytransaction";
 #[wasm_bindgen]
 impl YTransaction {
     /// Always true: tells a transaction apart from other ywasm objects.
-    #[wasm_bindgen(getter, js_name = __ytransaction)]
+    #[wasm_bindgen(getter, js_name = __ytransaction, skip_typescript)]
     pub fn is_transaction(&self) -> bool {
         true
     }

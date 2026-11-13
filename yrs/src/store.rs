@@ -180,7 +180,7 @@ impl Store {
         encoder.write_var(diff.len());
         for (client, clock) in diff {
             let blocks = self.blocks.get_client(&client).unwrap();
-            let clock = clock.min(blocks.clock() + 1);
+            // `clock` is already at most the client's clock (see `diff` above)
             let last_idx = blocks.find_index(clock - 1).unwrap();
             // write # encoded structs
             encoder.write_var(last_idx + 1);

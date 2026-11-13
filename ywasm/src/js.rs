@@ -228,36 +228,75 @@ impl Into<JsValue> for Js {
 }
 
 /// Origins are bytes, but a JS origin can be any value, compared by identity (`===`), as Yjs
-/// does. A string is stored as its UTF-8 bytes. Any other value is kept alive in this registry,
-/// and the origin holds [JS_ORIGIN_TAG] plus its index: 0xFF never occurs in UTF-8, so such an
-/// origin can't be mistaken for a string. Entries live as long as the module, one per distinct
-/// origin value.
+/// does. A string is stored as its UTF-8 bytes. Any other value gets a slot in this registry,
+/// and the origin holds [JS_ORIGIN_TAG] plus the slot index: 0xFF never occurs in UTF-8, so such
+/// an origin can't be mistaken for a string.
+///
+/// Objects and functions are found through a `WeakMap` and held by a `WeakRef`, so the registry
+/// never keeps an origin alive: once JS drops it, no new transaction can carry it, and an old
+/// origin that refers to it reads back as `undefined`. Primitives (numbers, booleans, `null`, ...)
+/// are found through a `Map` and kept. Slots are never reused, since an origin stored elsewhere
+/// (an UndoManager's tracked origins, say) may still name one.
 mod origins {
+    use js_sys::{Map, Object, WeakMap, WeakRef};
     use std::cell::RefCell;
-    use wasm_bindgen::JsValue;
+    use wasm_bindgen::{JsCast, JsValue};
 
     pub const JS_ORIGIN_TAG: [u8; 3] = [0xff, b'j', b's'];
 
-    thread_local! {
-        static REGISTRY: RefCell<Vec<JsValue>> = const { RefCell::new(Vec::new()) };
+    enum Slot {
+        Primitive(JsValue),
+        Object(WeakRef),
     }
 
-    /// Returns the registry index of `value`, registering it first if needed.
+    struct Registry {
+        objects: WeakMap,
+        primitives: Map,
+        slots: Vec<Slot>,
+    }
+
+    thread_local! {
+        static REGISTRY: RefCell<Registry> = RefCell::new(Registry {
+            objects: WeakMap::new(),
+            primitives: Map::new(),
+            slots: Vec::new(),
+        });
+    }
+
+    /// Returns the slot index of `value`, registering it first if needed.
     pub fn register(value: JsValue) -> u32 {
         REGISTRY.with(|registry| {
             let mut registry = registry.borrow_mut();
-            match registry.iter().position(|known| known == &value) {
-                Some(index) => index as u32,
-                None => {
-                    registry.push(value);
-                    (registry.len() - 1) as u32
+            let next = registry.slots.len() as u32;
+            if value.is_object() || value.is_function() {
+                let object: &Object = value.unchecked_ref();
+                if let Some(index) = registry.objects.get(object).as_f64() {
+                    return index as u32;
                 }
+                registry.objects.set(object, &JsValue::from(next));
+                registry.slots.push(Slot::Object(WeakRef::new(object)));
+            } else {
+                if let Some(index) = registry.primitives.get(&value).as_f64() {
+                    return index as u32;
+                }
+                registry.primitives.set(&value, &JsValue::from(next));
+                registry.slots.push(Slot::Primitive(value));
             }
+            next
         })
     }
 
     pub fn get(index: u32) -> Option<JsValue> {
-        REGISTRY.with(|registry| registry.borrow().get(index as usize).cloned())
+        REGISTRY.with(
+            |registry| match registry.borrow().slots.get(index as usize)? {
+                Slot::Primitive(value) => Some(value.clone()),
+                Slot::Object(weak) => Some(
+                    weak.deref()
+                        .map(JsValue::from)
+                        .unwrap_or(JsValue::UNDEFINED),
+                ),
+            },
+        )
     }
 }
 
@@ -652,18 +691,23 @@ pub(crate) mod convert {
         Err(JsValue::from_str(INVALID_DELTA))
     }
 
+    /// Reads the wasm pointer of a ywasm object. `free()` sets it to 0, so a freed object is an
+    /// error rather than a null pointer.
+    pub fn wasm_ptr(js: &JsValue) -> crate::Result<usize> {
+        let ptr = js_sys::Reflect::get(js, &JsValue::from_str(crate::js::JS_PTR))?
+            .as_f64()
+            .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))? as usize;
+        if ptr == 0 {
+            return Err(JsValue::from_str(crate::js::errors::FREED_WASM_OBJ));
+        }
+        Ok(ptr)
+    }
+
     pub fn mut_from_js<T>(js: &JsValue) -> crate::Result<T::Anchor>
     where
         T: RefMutFromWasmAbi<Abi = WasmPtr<WasmRefCell<T>>>,
     {
-        let ptr = js_sys::Reflect::get(&js, &JsValue::from_str(crate::js::JS_PTR))?;
-        let ptr = ptr
-            .as_f64()
-            .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))? as usize;
-        // `free()` sets the pointer of a JS wrapper to 0
-        if ptr == 0 {
-            return Err(JsValue::from_str(crate::js::errors::FREED_WASM_OBJ));
-        }
+        let ptr = wasm_ptr(js)?;
         let target = unsafe { T::ref_mut_from_abi(WasmPtr::from_usize(ptr)) };
         Ok(target)
     }

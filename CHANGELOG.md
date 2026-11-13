@@ -78,7 +78,8 @@ repository and its release notes.
 - ywasm: transaction origins that aren't strings (objects, numbers, `null`) were stored as raw
   wasm-bindgen heap slot indices: a second read got a freed slot, some transactions threw, and
   `trackedOrigins` never matched an object. They are now kept in a registry and compared with
-  `===`, as in Yjs. An origin set from Rust reads as a `Uint8Array` of its bytes.
+  `===`, as in Yjs. The registry holds origin objects weakly, so it doesn't keep them alive. An
+  origin set from Rust reads as a `Uint8Array` of its bytes.
 - ywasm: passing a ywasm object other than a transaction (or a freed one) where a transaction
   is expected is now an error instead of a cast of its pointer. Using a freed shared type is
   also an error.

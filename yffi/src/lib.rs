@@ -6074,8 +6074,9 @@ pub unsafe extern "C" fn ybranch_get(
     branch_id: *const YBranchId,
     txn: *mut Transaction,
 ) -> *mut Branch {
-    let txn = txn.as_ref().unwrap();
-    let branch_id = branch_id.as_ref().unwrap();
+    let (Some(txn), Some(branch_id)) = (txn.as_ref(), branch_id.as_ref()) else {
+        return null_mut();
+    };
     let client_or_len = branch_id.client_or_len;
     let ptr = if client_or_len >= 0 {
         BranchID::get_nested(
