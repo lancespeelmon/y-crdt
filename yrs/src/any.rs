@@ -365,10 +365,13 @@ impl Number {
         match self {
             Number::Int(value) | Number::BigInt(value) => Some(value),
             Number::Float(value) => {
-                // check if conversion is lossless
-                let converted = value as i64;
-                if converted as f64 == value {
-                    Some(converted)
+                // Lossless only for whole numbers in i64's range: `as` saturates, so 2^63 would
+                // come out as i64::MAX.
+                if value.trunc() == value
+                    && value >= -9_223_372_036_854_775_808.0
+                    && value < 9_223_372_036_854_775_808.0
+                {
+                    Some(value as i64)
                 } else {
                     None
                 }
@@ -1175,6 +1178,17 @@ mod test {
         // Int and BigInt of the same value are equal, as in JS' `5n == 5`.
         assert_eq!(Number::BigInt(5), Number::Int(5));
         assert_ne!(Number::BigInt((1 << 62) + 1), Number::Int(1 << 62));
+    }
+
+    #[test]
+    fn floats_out_of_i64_range_are_not_integers() {
+        assert_eq!(Number::Float(9_223_372_036_854_775_808.0).as_i64(), None);
+        assert_eq!(
+            Number::Float(-9_223_372_036_854_775_808.0).as_i64(),
+            Some(i64::MIN)
+        );
+        assert_eq!(Number::Float(f64::NAN).as_i64(), None);
+        assert_eq!(Number::Float(3.0).as_i64(), Some(3));
     }
 
     #[test]

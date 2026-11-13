@@ -902,9 +902,12 @@ pub struct Options<M> {
     /// [UndoManager::include_origin] don't change it.
     pub track_null_origin: Option<bool>,
 
-    /// The most stack items kept on each of the undo and redo stacks. When a new item would go
-    /// over it, the oldest one is dropped, and the deleted content only it kept becomes
-    /// collectable. Yjs has no limit. Default: `None`, no limit.
+    /// The most stack items kept on each of the undo and redo stacks (at least 1: `Some(0)`
+    /// keeps one). When a new item would go over it, the oldest one is dropped, and the deleted
+    /// content only it kept becomes collectable. That release needs the dropped item's document,
+    /// so an item of another document in a multi-document scope is dropped without it; its
+    /// content becomes collectable after `clear` or when that document is dropped. Yjs has no
+    /// limit. Default: `None`, no limit.
     pub max_stack_len: Option<usize>,
 }
 

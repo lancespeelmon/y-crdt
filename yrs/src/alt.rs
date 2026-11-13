@@ -267,7 +267,8 @@ fn obfuscate(update: &mut Update, options: ObfuscateOptions) {
                         // The end of a formatting range (null) stays one.
                         if **value != Any::Null {
                             let replacement = format_values
-                                .entry(value.to_string())
+                                // Debug tells \"1\" from 1, unlike Display.
+                                .entry(format!("{:?}", value))
                                 .or_insert_with(|| {
                                     let mut map = HashMap::new();
                                     map.insert(

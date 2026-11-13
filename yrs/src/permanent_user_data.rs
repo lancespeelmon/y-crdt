@@ -80,7 +80,8 @@ impl PermanentUserData {
     }
 
     /// The user who deleted `id`, like Yjs' `getUserByDeletedId`. Entries that don't decode are
-    /// skipped.
+    /// skipped. Each call decodes the recorded delete sets (Yjs keeps them merged in memory), so
+    /// for many lookups read them once with [PermanentUserData::deletions_by_user].
     pub fn user_by_deleted_id<T: ReadTxn>(&self, txn: &T, id: &ID) -> Option<String> {
         self.users.iter(txn).find_map(|(user, entry)| {
             let ds = nested_array(txn, &entry, DS)?;
@@ -92,6 +93,26 @@ impl PermanentUserData {
             });
             found.then(|| user.to_string())
         })
+    }
+
+    /// Every user's recorded deletions, merged, for answering many "who deleted this" lookups
+    /// with one decode.
+    pub fn deletions_by_user<T: ReadTxn>(&self, txn: &T) -> Vec<(String, IdSet)> {
+        self.users
+            .iter(txn)
+            .filter_map(|(user, entry)| {
+                let ds = nested_array(txn, &entry, DS)?;
+                let mut merged = IdSet::default();
+                for v in ds.iter(txn) {
+                    if let Out::Any(Any::Buffer(bytes)) = v {
+                        if let Ok(set) = IdSet::decode_v1(&bytes) {
+                            merged.merge_with(set);
+                        }
+                    }
+                }
+                Some((user.to_string(), merged))
+            })
+            .collect()
     }
 
     /// The `ids` or `ds` array of `user`, creating the user's entry if needed.
@@ -210,6 +231,13 @@ mod test {
             };
             assert_eq!(len("ids"), 1, "a repeated mapping is stored once");
             assert_eq!(len("ds"), 1, "an empty delete set is not stored");
+            let all = pud.deletions_by_user(&txn);
+            let alice_ds = all
+                .iter()
+                .find(|(u, _)| u == "alice")
+                .map(|(_, ds)| ds)
+                .unwrap();
+            assert!(alice_ds.contains(&alice_id) && !alice_ds.contains(&kept));
         }
     }
 }
