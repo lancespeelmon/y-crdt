@@ -171,7 +171,7 @@ impl Js {
             if let Ok(shared) = Shared::from_ref(&self.0) {
                 Ok(ValueRef::Shared(shared))
             } else {
-                let mut map = HashMap::new();
+                let mut map = yrs::AnyMap::new();
                 let object = js_sys::Object::from(self.0.clone());
                 let entries = js_sys::Object::entries(&object);
                 for tuple in entries.iter() {

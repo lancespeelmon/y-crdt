@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `Any::Map` holds an `AnyMap` (`indexmap::IndexMap<String, Any>`) instead of a
+  `HashMap`, so entries keep their insertion order as JS object keys do. Decoding and
+  re-encoding a map gives the same bytes, and JSON output is deterministic. `Any` can be built
+  from a `HashMap` or `IndexMap`, or `collect`ed from `(key, value)` pairs.
 - **Breaking (yffi, ywasm):** weak links are off by default in documents created through the
   bindings, because Yjs peers reject every update that contains one. Opt in with yffi's new
   `Y_WEAK_LINKS` option flag or ywasm's `weakLinks: true`. While off, `ymap_link`,

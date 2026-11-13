@@ -662,7 +662,7 @@ pub use crate::alt::{
     parse_update_meta_v2, snapshot_contains_update_v1, snapshot_contains_update_v2,
     ObfuscateOptions, UpdateMeta,
 };
-pub use crate::any::{Any, Number};
+pub use crate::any::{Any, AnyMap, Number};
 pub use crate::block::ClientID;
 pub use crate::block::ID;
 pub use crate::branch::BranchID;

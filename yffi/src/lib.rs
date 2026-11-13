@@ -3304,8 +3304,8 @@ impl<'a> From<&'a [Any]> for YOutput {
     }
 }
 
-impl<'a> From<&'a HashMap<String, Any>> for YOutput {
-    fn from(value: &'a HashMap<String, Any>) -> Self {
+impl<'a> From<&'a yrs::AnyMap> for YOutput {
+    fn from(value: &'a yrs::AnyMap) -> Self {
         let len = value.len() as u32;
         let mut array = Vec::with_capacity(len as usize);
         for (k, v) in value.iter() {
