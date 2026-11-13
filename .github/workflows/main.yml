@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features: [ '', '--all-features' ]
+        features: [ '', '--all-features', '--no-default-features' ]
     steps:
       - name: checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

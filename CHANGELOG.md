@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the `sync` feature is on by default, so documents, awareness and observers are
+  `Send + Sync` and callbacks must be too. Use `default-features = false` for single-threaded
+  hosts whose callbacks can't be `Send`, as ywasm now does.
 - **Breaking:** the error enums are `#[non_exhaustive]`: `error::Error`, `UpdateError`,
   `encoding::read::Error` (now named `DecodeError`), `MalformedKind`, `sync::awareness::Error`
   (now `AwarenessError`), `sync::protocol::Error` (now `ProtocolError`), `json_path::ParseError`
@@ -184,6 +187,10 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- `yrs/tests/relay.rs`: a reference relay (a per-document actor speaking y-protocols, with
+  message and update limits, awareness timeouts and removal on disconnect, and eviction through a
+  persistence hook) and the tests that keep it working. CI's clippy also checks
+  `--no-default-features`.
 - The crates use edition 2021 and declare `rust-version = "1.85"` (what the dependencies
   require); a CI job checks the libraries on 1.85.
 - rustdoc builds with no warnings (about 95 broken links fixed), and CI keeps it that way.
