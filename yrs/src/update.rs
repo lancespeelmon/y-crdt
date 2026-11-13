@@ -714,105 +714,103 @@ impl Update {
         curr_write: &mut Option<Block>,
         result: &mut Update,
     ) {
-        {
+        let curr_block = match curr_decoder.current() {
+            Some(block) => block,
+            None => return,
+        };
+        // write from currDecoder until the next operation is from another client or if filler-struct
+        // then we need to reorder the decoders and find the next operation to write
+        let first_client = curr_block.id().client;
+        if let Some(curr_write_block) = curr_write.as_mut() {
+            let mut iterated = false;
+
+            // iterate until we find something that we haven't written already
+            // remember: first the high client-ids are written
+            let curr_write_last = curr_write_block.id().clock + curr_write_block.len();
+            while match curr_decoder.current() {
+                Some(block) => {
+                    let last = block.id().clock + block.len();
+                    last <= curr_write_last && block.id().client >= curr_write_block.id().client
+                }
+                None => false,
+            } {
+                curr_decoder.move_next();
+                iterated = true;
+            }
+
             let curr_block = match curr_decoder.current() {
                 Some(block) => block,
                 None => return,
             };
-            // write from currDecoder until the next operation is from another client or if filler-struct
-            // then we need to reorder the decoders and find the next operation to write
-            let first_client = curr_block.id().client;
-            if let Some(curr_write_block) = curr_write.as_mut() {
-                let mut iterated = false;
+            let cid = curr_block.id();
+            if cid.client != first_client || // check whether there is another decoder that has has updates from `firstClient`
+                (iterated && cid.clock > curr_write_last)
+            // the above while loop was used and we are potentially missing updates
+            {
+                return;
+            }
 
-                // iterate until we find something that we haven't written already
-                // remember: first the high client-ids are written
-                let curr_write_last = curr_write_block.id().clock + curr_write_block.len();
-                while match curr_decoder.current() {
-                    Some(block) => {
-                        let last = block.id().clock + block.len();
-                        last <= curr_write_last && block.id().client >= curr_write_block.id().client
+            if first_client != curr_write_block.id().client {
+                result
+                    .blocks
+                    .add_block(curr_write.take().unwrap_or_else(|| unreachable!()));
+                *curr_write = curr_decoder.take();
+                curr_decoder.move_next();
+            } else if curr_write_last < curr_block.id().clock {
+                //TODO: write currStruct & set currStruct = Skip(clock = currStruct.id.clock + currStruct.length, length = curr.id.clock - self.clock)
+                let skip = match curr_write.take().unwrap_or_else(|| unreachable!()) {
+                    Block::Skip(mut skip) => {
+                        // extend existing skip
+                        skip.len = curr_block.id().clock + curr_block.len() - skip.clock;
+                        skip
                     }
-                    None => false,
-                } {
-                    curr_decoder.move_next();
-                    iterated = true;
-                }
-
-                let curr_block = match curr_decoder.current() {
-                    Some(block) => block,
-                    None => return,
+                    other => {
+                        result.blocks.add_block(other);
+                        let diff = curr_block.id().clock - curr_write_last;
+                        BlockRange::new(ID::new(first_client, curr_write_last), diff)
+                    }
                 };
-                let cid = curr_block.id();
-                if cid.client != first_client || // check whether there is another decoder that has has updates from `firstClient`
-                    (iterated && cid.clock > curr_write_last)
-                // the above while loop was used and we are potentially missing updates
-                {
-                    return;
+                *curr_write = Some(Block::Skip(skip));
+            } else {
+                // if (currWrite.struct.id.clock + currWrite.struct.length >= curr.id.clock) {
+                let diff = curr_write_last.saturating_sub(curr_block.id().clock);
+
+                let mut block_slice = None;
+                if diff > 0 {
+                    if let Block::Skip(skip) = curr_write_block {
+                        // prefer to slice Skip because the other struct might contain more information
+                        skip.len -= diff as u32;
+                    } else {
+                        block_slice = Some(curr_block.splice(diff as u32).unwrap());
+                    }
                 }
 
-                if first_client != curr_write_block.id().client {
+                let curr_block = block_slice
+                    .as_ref()
+                    .or(curr_decoder.current())
+                    .unwrap_or_else(|| unreachable!());
+                if !curr_write_block.try_squash(curr_block) {
                     result
                         .blocks
                         .add_block(curr_write.take().unwrap_or_else(|| unreachable!()));
-                    *curr_write = curr_decoder.take();
+                    *curr_write = block_slice.or_else(|| curr_decoder.take());
                     curr_decoder.move_next();
-                } else if curr_write_last < curr_block.id().clock {
-                    //TODO: write currStruct & set currStruct = Skip(clock = currStruct.id.clock + currStruct.length, length = curr.id.clock - self.clock)
-                    let skip = match curr_write.take().unwrap_or_else(|| unreachable!()) {
-                        Block::Skip(mut skip) => {
-                            // extend existing skip
-                            skip.len = curr_block.id().clock + curr_block.len() - skip.clock;
-                            skip
-                        }
-                        other => {
-                            result.blocks.add_block(other);
-                            let diff = curr_block.id().clock - curr_write_last;
-                            BlockRange::new(ID::new(first_client, curr_write_last), diff)
-                        }
-                    };
-                    *curr_write = Some(Block::Skip(skip));
-                } else {
-                    // if (currWrite.struct.id.clock + currWrite.struct.length >= curr.id.clock) {
-                    let diff = curr_write_last.saturating_sub(curr_block.id().clock);
-
-                    let mut block_slice = None;
-                    if diff > 0 {
-                        if let Block::Skip(skip) = curr_write_block {
-                            // prefer to slice Skip because the other struct might contain more information
-                            skip.len -= diff as u32;
-                        } else {
-                            block_slice = Some(curr_block.splice(diff as u32).unwrap());
-                        }
-                    }
-
-                    let curr_block = block_slice
-                        .as_ref()
-                        .or(curr_decoder.current())
-                        .unwrap_or_else(|| unreachable!());
-                    if !curr_write_block.try_squash(curr_block) {
-                        result
-                            .blocks
-                            .add_block(curr_write.take().unwrap_or_else(|| unreachable!()));
-                        *curr_write = block_slice.or_else(|| curr_decoder.take());
-                        curr_decoder.move_next();
-                    }
                 }
-            } else {
+            }
+        } else {
+            *curr_write = curr_decoder.take();
+            curr_decoder.move_next();
+        }
+
+        while let Some(next) = curr_decoder.current() {
+            let block = curr_write.as_ref().unwrap();
+            let nid = next.id();
+            if nid.client == first_client && nid.clock == block.id().clock + block.len() {
+                result.blocks.add_block(curr_write.take().unwrap());
                 *curr_write = curr_decoder.take();
                 curr_decoder.move_next();
-            }
-
-            while let Some(next) = curr_decoder.current() {
-                let block = curr_write.as_ref().unwrap();
-                let nid = next.id();
-                if nid.client == first_client && nid.clock == block.id().clock + block.len() {
-                    result.blocks.add_block(curr_write.take().unwrap());
-                    *curr_write = curr_decoder.take();
-                    curr_decoder.move_next();
-                } else {
-                    break;
-                }
+            } else {
+                break;
             }
         }
     }
