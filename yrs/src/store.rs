@@ -69,6 +69,56 @@ pub struct Store {
 
     /// Dependencies between items and weak links pointing to these items.
     pub(crate) linked_by: HashMap<ItemPtr, HashSet<BranchPtr>>,
+
+    /// Collections a write transaction needs, kept empty between transactions so each one
+    /// doesn't allocate them again. See [TxnScratch].
+    pub(crate) scratch: TxnScratch,
+}
+
+/// A write transaction's per-transaction collections, recycled through [Store::scratch].
+#[derive(Default)]
+pub(crate) struct TxnScratch {
+    pub(crate) changed: HashMap<crate::types::TypePtr, HashSet<Option<Arc<str>>>>,
+    pub(crate) changed_parent_types: Vec<BranchPtr>,
+    pub(crate) merge_blocks: Vec<crate::ID>,
+    /// Emptied key sets from `changed`, so a transaction that changes a type reuses one.
+    pub(crate) key_sets: Vec<HashSet<Option<Arc<str>>>>,
+}
+
+impl TxnScratch {
+    /// Beyond this many entries a collection isn't kept: one big transaction shouldn't hold its
+    /// memory for the life of the document.
+    const KEEP: usize = 64;
+    /// How many emptied key sets to keep, and how large one may have grown to be kept.
+    const KEEP_KEY_SETS: usize = 16;
+
+    /// Empties the collections for the next transaction, dropping any that grew large.
+    pub(crate) fn recycle(mut self) -> Self {
+        fn keep<T: Default>(c: T, cap: usize) -> T {
+            if cap > TxnScratch::KEEP {
+                T::default()
+            } else {
+                c
+            }
+        }
+        for (_, mut keys) in self.changed.drain() {
+            if self.key_sets.len() < Self::KEEP_KEY_SETS && keys.capacity() <= Self::KEEP_KEY_SETS {
+                keys.clear();
+                self.key_sets.push(keys);
+            }
+        }
+        self.changed_parent_types.clear();
+        self.merge_blocks.clear();
+        let changed_cap = self.changed.capacity();
+        let parents_cap = self.changed_parent_types.capacity();
+        let merge_cap = self.merge_blocks.capacity();
+        TxnScratch {
+            changed: keep(self.changed, changed_cap),
+            changed_parent_types: keep(self.changed_parent_types, parents_cap),
+            merge_blocks: keep(self.merge_blocks, merge_cap),
+            key_sets: self.key_sets,
+        }
+    }
 }
 
 impl Store {
@@ -86,6 +136,7 @@ impl Store {
             blocks: BlockStore::default(),
             subdocs: HashMap::default(),
             linked_by: HashMap::default(),
+            scratch: TxnScratch::default(),
             events: None,
             pending: None,
             pending_ds: None,

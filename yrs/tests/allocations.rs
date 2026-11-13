@@ -142,14 +142,14 @@ fn hot_paths_stay_within_their_allocation_budgets() {
     assert!(over.is_empty(), "{}", over.join("\n"));
 }
 
-// Budgets measured on the commit that added this test. Plan item 6.5 aims for at most 2
-// allocations per single-character transaction.
-const BUDGET_TEXT_PUSH: u64 = 7;
-const BUDGET_TEXT_INSERT_MID: u64 = 11;
-const BUDGET_ARRAY_PUSH: u64 = 8;
-const BUDGET_MAP_SET: u64 = 10;
+// Budgets as measured. Plan item 6.5's target, at most 2 allocations for a single-character
+// transaction, is met: the item and the insert set's entry.
+const BUDGET_TEXT_PUSH: u64 = 2;
+const BUDGET_TEXT_INSERT_MID: u64 = 6;
+const BUDGET_ARRAY_PUSH: u64 = 3;
+const BUDGET_MAP_SET: u64 = 5;
 const BUDGET_TEXT_READ: u64 = 1;
-const BUDGET_APPLY_REMOTE: u64 = 12;
+const BUDGET_APPLY_REMOTE: u64 = 9;
 
 const TYPED_CHARS: usize = 10_000;
 // Bytes are budgeted with 25% headroom over 18,392 and 12,008: they move between runs and
