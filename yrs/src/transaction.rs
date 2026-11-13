@@ -914,7 +914,11 @@ impl<'doc> TransactionMut<'doc> {
     /// internally and their integration will be postponed until missing blocks arrive first.
     pub fn apply_update(&mut self, update: Update) -> Result<(), UpdateError> {
         // Counting walks the update and the pending state, so only when something listens.
-        let observed = cfg!(feature = "tracing") || self.store().metrics.is_some();
+        #[cfg(feature = "tracing")]
+        let traced = tracing::enabled!(tracing::Level::DEBUG);
+        #[cfg(not(feature = "tracing"))]
+        let traced = false;
+        let observed = traced || self.store().metrics.is_some();
         if !observed {
             return self.apply_update_inner(update);
         }

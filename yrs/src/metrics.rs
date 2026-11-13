@@ -15,7 +15,8 @@ pub trait MetricsHook: Send + Sync {
     /// and delete ranges are left waiting for missing dependencies afterwards.
     fn update_applied(&self, _applied: UpdateCounts, _pending: UpdateCounts) {}
 
-    /// A read-write transaction committed, having inserted and deleted these many ranges.
+    /// A read-write transaction committed, having inserted and deleted these many ranges, as the
+    /// transaction recorded them (before adjacent ranges are merged).
     fn transaction_committed(&self, _inserted_ranges: usize, _deleted_ranges: usize) {}
 
     /// The document state, or a diff of it, was encoded into this many bytes.

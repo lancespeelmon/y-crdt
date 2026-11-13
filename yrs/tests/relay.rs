@@ -58,8 +58,10 @@ mod relay {
         Flush(Sender<()>),
     }
 
+    type Registry = Arc<Mutex<HashMap<String, (Sender<Command>, JoinHandle<()>)>>>;
+
     pub struct Relay {
-        docs: Arc<Mutex<HashMap<String, (Sender<Command>, JoinHandle<()>)>>>,
+        docs: Registry,
         persistence: Arc<dyn Persistence>,
         limits: Limits,
         clock: Arc<AtomicU64>,
@@ -145,14 +147,7 @@ mod relay {
 
         /// Whether a document is loaded (its actor is running).
         pub fn is_loaded(&self, doc: &str) -> bool {
-            let mut docs = self.docs.lock().unwrap();
-            let finished = docs.get(doc).is_none_or(|(_, h)| h.is_finished());
-            if finished {
-                if let Some((_, handle)) = docs.remove(doc) {
-                    handle.join().unwrap();
-                }
-            }
-            !finished
+            self.docs.lock().unwrap().contains_key(doc)
         }
 
         fn spawn(&self, name: &str) -> (Sender<Command>, JoinHandle<()>) {
@@ -170,6 +165,7 @@ mod relay {
                 conns: HashMap::new(),
                 persistence: self.persistence.clone(),
                 limits: self.limits,
+                registry: self.docs.clone(),
             };
             (tx, std::thread::spawn(move || actor.run(rx)))
         }
@@ -187,6 +183,7 @@ mod relay {
         conns: HashMap<u64, Conn>,
         persistence: Arc<dyn Persistence>,
         limits: Limits,
+        registry: Registry,
     }
 
     impl DocActor {
@@ -210,23 +207,40 @@ mod relay {
                         let _ = done.send(());
                     }
                 }
-                if self.conns.is_empty() {
-                    // Evict: persist and stop. The relay starts a new actor on the next connect.
-                    let state = self
-                        .awareness
-                        .doc()
-                        .transact()
-                        .encode_state_as_update_v1(&StateVector::default());
-                    self.persistence.store(&self.name, state);
-                    // Answer any flush still queued, so no caller waits on a stopped actor.
-                    while let Ok(command) = commands.try_recv() {
-                        if let Command::Flush(done) = command {
-                            let _ = done.send(());
-                        }
-                    }
+                if self.conns.is_empty() && self.evict(&commands) {
                     return;
                 }
             }
+        }
+
+        /// Persists the document and leaves the registry, unless a connection arrived meanwhile.
+        /// `connect` sends `Join` while holding the registry lock, so with the lock held here
+        /// every join is either already queued (and handled) or will find this actor gone.
+        fn evict(&mut self, commands: &Receiver<Command>) -> bool {
+            let registry = self.registry.clone();
+            let mut docs = registry.lock().unwrap();
+            while let Ok(command) = commands.try_recv() {
+                match command {
+                    Command::Join(id, out) => self.join(id, out),
+                    Command::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                    // Nothing else concerns a document without connections.
+                    Command::Message(..) | Command::Leave(_) | Command::Tick => {}
+                }
+            }
+            if !self.conns.is_empty() {
+                return false;
+            }
+            let state = self
+                .awareness
+                .doc()
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            self.persistence.store(&self.name, state);
+            // Dropping our own handle detaches this thread, which is about to end.
+            docs.remove(&self.name);
+            true
         }
 
         fn join(&mut self, id: u64, out: Sender<Outgoing>) {
@@ -581,4 +595,21 @@ fn an_idle_document_is_persisted_evicted_and_reloaded() {
     let mut bob = Client::join(&relay, "notes", 2);
     settle(&relay, &mut [&mut bob]);
     assert_eq!(bob.text(), "kept");
+}
+
+#[test]
+fn a_connection_racing_an_eviction_is_never_lost() {
+    let (relay, _, _) = setup();
+    for i in 0..200 {
+        let first = Client::join(&relay, "race", 1);
+        first.conn.close();
+        // Joins while the actor may be evicting.
+        let second = relay.connect("race");
+        let opening = second
+            .incoming
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap_or_else(|_| panic!("round {}: the join was lost", i));
+        assert!(matches!(opening, Outgoing::Message(_)));
+        second.close();
+    }
 }
