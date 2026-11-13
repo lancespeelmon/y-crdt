@@ -6380,3 +6380,190 @@ pub unsafe extern "C" fn yxmltext_try_remove_range(
             .map_err(|e| e.to_string())
     })
 }
+
+/// Reads `attrs` as formatting attributes: they must be a map.
+unsafe fn read_attrs(attrs: *const YInput) -> Result<Attrs, String> {
+    map_attrs(attrs.read().into()).ok_or_else(|| "attributes are not a map".to_string())
+}
+
+/// Checks that `index` is at most `len`: where an insert can go.
+fn check_insert_index(len: u32, index: u32) -> Result<(), String> {
+    yrs::error::OutOfRange::check(len, index, 0).map_err(|e| e.to_string())
+}
+
+/// Like [ytext_format], but returns [Y_ERR_INVALID] instead of aborting when the range runs
+/// past the end of the text or `attrs` isn't a map, with nothing changed.
+#[no_mangle]
+pub unsafe extern "C" fn ytext_try_format(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+    attrs: *const YInput,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() || attrs.is_null() {
+            return Err("text or attributes are NULL".into());
+        }
+        let attrs = read_attrs(attrs)?;
+        let txn = writeable(txn)?;
+        TextRef::from_raw_branch(txt)
+            .try_format(txn, index, len, attrs)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Like [ytext_insert_embed], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+/// past the end of the text or `attrs` (if not NULL) isn't a map, with nothing inserted.
+#[no_mangle]
+pub unsafe extern "C" fn ytext_try_insert_embed(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    content: *const YInput,
+    attrs: *const YInput,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() || content.is_null() {
+            return Err("text or content is NULL".into());
+        }
+        if !attrs.is_null() {
+            read_attrs(attrs)?;
+        }
+        let w = writeable(txn)?;
+        check_insert_index(TextRef::from_raw_branch(txt).len(w), index)?;
+        ytext_insert_embed(txt, txn, index, content, attrs);
+        Ok(())
+    })
+}
+
+/// Like [yarray_insert_range], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+/// past the end of the array, with nothing inserted.
+#[no_mangle]
+pub unsafe extern "C" fn yarray_try_insert_range(
+    array: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    items: *const YInput,
+    items_len: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if array.is_null() || (items.is_null() && items_len > 0) {
+            return Err("array or items are NULL".into());
+        }
+        let w = writeable(txn)?;
+        check_insert_index(ArrayRef::from_raw_branch(array).len(w), index)?;
+        if items_len > 0 {
+            yarray_insert_range(array, txn, index, items, items_len);
+        }
+        Ok(())
+    })
+}
+
+/// Like [yxmlelem_insert_elem], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+/// past the last child or `name` isn't valid UTF-8, with nothing inserted. On success the new
+/// element is written to `out`, if `out` isn't NULL.
+#[no_mangle]
+pub unsafe extern "C" fn yxmlelem_try_insert_elem(
+    xml: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    name: *const c_char,
+    out: *mut *mut Branch,
+) -> i32 {
+    ffi_guard(|| {
+        if xml.is_null() || name.is_null() {
+            return Err("element or name is NULL".into());
+        }
+        let name = CStr::from_ptr(name).to_str().map_err(|e| e.to_string())?;
+        let txn = writeable(txn)?;
+        let elem = XmlElementRef::from_raw_branch(xml)
+            .try_insert(txn, index, XmlElementPrelim::empty(name))
+            .map_err(|e| e.to_string())?;
+        if let Some(out) = out.as_mut() {
+            *out = elem.into_raw_branch();
+        }
+        Ok(())
+    })
+}
+
+/// Like [yxmlelem_insert_text], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+/// past the last child, with nothing inserted. On success the new text is written to `out`, if
+/// `out` isn't NULL.
+#[no_mangle]
+pub unsafe extern "C" fn yxmlelem_try_insert_text(
+    xml: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    out: *mut *mut Branch,
+) -> i32 {
+    ffi_guard(|| {
+        if xml.is_null() {
+            return Err("element is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        let text = XmlElementRef::from_raw_branch(xml)
+            .try_insert(txn, index, XmlTextPrelim::new(""))
+            .map_err(|e| e.to_string())?;
+        if let Some(out) = out.as_mut() {
+            *out = text.into_raw_branch();
+        }
+        Ok(())
+    })
+}
+
+/// Like [yxmltext_insert], but returns [Y_ERR_INVALID] instead of aborting when `index` is past
+/// the end of the text, `str` isn't valid UTF-8 or `attrs` (if not NULL) isn't a map, with
+/// nothing inserted.
+#[no_mangle]
+pub unsafe extern "C" fn yxmltext_try_insert(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    str: *const c_char,
+    attrs: *const YInput,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() || str.is_null() {
+            return Err("text or value is NULL".into());
+        }
+        let chunk = CStr::from_ptr(str).to_str().map_err(|e| e.to_string())?;
+        let attrs = if attrs.is_null() {
+            None
+        } else {
+            Some(read_attrs(attrs)?)
+        };
+        let txn = writeable(txn)?;
+        let txt = XmlTextRef::from_raw_branch(txt);
+        match attrs {
+            None => txt.try_insert(txn, index, chunk).map_err(|e| e.to_string()),
+            Some(attrs) => {
+                check_insert_index(txt.len(txn), index)?;
+                txt.insert_with_attributes(txn, index, chunk, attrs);
+                Ok(())
+            }
+        }
+    })
+}
+
+/// Like [yxmltext_format], but returns [Y_ERR_INVALID] instead of aborting when the range runs
+/// past the end of the text or `attrs` isn't a map, with nothing changed.
+#[no_mangle]
+pub unsafe extern "C" fn yxmltext_try_format(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+    attrs: *const YInput,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() || attrs.is_null() {
+            return Err("text or attributes are NULL".into());
+        }
+        let attrs = read_attrs(attrs)?;
+        let txn = writeable(txn)?;
+        XmlTextRef::from_raw_branch(txt)
+            .try_format(txn, index, len, attrs)
+            .map_err(|e| e.to_string())
+    })
+}
