@@ -44,8 +44,8 @@ impl ClientBlockList {
         Some(BlockRef::new(cell))
     }
 
-    /// Given a block's identifier clock value, return an offset under which this block could be
-    /// found using binary search algorithm, or a index under which this block should be inserted.
+    /// The index of the block whose clock range holds `clock`, or `None` if no block does.
+    /// The list must not be empty.
     pub(crate) fn find_index(&self, clock: u32) -> Option<usize> {
         let mut left = 0;
         let mut right = self.inner.len() - 1;
@@ -57,7 +57,11 @@ impl ClientBlockList {
         } else if clock > end {
             None // clock lands past the last block, so no block owns it.
         } else {
-            let mut mid = ((clock / end) * right as u32) as usize;
+            // Clocks are spread roughly evenly over the blocks, so start where `clock` would be if
+            // they were, as Yjs does. (This used to divide the clocks as integers, which is 0 for
+            // every clock but the last, so the search always started at the first block.)
+            let mut mid = (u64::from(clock) * right as u64 / u64::from(end.max(1))) as usize;
+            mid = mid.min(right);
             while left <= right {
                 block = unsafe { &*self.inner[mid].get() };
                 (start, end) = block.clock_range();
@@ -66,6 +70,8 @@ impl ClientBlockList {
                         return Some(mid);
                     }
                     left = mid + 1;
+                } else if mid == 0 {
+                    return None; // before the first block
                 } else {
                     right = mid - 1;
                 }
@@ -500,5 +506,56 @@ impl std::fmt::Display for BlockStore {
             s.field(&k.to_string(), v);
         }
         s.finish()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::ClientBlockList;
+    use crate::block::{Block, BlockRange, ClientID, ID};
+
+    fn list(starts_at: u32, lens: &[u32]) -> ClientBlockList {
+        let mut list = ClientBlockList::default();
+        let mut clock = starts_at;
+        for &len in lens {
+            list.push(Block::GC(BlockRange::new(
+                ID::new(ClientID::new(1), clock),
+                len,
+            )));
+            clock += len;
+        }
+        list
+    }
+
+    fn scan(list: &ClientBlockList, clock: u32) -> Option<usize> {
+        list.iter().position(|b| {
+            let (start, end) = b.as_ref().clock_range();
+            start <= clock && clock <= end
+        })
+    }
+
+    #[test]
+    fn find_index_finds_every_clock_however_block_lengths_are_spread() {
+        let shapes: &[&[u32]] = &[
+            &[1],
+            &[5],
+            &[1, 1, 1, 1, 1, 1, 1],
+            &[100, 1, 1, 1, 1],
+            &[1, 1, 1, 1, 100],
+            &[3, 50, 1, 7, 1, 1, 200, 2],
+        ];
+        for &lens in shapes {
+            for starts_at in [0, 4] {
+                let list = list(starts_at, lens);
+                let last = starts_at + lens.iter().sum::<u32>();
+                for clock in 0..last + 3 {
+                    assert_eq!(
+                        list.find_index(clock),
+                        scan(&list, clock),
+                        "clock {clock} in {lens:?} starting at {starts_at}"
+                    );
+                }
+            }
+        }
     }
 }
