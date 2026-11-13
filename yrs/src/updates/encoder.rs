@@ -182,6 +182,137 @@ impl Encoder for EncoderV1 {
     }
 }
 
+/// A v1 encoder that hands its output to an [std::io::Write] in chunks instead of keeping it all:
+/// it produces exactly [EncoderV1]'s bytes, to which it delegates. The first I/O error is kept
+/// and later output dropped; [StreamEncoderV1::finish] reports it.
+pub(crate) struct StreamEncoderV1<'a, W: std::io::Write> {
+    inner: EncoderV1,
+    sink: &'a mut W,
+    error: Option<std::io::Error>,
+}
+
+impl<'a, W: std::io::Write> StreamEncoderV1<'a, W> {
+    /// Output is handed to the sink once this much has been encoded.
+    const CHUNK: usize = 64 * 1024;
+
+    pub fn new(sink: &'a mut W) -> Self {
+        StreamEncoderV1 {
+            inner: EncoderV1 {
+                buf: Vec::with_capacity(Self::CHUNK + 1024),
+            },
+            sink,
+            error: None,
+        }
+    }
+
+    fn flush_if_full(&mut self) {
+        if self.inner.buf.len() >= Self::CHUNK {
+            self.flush_buf();
+        }
+    }
+
+    fn flush_buf(&mut self) {
+        if self.error.is_none() {
+            if let Err(e) = self.sink.write_all(&self.inner.buf) {
+                self.error = Some(e);
+            }
+        }
+        self.inner.buf.clear();
+    }
+
+    /// Writes what's left, and returns the first I/O error, if there was one.
+    pub fn finish(mut self) -> std::io::Result<()> {
+        self.flush_buf();
+        match self.error.take() {
+            Some(e) => Err(e),
+            None => self.sink.flush(),
+        }
+    }
+}
+
+impl<W: std::io::Write> Write for StreamEncoderV1<'_, W> {
+    fn write_all(&mut self, buf: &[u8]) {
+        self.inner.write_all(buf);
+        self.flush_if_full();
+    }
+
+    fn write_u8(&mut self, value: u8) {
+        self.inner.write_u8(value);
+        self.flush_if_full();
+    }
+}
+
+impl<W: std::io::Write> Encoder for StreamEncoderV1<'_, W> {
+    /// The output not yet handed to the sink.
+    fn to_vec(self) -> Vec<u8> {
+        self.inner.buf
+    }
+
+    fn reset_ds_cur_val(&mut self) {
+        self.inner.reset_ds_cur_val()
+    }
+
+    fn write_ds_clock(&mut self, clock: u32) {
+        self.inner.write_ds_clock(clock);
+        self.flush_if_full();
+    }
+
+    fn write_ds_len(&mut self, len: u32) {
+        self.inner.write_ds_len(len);
+        self.flush_if_full();
+    }
+
+    fn write_left_id(&mut self, id: &ID) {
+        self.inner.write_left_id(id);
+        self.flush_if_full();
+    }
+
+    fn write_right_id(&mut self, id: &ID) {
+        self.inner.write_right_id(id);
+        self.flush_if_full();
+    }
+
+    fn write_client(&mut self, client: ClientID) {
+        self.inner.write_client(client);
+        self.flush_if_full();
+    }
+
+    fn write_info(&mut self, info: u8) {
+        self.inner.write_info(info);
+        self.flush_if_full();
+    }
+
+    fn write_parent_info(&mut self, is_y_key: bool) {
+        self.inner.write_parent_info(is_y_key);
+        self.flush_if_full();
+    }
+
+    fn write_type_ref(&mut self, info: u8) {
+        self.inner.write_type_ref(info);
+        self.flush_if_full();
+    }
+
+    fn write_len(&mut self, len: u32) {
+        self.inner.write_len(len);
+        self.flush_if_full();
+    }
+
+    fn write_any(&mut self, any: &Any) {
+        self.inner.write_any(any);
+        self.flush_if_full();
+    }
+
+    fn write_json(&mut self, any: &Any) {
+        self.inner.write_json(any);
+        self.flush_if_full();
+    }
+
+    fn write_key(&mut self, key: &str) {
+        self.inner.write_key(key);
+        self.flush_if_full();
+    }
+}
+
 /// Version 2 of lib0 encoder. It writes values of the same kind in columns, which are run-length encoded.
 pub struct EncoderV2 {
     key_table: HashMap<String, u32>,

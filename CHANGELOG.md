@@ -133,6 +133,13 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Server lifecycle (plan item 6.8):
+  - `ReadTxn::write_state_as_update_v1` writes the v1 state to an `std::io::Write` in 64 KiB
+    chunks, with the same bytes as `encode_state_as_update_v1`;
+  - `ReadTxn::memory_usage` estimates the heap held by a document's blocks (items, content
+    and block lists);
+  - `Doc::compact` encodes a document and reloads it into a new one with the same options,
+    dropping the spare capacity edits leave behind.
 - yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
   can check at startup that it loaded the library its header describes. CI checks that the
   header compiles as strict C99.

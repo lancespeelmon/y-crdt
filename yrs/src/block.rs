@@ -1675,6 +1675,15 @@ impl SplittableString {
         self.encode_utf16().count()
     }
 
+    /// Bytes this string holds on the heap: its capacity once it outgrew the inline buffer.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        if self.content.spilled() {
+            self.content.capacity()
+        } else {
+            0
+        }
+    }
+
     #[inline(always)]
     pub fn as_str(&self) -> &str {
         self.content.as_str()
