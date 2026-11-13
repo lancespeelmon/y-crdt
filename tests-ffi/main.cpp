@@ -1954,8 +1954,10 @@ TEST_CASE("Weak link references") {
     // create a text quotation and put it into map
     uint32_t start = 2;
     uint32_t end = 10;
-    YInput value = yinput_weak(ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE));
+    const Weak *quote = ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE);
+    YInput value = yinput_weak(quote);
     ymap_insert(map, txn, "text-txt_link", &value);
+    yweak_destroy(quote); // the input only borrowed it
     Branch *txt_link = youtput_read_yweak(ymap_get(map, txn, "text-txt_link"));
 
     char *actual = yweak_string(txt_link, txn);
@@ -1969,8 +1971,10 @@ TEST_CASE("Weak link references") {
     ystring_destroy(actual);
 
     // create transitive txt_link to another element
-    value = yinput_weak(ymap_link(map, txn, "text-txt_link"));
+    const Weak *link = ymap_link(map, txn, "text-txt_link");
+    value = yinput_weak(link);
     ymap_insert(map, txn, "transitive-txt_link", &value);
+    yweak_destroy(link);
     Branch *map_link = youtput_read_yweak(ymap_get(map, txn, "transitive-txt_link"));
 
     // deref txt_link in "key2" leads to value stored under "key" which was our first txt_link
@@ -1987,8 +1991,10 @@ TEST_CASE("Weak link references") {
     yarray_insert_range(arr, txn, 0, items, 4);
     start = 1;
     end = 3;
-    value = yinput_weak(yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_TRUE));
+    const Weak *arr_quote = yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_TRUE);
+    value = yinput_weak(arr_quote);
     ymap_insert(map, txn, "array-txt_link", &value);
+    yweak_destroy(arr_quote);
     Branch *array_link = youtput_read_yweak(ymap_get(map, txn, "array-txt_link"));
 
     YWeakIter *iter = yweak_iter(array_link, txn);
@@ -2795,6 +2801,35 @@ TEST_CASE("try functions for inserts and formats refuse bad indexes and attribut
     REQUIRE_EQ(yxmltext_try_format(xtxt, txn, 0, 1, &bold), Y_OK);
     REQUIRE_EQ(yxmltext_len(xtxt, txn), 3);
 
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}
+
+TEST_CASE("a weak link stays valid after the caller destroys the one it inserted") {
+    YOptions o = yoptions();
+    o.flags = Y_WEAK_LINKS;
+    o.id = 1;
+    YDoc *doc = ydoc_new_with_options(o);
+    Branch *txt = ytext(doc, "text");
+    Branch *map = ymap(doc, "map");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    ytext_insert(txt, txn, 0, "hello world", NULL);
+    uint32_t start = 0, end = 4;
+    const Weak *quote = ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE);
+    YInput value = yinput_weak(quote);
+    ymap_insert(map, txn, "link", &value);
+    yweak_destroy(quote);
+    // editing inside the quoted range updates the link, which still holds its own source
+    ytext_insert(txt, txn, 2, "y", NULL);
+    YOutput *out = ymap_get(map, txn, "link");
+    char *str = yweak_string(youtput_read_yweak(out), txn);
+    REQUIRE(!strcmp(str, "heyllo"));
+    ystring_destroy(str);
+    youtput_destroy(out);
+    ytransaction_commit(txn);
+    // removing the link unlinks its source, which must still be alive
+    txn = ydoc_write_transaction(doc, 0, NULL);
+    REQUIRE_EQ(ymap_remove(map, txn, "link"), 1);
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }

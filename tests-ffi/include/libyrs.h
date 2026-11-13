@@ -2345,6 +2345,9 @@ struct YInput yinput_ydoc(YDoc *doc);
 /**
  * Function constructor used to create a string `YInput` cell with weak reference to another
  * element(s) living inside of the same document.
+ *
+ * The input borrows `weak`: inserting it doesn't take ownership, so release `weak` with
+ * [yweak_destroy] as usual, after the insert.
  */
 struct YInput yinput_weak(const Weak *weak);
 
