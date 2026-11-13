@@ -38,6 +38,16 @@ repository and its release notes.
 - **Breaking:** `Options` has a new `gc_filter: Option<GcFilter>` field, Yjs' `gcFilter`:
   garbage collection skips the deleted items it returns `false` for. Struct literals of
   `Options` need the field, or `..Default::default()`.
+- **Breaking:** `TransactionAcqError` is `#[non_exhaustive]` and has a new variant, `Reentrant`.
+  A transaction that would wait forever on one the same thread already holds on the same
+  document (any transaction, for a read-write one; a read-write one, for a read-only one) is
+  refused: `try_transact*` return `Reentrant`, and the blocking `transact*` panic with an
+  explanation instead of deadlocking. This typically means opening a transaction inside an
+  observer callback, which should use the transaction it is given. Async transactions are not
+  tracked, since a task can move between threads.
+- `Observer::subscribe` takes `&self`. Subscribing from inside a callback, which corrupted the
+  callback map before, is defined: the new callback is first called by the next event, as in
+  Yjs.
 - Subdocument references are written like Yjs' `ContentDoc`: `gc` only when it is off,
   `autoLoad` only when it is on, and never `shouldLoad`, so Yjs peers no longer load every
   yrs-created subdocument eagerly. On read, `shouldLoad` is `shouldLoad || autoLoad`, as in Yjs.
@@ -90,6 +100,9 @@ repository and its release notes.
   `Float`.
 - `Awareness::remove_state` no longer notifies `on_change` observers when the client had no
   state (an operator-precedence slip).
+- Dropping an `UndoManager` while one of its documents is in a transaction no longer panics.
+  Its callbacks can't be removed at that moment, so they turn inert and remove themselves at
+  their next call; before, the panic also freed the state they point to.
 - Text split to be formatted is merged back at commit, as Yjs merges split items, so yrs encodes
   the same blocks as Yjs for the same edits. A format that changed nothing used to leave the text
   split for good, and a split followed by another block of the same client was never merged.

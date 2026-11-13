@@ -457,11 +457,17 @@ macro_rules! define_doc_observer {
 #[derive(Debug)]
 pub struct Transaction<'doc> {
     store: RwLockReadGuard<'doc, Store>,
+    _held: Option<crate::store::Held<'doc>>,
 }
 
 impl<'doc> Transaction<'doc> {
     pub(crate) fn new(store: RwLockReadGuard<'doc, Store>) -> Self {
-        Transaction { store }
+        Transaction { store, _held: None }
+    }
+
+    pub(crate) fn held(mut self, held: crate::store::Held<'doc>) -> Self {
+        self._held = Some(held);
+        self
     }
 }
 
@@ -486,6 +492,9 @@ impl<'doc> ReadTxn for Transaction<'doc> {
 /// not supported (if some operations needs to be undone, this can be achieved using [UndoManager])
 pub struct TransactionMut<'doc> {
     pub(crate) store: RwLockWriteGuard<'doc, Store>,
+    /// Marks this thread as holding the document (see `DocStore::hold`) until the transaction
+    /// is committed and dropped.
+    pub(crate) held: Option<crate::store::Held<'doc>>,
     /// State vector of a current transaction at the moment of its creation.
     before_state: OnceCell<StateVector>,
     /// Current state vector of a transaction, which includes all performed updates.
@@ -545,6 +554,7 @@ impl<'doc> TransactionMut<'doc> {
             origin,
             before_state: OnceCell::new(),
             merge_blocks: Vec::default(),
+            held: None,
             delete_set: IdSet::new(),
             insert_set: IdSet::new(),
             cleanups: IdSet::new(),

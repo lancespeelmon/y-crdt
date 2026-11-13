@@ -88,49 +88,72 @@ pub trait Transact {
 
 impl Transact for Doc {
     fn try_transact(&self) -> Result<Transaction<'_>, TransactionAcqError> {
+        self.store.check_reentrant(false)?;
         match self.store.try_read() {
-            Some(store) => Ok(Transaction::new(store)),
+            Some(store) => Ok(Transaction::new(store).held(self.store.hold(false))),
             None => Err(TransactionAcqError::SharedAcqFailed),
         }
     }
 
     fn try_transact_mut(&self) -> Result<TransactionMut<'_>, TransactionAcqError> {
-        match self.store.try_write() {
-            Some(store) => Ok(TransactionMut::new(self.clone(), store, None)),
-            None => Err(TransactionAcqError::ExclusiveAcqFailed),
-        }
+        self.try_write(None)
     }
 
     fn try_transact_mut_with<T>(&self, origin: T) -> Result<TransactionMut<'_>, TransactionAcqError>
     where
         T: Into<Origin>,
     {
-        match self.store.try_write() {
-            Some(store) => Ok(TransactionMut::new(
-                self.clone(),
-                store,
-                Some(origin.into()),
-            )),
-            None => Err(TransactionAcqError::ExclusiveAcqFailed),
-        }
+        self.try_write(Some(origin.into()))
     }
 
     fn transact_mut_with<T>(&self, origin: T) -> TransactionMut<'_>
     where
         T: Into<Origin>,
     {
-        let lock = self.store.write_blocking();
-        TransactionMut::new(self.clone(), lock, Some(origin.into()))
+        self.write_blocking(Some(origin.into()))
     }
 
     fn transact(&self) -> Transaction<'_> {
+        refuse_deadlock(self.store.check_reentrant(false));
         let lock = self.store.read_blocking();
-        Transaction::new(lock)
+        Transaction::new(lock).held(self.store.hold(false))
     }
 
     fn transact_mut(&self) -> TransactionMut<'_> {
+        self.write_blocking(None)
+    }
+}
+
+impl Doc {
+    fn try_write(&self, origin: Option<Origin>) -> Result<TransactionMut<'_>, TransactionAcqError> {
+        self.store.check_reentrant(true)?;
+        match self.store.try_write() {
+            Some(store) => {
+                let mut txn = TransactionMut::new(self.clone(), store, origin);
+                txn.held = Some(self.store.hold(true));
+                Ok(txn)
+            }
+            None => Err(TransactionAcqError::ExclusiveAcqFailed),
+        }
+    }
+
+    fn write_blocking(&self, origin: Option<Origin>) -> TransactionMut<'_> {
+        refuse_deadlock(self.store.check_reentrant(true));
         let lock = self.store.write_blocking();
-        TransactionMut::new(self.clone(), lock, None)
+        let mut txn = TransactionMut::new(self.clone(), lock, origin);
+        txn.held = Some(self.store.hold(true));
+        txn
+    }
+}
+
+/// The blocking `transact*` methods can't return an error, and waiting would never end.
+fn refuse_deadlock(check: Result<(), TransactionAcqError>) {
+    if let Err(e) = check {
+        panic!(
+            "{} Opening a transaction inside an observer callback? Use the transaction the \
+             callback is given, or the try_transact* methods.",
+            e
+        );
     }
 }
 
@@ -225,6 +248,7 @@ impl<'doc> Future for AcquireTransactionMut<'doc> {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum TransactionAcqError {
     #[error("Failed to acquire read-only transaction. Drop read-write transaction and retry.")]
     SharedAcqFailed,
@@ -232,6 +256,12 @@ pub enum TransactionAcqError {
     ExclusiveAcqFailed,
     #[error("All references to a parent document containing this structure has been dropped.")]
     DocumentDropped,
+    /// This thread already holds a transaction on the document that the new one would wait on
+    /// forever: any transaction for a read-write one, or a read-write one for a read-only one.
+    /// Typically a transaction opened inside an observer callback. Use the transaction the
+    /// callback is given instead.
+    #[error("This thread already holds a transaction on this document; a new one would deadlock.")]
+    Reentrant,
 }
 
 #[cfg(test)]
