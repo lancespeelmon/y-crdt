@@ -638,7 +638,6 @@ mod utils;
 
 /// [Any] values, a JSON-like data model with a compact binary encoding.
 pub mod any;
-pub mod atomic;
 mod block_iter;
 mod branch;
 /// Binary encoding primitives, and the serde (de)serialization support built on them.
