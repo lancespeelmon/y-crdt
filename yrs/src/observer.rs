@@ -1,11 +1,21 @@
 use crate::Origin;
 use arc_swap::{ArcSwapOption, AsRaw};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// Data structure used to handle publish/subscribe callbacks of a specific type.
+///
+/// Subscribing and unsubscribing take `&self`, so a callback may do either while it runs. A
+/// callback subscribed while [Observer::trigger] runs is first called by the next trigger, as
+/// with Yjs, which calls the listeners registered when an event started.
 pub struct Observer<F> {
     callbacks: HashMap<Origin, ArcSwapOption<F>>,
+    /// Subscriptions not yet moved into `callbacks`, which can't change while a trigger walks it.
+    pending: Mutex<Vec<(Origin, F)>>,
+    /// Whether `pending` may be non-empty, so [Observer::has_subscribers] (called on every
+    /// commit) doesn't lock it when there is nothing to find.
+    has_pending: AtomicBool,
 }
 
 impl<F> Observer<F> {
@@ -13,34 +23,47 @@ impl<F> Observer<F> {
     pub fn new() -> Self {
         Observer {
             callbacks: HashMap::new(),
+            pending: Mutex::new(Vec::new()),
+            has_pending: AtomicBool::new(false),
         }
     }
 
     /// Returns `true` if this observer has any active subscribers.
     pub fn has_subscribers(&self) -> bool {
         !self.callbacks.is_empty()
+            || (self.has_pending.load(Ordering::Acquire) && !self.pending().is_empty())
+    }
+
+    fn pending(&self) -> std::sync::MutexGuard<'_, Vec<(Origin, F)>> {
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Subscribes a callback under a given key. If a callback with the same key already
     /// exists, it will be replaced. The callback can be removed via [Observer::unsubscribe].
-    pub fn subscribe(&mut self, id: impl Into<Origin>, callback: F) {
-        self.drain_pending();
-        self.callbacks
-            .insert(id.into(), ArcSwapOption::new(Some(Arc::new(callback))));
+    pub fn subscribe(&self, id: impl Into<Origin>, callback: F) {
+        let id = id.into();
+        let mut pending = self.pending();
+        pending.retain(|(other, _)| *other != id);
+        pending.push((id, callback));
+        self.has_pending.store(true, Ordering::Release);
     }
 
     /// Removes a callback by its key. Returns `true` if the callback was found and removed.
     pub fn unsubscribe(&self, id: &Origin) -> bool {
+        let mut found = false;
         if let Some(e) = self.callbacks.get(id) {
+            found = e.load().is_some();
             e.store(None);
-            true
-        } else {
-            false
         }
+        let mut pending = self.pending();
+        let before = pending.len();
+        pending.retain(|(other, _)| other != id);
+        found || pending.len() != before
     }
 
     /// Calls `each` for every registered callback, giving mutable access to the callback.
     pub fn trigger<E: FnMut(&mut F)>(&mut self, mut each: E) {
+        self.drain_pending();
         for cell in self.callbacks.values_mut() {
             let guard = cell.load();
             if let Some(cb) = guard.as_ref() {
@@ -53,8 +76,19 @@ impl<F> Observer<F> {
         self.drain_pending();
     }
 
+    /// Drops unsubscribed callbacks and moves pending subscriptions in, replacing any callback
+    /// under the same key.
     fn drain_pending(&mut self) {
         self.callbacks.retain(|_, v| v.load().is_some());
+        if !*self.has_pending.get_mut() {
+            return;
+        }
+        let pending = std::mem::take(&mut *self.pending());
+        *self.has_pending.get_mut() = false;
+        for (id, callback) in pending {
+            self.callbacks
+                .insert(id, ArcSwapOption::new(Some(Arc::new(callback))));
+        }
     }
 }
 
@@ -171,6 +205,31 @@ mod test {
         trigger(&mut o);
         assert_eq!(rx.try_recv().unwrap(), "b");
         assert!(rx.try_recv().is_err(), "replaced callback was still called");
+    }
+
+    #[test]
+    fn subscribing_during_a_trigger_takes_effect_from_the_next_one() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let mut o: Observer<Cb> = Observer::new();
+        let outer = calls.clone();
+        o.subscribe(
+            1usize,
+            Cb(Box::new(move |o| {
+                outer.fetch_add(1, Ordering::SeqCst);
+                let inner = outer.clone();
+                // Subscribing from inside a callback is fine; the new one waits for the next event.
+                unsafe { &*o }.subscribe(
+                    2usize,
+                    Cb(Box::new(move |_| {
+                        inner.fetch_add(100, Ordering::SeqCst);
+                    })),
+                );
+            })),
+        );
+        trigger(&mut o);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        trigger(&mut o);
+        assert_eq!(calls.load(Ordering::SeqCst), 1 + 1 + 100);
     }
 
     #[test]
