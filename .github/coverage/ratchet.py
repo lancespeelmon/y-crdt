@@ -23,7 +23,7 @@ GROUPS = {
     "block": ["block.rs", "block_store.rs", "block_iter.rs", "slice.rs"],
     "store": ["store.rs", "id_set.rs", "gc.rs"],
     "transaction": ["transaction.rs"],
-    "sync": ["sync/"],
+    "protocol": ["protocol/", "time.rs"],
     "total": [""],
 }
 
