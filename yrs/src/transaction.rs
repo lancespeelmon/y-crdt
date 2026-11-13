@@ -866,6 +866,7 @@ impl<'doc> TransactionMut<'doc> {
                 if let TypePtr::Branch(mut parent) = item.parent {
                     parent.block_len -= item.len();
                     parent.content_len -= item.content_len(store.offset_kind);
+                    parent.bump_seq_version();
                 }
             }
 

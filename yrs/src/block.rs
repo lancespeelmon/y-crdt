@@ -1122,6 +1122,7 @@ impl<'doc> TransactionMut<'doc> {
                 // adjust length of parent
                 parent.block_len += item.len;
                 parent.content_len += item.content_len(encoding);
+                parent.bump_seq_version();
             }
             #[cfg(feature = "weak")]
             if let (Some(l), Some(r)) = (item.left, item.right) {
