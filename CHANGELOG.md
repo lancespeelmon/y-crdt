@@ -179,6 +179,8 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- The crates use edition 2021 and declare `rust-version = "1.85"` (what the dependencies
+  require); a CI job checks the libraries on 1.85.
 - rustdoc builds with no warnings (about 95 broken links fixed), and CI keeps it that way.
 - CI runs on `next` as well as `main`, with actions pinned by SHA.
 - New CI gates: `cargo fmt --check`, `cargo clippy -D warnings` (pre-existing lints listed in
