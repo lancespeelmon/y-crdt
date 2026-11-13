@@ -23,7 +23,7 @@ pub struct MemoryUsage {
     pub items: usize,
     /// Bytes the items' content holds.
     pub content: usize,
-    /// Bytes of the per-client block lists that index the items.
+    /// Bytes of the per-client block lists that index the items, and of undo's redone table.
     pub index: usize,
 }
 
@@ -45,6 +45,8 @@ impl MemoryUsage {
                 }
             }
         }
+        // Undo's redone table, which holds what used to be a field of every item.
+        usage.index += store.redone.len() * size_of::<((crate::ClientID, u32), (u32, crate::ID))>();
         usage
     }
 }

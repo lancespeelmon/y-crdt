@@ -719,7 +719,7 @@ where
         for slice in deleted {
             if let BlockSlice::Item(slice) = slice {
                 let mut item = txn.store.materialize(slice);
-                if item.redone.is_some() {
+                if item.info.is_redone() {
                     let slice = match txn.store_mut().follow_redone(item.id()) {
                         Some(slice) => slice,
                         None => return false,
