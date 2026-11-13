@@ -2700,3 +2700,36 @@ TEST_CASE("ybranch_get returns NULL for a root name that isn't UTF-8") {
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("try functions return a status and leave the last error") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    Branch *arr = yarray(doc, "array");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+
+    REQUIRE_EQ(ytext_try_insert(txt, txn, 0, "hello"), Y_OK);
+    REQUIRE_EQ(ytext_try_insert(txt, txn, 9, "x"), Y_ERR_INVALID);
+    char *err = ylast_error();
+    REQUIRE(err != NULL);
+    REQUIRE(strstr(err, "out of bounds") != NULL);
+    ystring_destroy(err);
+
+    REQUIRE_EQ(ytext_try_remove_range(txt, txn, 3, 5), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_remove_range(txt, txn, 3, 2), Y_OK);
+    char *str = ytext_string(txt, txn);
+    REQUIRE(!strcmp(str, "hel"));
+    ystring_destroy(str);
+
+    REQUIRE_EQ(yarray_try_remove_range(arr, txn, 0, 1), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_insert(NULL, txn, 0, "x"), Y_ERR_INVALID);
+    ytransaction_commit(txn);
+
+    // A read-only transaction is refused, not written through.
+    YTransaction *read = ydoc_read_transaction(doc);
+    REQUIRE_EQ(ytext_try_insert(txt, read, 0, "x"), Y_ERR_INVALID);
+    err = ylast_error();
+    REQUIRE(strstr(err, "read-only") != NULL);
+    ystring_destroy(err);
+    ytransaction_commit(read);
+    ydoc_destroy(doc);
+}
