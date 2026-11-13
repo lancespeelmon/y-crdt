@@ -708,7 +708,10 @@ where
         undoing: bool,
         origin: Origin,
     ) -> bool {
+        // Redone in the order they were found, as in Yjs: a set alone would redo them in hash
+        // (address) order, which differs between runs and so gives different documents.
         let mut to_redo = HashSet::<ItemPtr>::new();
+        let mut redo_order = Vec::<ItemPtr>::new();
         let mut to_delete = Vec::<ItemPtr>::new();
         let mut change_performed = false;
 
@@ -738,12 +741,14 @@ where
                     && !item.insertions.contains(ptr.id())
                 // Never redo structs in stackItem.insertions because they were created and deleted in the same capture interval.
                 {
-                    to_redo.insert(ptr);
+                    if to_redo.insert(ptr) {
+                        redo_order.push(ptr);
+                    }
                 }
             }
         }
 
-        for &ptr in to_redo.iter() {
+        for &ptr in redo_order.iter() {
             let mut ptr = ptr;
             change_performed |= ptr
                 .redo(
@@ -1114,6 +1119,35 @@ pub enum EventKind {
 
 #[cfg(test)]
 mod test {
+    #[test]
+    fn undoing_the_same_edits_makes_the_same_document_every_time() {
+        use crate::{Doc, Options as DocOptions, ReadTxn, StateVector, Text, Transact};
+        let run = || {
+            let doc = Doc::with_options(DocOptions {
+                client_id: ClientID::new(1),
+                ..DocOptions::default()
+            });
+            let text = doc.get_or_insert_text("text");
+            text.insert(&mut doc.transact_mut(), 0, "abcdefghijklmnopqrstuvwxyz");
+            let mut mgr = super::UndoManager::<()>::new();
+            mgr.expand_scope(&doc, &text);
+            {
+                // Many separate deletions in one undo step: undoing redoes each of them.
+                let mut txn = doc.transact_mut();
+                for i in (0..24).step_by(3).rev() {
+                    text.remove_range(&mut txn, i, 1);
+                }
+            }
+            mgr.undo_blocking();
+            let txn = doc.transact();
+            txn.encode_state_as_update_v1(&StateVector::default())
+        };
+        let first = run();
+        for _ in 0..20 {
+            assert!(run() == first, "undo produced a different document");
+        }
+    }
+
     use std::collections::HashMap;
     use std::convert::TryInto;
     use std::sync::atomic::{AtomicUsize, Ordering};

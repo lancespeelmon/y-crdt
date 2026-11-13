@@ -139,6 +139,13 @@ repository and its release notes.
     `yundo_manager_with_flags` takes `Y_UNDO_IGNORE_REMOTE_MAP_CHANGES`.
   - ywasm: `diffUpdateV1`/`V2` and `encodeStateVectorFromUpdateV1`/`V2`, next to the existing
     `mergeUpdatesV1`/`V2`.
+- Server lifecycle (plan item 6.8):
+  - `ReadTxn::write_state_as_update_v1` writes the v1 state to an `std::io::Write` in 64 KiB
+    chunks, with the same bytes as `encode_state_as_update_v1`;
+  - `ReadTxn::memory_usage` estimates the heap held by a document's blocks (items, content
+    and block lists);
+  - `Doc::compact` encodes a document and reloads it into a new one with the same options,
+    dropping the spare capacity edits leave behind.
 - yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
   can check at startup that it loaded the library its header describes. CI checks that the
   header compiles as strict C99.
@@ -205,6 +212,8 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
+  the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type
   that's already in a document (directly or inside a preliminary array, map or XML node), or
   a value with no CRDT representation. The check runs before anything changes, so the
