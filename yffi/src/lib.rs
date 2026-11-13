@@ -534,6 +534,36 @@ impl CallbackState {
     }
 }
 
+impl Drop for CallbackState {
+    fn drop(&mut self) {
+        let hook = CALLBACK_FREE_HOOK.load(std::sync::atomic::Ordering::Acquire);
+        if hook != 0 {
+            // SAFETY: only `yset_callback_free_hook` stores into it, and only a function pointer.
+            let hook: extern "C" fn(*mut c_void) = unsafe { std::mem::transmute(hook) };
+            hook(self.0);
+        }
+    }
+}
+
+/// The hook set by [yset_callback_free_hook], as an address (0 for none).
+static CALLBACK_FREE_HOOK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Sets a function that is called with a callback's `state` once the callback is gone for good:
+/// unsubscribed, replaced under the same key, or dropped with its document or undo manager.
+/// Use it to release what `state` points to. It is called once per subscription, on the thread
+/// that removed it, and never while that callback is running. Pass NULL to stop calling it.
+///
+/// The hook is process-wide and applies to every callback registered by the `*_observe*`
+/// functions, including ones registered before it was set.
+///
+/// Callback arguments other than `state` (events, transactions, the values they hold) are valid
+/// only during the call: copy what you need before returning.
+#[no_mangle]
+pub extern "C" fn yset_callback_free_hook(hook: Option<extern "C" fn(*mut c_void)>) {
+    let addr = hook.map_or(0, |f| f as usize);
+    CALLBACK_FREE_HOOK.store(addr, std::sync::atomic::Ordering::Release);
+}
+
 /// Builds an observer key out of a raw byte sequence. Empty (`len == 0`) keys are allowed.
 unsafe fn origin(len: u32, ptr: *const c_char) -> Origin {
     let bytes: &[u8] = if len == 0 {

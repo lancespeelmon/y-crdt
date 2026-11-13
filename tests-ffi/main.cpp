@@ -2794,3 +2794,40 @@ TEST_CASE("try functions for inserts and formats refuse bad indexes and attribut
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+static int freed_states[8];
+static int freed_count = 0;
+
+static void count_freed(void *state) {
+    if (freed_count < 8) {
+        freed_states[freed_count] = *(int *)state;
+    }
+    freed_count++;
+}
+
+static void ignore_text_event(void *state, const YTextEvent *e) {}
+
+TEST_CASE("the callback free hook is called once per subscription when it ends") {
+    yset_callback_free_hook(count_freed);
+    freed_count = 0;
+    int first = 1, second = 2, third = 3;
+
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    ytext_observe(txt, 1, "k", &first, ignore_text_event);
+    REQUIRE_EQ(freed_count, 0);
+    // replacing the callback under the same key ends the first subscription
+    ytext_observe(txt, 1, "k", &second, ignore_text_event);
+    REQUIRE_EQ(freed_count, 1);
+    REQUIRE_EQ(freed_states[0], 1);
+    REQUIRE_EQ(yunobserve(txt, 1, "k"), 1);
+    REQUIRE_EQ(freed_count, 2);
+    REQUIRE_EQ(freed_states[1], 2);
+    // and destroying the document ends the ones still registered
+    ytext_observe(txt, 1, "j", &third, ignore_text_event);
+    ydoc_destroy(doc);
+    REQUIRE_EQ(freed_count, 3);
+    REQUIRE_EQ(freed_states[2], 3);
+
+    yset_callback_free_hook(NULL);
+}

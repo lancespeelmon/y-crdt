@@ -130,6 +130,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
+  subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
+  so a host can release what `state` points to (plan item 7.4).
 - yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
   `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
   `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return

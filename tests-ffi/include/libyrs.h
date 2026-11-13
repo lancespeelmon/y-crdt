@@ -1220,6 +1220,20 @@ uint8_t ydoc_should_load(YDoc *doc);
 uint8_t ydoc_auto_load(YDoc *doc);
 
 /**
+ * Sets a function that is called with a callback's `state` once the callback is gone for good:
+ * unsubscribed, replaced under the same key, or dropped with its document or undo manager.
+ * Use it to release what `state` points to. It is called once per subscription, on the thread
+ * that removed it, and never while that callback is running. Pass NULL to stop calling it.
+ *
+ * The hook is process-wide and applies to every callback registered by the `*_observe*`
+ * functions, including ones registered before it was set.
+ *
+ * Callback arguments other than `state` (events, transactions, the values they hold) are valid
+ * only during the call: copy what you need before returning.
+ */
+void yset_callback_free_hook(void (*hook)(void*));
+
+/**
  * Subscribes a callback `cb` under a given `key` to updates (lib0 v1 encoded) produced by
  * the document this transaction belongs to. Use `ytransaction_unobserve_updates_v1` to unsubscribe.
  */
