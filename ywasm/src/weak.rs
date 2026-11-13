@@ -5,7 +5,7 @@ use crate::{ImplicitTransaction, Result};
 use std::sync::Arc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
-use yrs::branch::BranchPtr;
+use yrs::internals::BranchPtr;
 use yrs::types::weak::{LinkSource, WeakEvent};
 use yrs::types::TYPE_REFS_WEAK;
 use yrs::{

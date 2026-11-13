@@ -1439,7 +1439,7 @@ impl BlockRange {
     /// # Example:
     ///
     /// ```rust
-    /// use yrs::block::{BlockRange, ClientID};
+    /// use yrs::internals::{BlockRange, ClientID};
     /// use yrs::ID;
     /// let a = BlockRange::new(ID::new(ClientID::new(1), 2), 8); // range of clocks [2..10)
     /// let b = a.slice(3); // range of clocks [5..10)

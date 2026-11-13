@@ -616,7 +616,7 @@
 //! - [Detailed explanation of conflict-free reordering algorithm](https://bartoszsypytkowski.com/yata-move/) used by Yrs.
 
 mod alt;
-pub mod block;
+mod block;
 mod block_store;
 pub mod doc;
 mod event;
@@ -632,7 +632,7 @@ mod utils;
 pub mod any;
 pub mod atomic;
 mod block_iter;
-pub mod branch;
+mod branch;
 pub mod encoding;
 pub mod error;
 mod gc;
@@ -674,6 +674,7 @@ pub use crate::any::{Any, AnyMap, Number};
 pub use crate::block::ClientID;
 pub use crate::block::SmallClientID;
 pub use crate::block::ID;
+pub use crate::block::{EmbedPrelim, Item, ItemContent, Prelim, Unused};
 pub use crate::branch::BranchID;
 pub use crate::branch::Hook;
 pub use crate::branch::Nested;
@@ -689,7 +690,7 @@ pub use crate::id_set::IdSet;
 pub use crate::input::In;
 pub use crate::json_path::{JsonPath, JsonPathEval};
 pub use crate::observer::Observer;
-pub use crate::out::Out;
+pub use crate::out::{Out, UndefinedRef};
 pub use crate::permanent_user_data::PermanentUserData;
 pub use crate::state_vector::Snapshot;
 pub use crate::state_vector::StateVector;
@@ -698,6 +699,7 @@ pub use crate::sticky_index::IndexScope;
 pub use crate::sticky_index::IndexedSequence;
 pub use crate::sticky_index::Offset;
 pub use crate::sticky_index::StickyIndex;
+#[doc(hidden)]
 pub use crate::store::Store;
 pub use crate::transact::{
     AcquireTransaction, AcquireTransactionMut, AsyncTransact, Transact, TransactionAcqError,
@@ -734,6 +736,16 @@ pub use crate::types::Observable;
 pub use crate::types::RootRef;
 pub use crate::types::SharedRef;
 pub use crate::update::Update;
+
+/// The block store's internals: items, branches and the raw pointers to them, plus the wire
+/// format's constants. Not part of the stable API: for yffi and ywasm, which hand these across
+/// the language boundary, only.
+#[doc(hidden)]
+pub mod internals {
+    pub use crate::block::*;
+    pub use crate::branch::*;
+    pub use crate::store::Store;
+}
 
 #[deprecated(since = "0.19.0", note = "Use `yrs::Out` instead")]
 pub type Value = Out;

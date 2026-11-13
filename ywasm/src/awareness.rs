@@ -4,10 +4,10 @@ use std::cell::UnsafeCell;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use yrs::block::ClientID;
 use yrs::protocol::{Awareness as YAwareness, AwarenessUpdate, Timestamp};
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
+use yrs::ClientID;
 
 use crate::doc::YDoc;
 use crate::js::{Callback, Js};

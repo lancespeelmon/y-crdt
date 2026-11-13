@@ -5,10 +5,9 @@ use std::ops::{Deref, RangeBounds};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
-use yrs::block::{ClientID, EmbedPrelim, ItemContent, Prelim, Unused};
-use yrs::branch::BranchPtr;
 use yrs::encoding::read::Error;
 use yrs::error::UpdateError;
+use yrs::internals::BranchPtr;
 use yrs::json_path::JsonPathIter as NativeJsonPathIter;
 use yrs::types::array::ArrayEvent;
 use yrs::types::array::ArrayIter as NativeArrayIter;
@@ -30,6 +29,7 @@ use yrs::{
     TransactionCleanupEvent, Update, Xml, XmlElementPrelim, XmlElementRef, XmlFragmentRef,
     XmlTextPrelim, XmlTextRef, ID,
 };
+use yrs::{ClientID, EmbedPrelim, ItemContent, Prelim, Unused};
 
 /// Flag used by `YInput` to pass JSON string for an object that should be deserialized and
 /// stored internally as fully fledged scalar type.
@@ -116,7 +116,7 @@ pub type Doc = yrs::Doc;
 ///
 /// Using write methods of different shared types (eg. `ytext_insert` and `yarray_insert`) over
 /// the same branch may result in undefined behavior.
-pub type Branch = yrs::branch::Branch;
+pub type Branch = yrs::internals::Branch;
 
 /// Iterator structure used by shared array data type.
 #[repr(transparent)]
@@ -3221,7 +3221,7 @@ impl From<Out> for YOutput {
             Out::YXmlText(v) => Self::from(v),
             Out::YDoc(v) => Self::from(v),
             Out::YWeakLink(v) => Self::from(v),
-            Out::UndefinedRef(v) => Self::from(v),
+            Out::UndefinedRef(v) => Self::from(v.branch_ptr()),
         }
     }
 }

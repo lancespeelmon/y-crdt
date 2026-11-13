@@ -101,6 +101,7 @@ fn any_iter<'a, T: ReadTxn>(
         Some(Out::UndefinedRef(branch)) => {
             // undefined ref only happens for root level types. These can be: ArrayRef, MapRef,
             // XmlFragmentRef, TextRef. For JsonPath, we only care about ArrayRef and MapRef.
+            let branch = branch.0;
             if branch.start.is_some() {
                 // a list component is not empty: we assume it's an Array
                 let array = crate::ArrayRef::from(branch);
@@ -346,7 +347,7 @@ fn get_member<T: ReadTxn>(txn: &T, out: Option<&Out>, key: &str) -> Option<Out> 
         Some(Out::YXmlText(elem)) => elem.get_attribute(txn, key),
         Some(Out::UndefinedRef(branch)) => {
             // we assume it's a YMap
-            let map = crate::MapRef::from(*branch);
+            let map = crate::MapRef::from(branch.0);
             map.get(txn, key)
         }
         _ => None,
@@ -389,7 +390,7 @@ fn get_index<T: ReadTxn>(txn: &T, out: Option<&Out>, idx: i32) -> Option<Out> {
         }
         Some(Out::UndefinedRef(array)) => {
             // we assume it's a YMap
-            let array = crate::ArrayRef::from(*array);
+            let array = crate::ArrayRef::from(array.0);
             let idx = if idx < 0 {
                 array.len(txn) as i32 + idx
             } else {

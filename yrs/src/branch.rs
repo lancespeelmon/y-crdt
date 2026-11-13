@@ -136,7 +136,7 @@ impl Into<Out> for BranchPtr {
             //TYPE_REFS_XML_HOOK => Value::YXmlHook(XmlHookRef::from(self)),
             #[cfg(feature = "weak")]
             TypeRef::WeakLink(_) => Out::YWeakLink(crate::WeakRef::from(self)),
-            _ => Out::UndefinedRef(self),
+            _ => Out::UndefinedRef(crate::out::UndefinedRef(self)),
         }
     }
 }

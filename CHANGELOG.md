@@ -11,6 +11,13 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the `block` and `branch` modules are private. What user code needs from them is
+  at the crate root: `Prelim`, `ItemContent`, `EmbedPrelim`, `Unused` and `Item` (the
+  `gc_filter` argument), next to `ClientID` and `ID`. Items, branches, their raw pointers, the
+  block store and the wire constants are in `yrs::internals`, which is hidden from the docs and
+  exempt from semver: it exists for yffi and ywasm. `Store` stays reachable (transactions
+  return it) but is hidden too.
+- **Breaking:** `Out::UndefinedRef` holds an `UndefinedRef` instead of a raw `BranchPtr`.
 - **Breaking:** the `sync` module is now `protocol`, behind a new `protocol` feature (on by
   default) that brings in `dashmap` and `async-trait`. `yrs::sync` stays as a deprecated alias.
   `Clock` and `Timestamp` moved to a new core module, `yrs::time`, since the UndoManager uses

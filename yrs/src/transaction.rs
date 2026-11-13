@@ -264,7 +264,7 @@ pub trait ReadTxn: Sized {
             TypeRef::SubDoc => Some(Out::YDoc(ptr.as_subdoc()?)),
             #[cfg(feature = "weak")]
             TypeRef::WeakLink(_) => Some(Out::YWeakLink(crate::WeakRef::from(ptr))),
-            TypeRef::Undefined => Some(Out::UndefinedRef(ptr)),
+            TypeRef::Undefined => Some(Out::UndefinedRef(crate::out::UndefinedRef(ptr))),
         }
     }
 
