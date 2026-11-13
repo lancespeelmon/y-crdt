@@ -249,6 +249,9 @@ pub trait Text: AsRef<Branch> + Sized {
                 }
             }
             txn.create_item(&pos, value, None);
+            // The insert went after the marker `find_position` left, so the marker still holds.
+            let mut this = this;
+            this.restamp_search_marker();
         }
         Ok(())
     }
@@ -264,7 +267,6 @@ pub trait Text: AsRef<Branch> + Sized {
             parent: TypePtr::Branch(branch),
             left: None,
             right: branch.start,
-            index: 0,
             current_attrs: Some(Box::new(Attrs::new())),
         };
         for delta in delta {
@@ -337,6 +339,8 @@ pub trait Text: AsRef<Branch> + Sized {
             let ptr = txn
                 .create_item(&pos, content.into(), None)
                 .expect("cannot insert empty value");
+            let mut this = this;
+            this.restamp_search_marker();
             if let Ok(integrated) = ptr.try_into() {
                 integrated
             } else {
@@ -501,7 +505,10 @@ pub trait Text: AsRef<Branch> + Sized {
         OutOfRange::check(self.len(txn), index, len)?;
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
-            remove(txn, &mut pos, len)
+            remove(txn, &mut pos, len);
+            // Everything removed was after the marker `find_position` left.
+            let mut this = this;
+            this.restamp_search_marker();
         }
         Ok(())
     }
@@ -898,7 +905,6 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
             parent: this.into(),
             left: None,
             right: this.start,
-            index: 0,
             current_attrs: None,
         }
     };
@@ -906,9 +912,18 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
     let mut format_ptrs = HashMap::new();
     // Like Yjs' `splitItem`, every split is merged back at commit if nothing came between.
     let mut splits = Vec::new();
+    let mut remaining = index;
+    // Start from the search marker if it's valid: an item before `index` with known indexes.
+    // The walk then reaches it just as a walk from the start would (no formatting to collect).
+    if let Some((item, at)) = this.find_search_marker(txn.store(), index) {
+        pos.left = item.left;
+        pos.right = Some(item);
+        remaining = index - at;
+    }
+    // The last countable, live item the walk passes, with its index: the next marker.
+    let mut passed = None;
     let store = txn.store_mut();
     let encoding = store.offset_kind;
-    let mut remaining = index;
     while let Some(right) = pos.right {
         if remaining == 0 {
             break;
@@ -924,7 +939,9 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
                     }
                 }
                 _ => {
-                    let mut block_len = right.len();
+                    if right.is_countable() {
+                        passed = Some((right, index - remaining));
+                    }
                     let content_len = right.content_len(encoding);
                     if remaining < content_len {
                         // split right item
@@ -938,12 +955,10 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
                             .split_block(right, offset, OffsetKind::Utf16)
                             .unwrap();
                         splits.push(*right_half.id());
-                        block_len -= offset;
                         remaining = 0;
                     } else {
                         remaining -= content_len;
                     }
-                    pos.index += block_len;
                 }
             }
         }
@@ -955,6 +970,9 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
         };
     }
     txn.merge_blocks.extend(splits);
+    // Always replace the marker, so that an edit's restamp never revives an older one.
+    let mut branch = this;
+    branch.set_search_marker(passed);
 
     for (_, block_ptr) in format_ptrs {
         if let Some(item) = block_ptr {
@@ -1670,6 +1688,129 @@ impl Into<EmbedPrelim<TextPrelim>> for TextPrelim {
     #[inline]
     fn into(self) -> EmbedPrelim<TextPrelim> {
         EmbedPrelim::Shared(self)
+    }
+}
+
+#[cfg(test)]
+mod search_marker_test {
+    use crate::branch::SEARCH_MARKERS_OFF;
+    use crate::test_utils::exchange_updates;
+    use crate::undo::UndoManager;
+    use crate::{
+        CharOffset, Doc, GetString, OffsetKind, Options, ReadTxn, StateVector, Text, Transact,
+    };
+
+    /// A small deterministic generator, so a failure names its seed.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: u32) -> u32 {
+            if n == 0 {
+                0
+            } else {
+                (self.next() % n as u64) as u32
+            }
+        }
+    }
+
+    const PIECES: [&str; 6] = ["a", "bc", "def", "é", "😀", "ab😀c"];
+
+    fn chars(text: &crate::TextRef, txn: &impl ReadTxn) -> u32 {
+        text.get_string(txn).chars().count() as u32
+    }
+
+    /// Runs one random workload and returns both peers' encoded states and texts. With `undo`,
+    /// the first peer also undoes now and then; that isn't deterministic (the undo manager
+    /// redoes a set of items in hash order), so only convergence can be checked then.
+    fn workload(seed: u64, kind: OffsetKind, with_undo: bool) -> Vec<(Vec<u8>, String)> {
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let docs: Vec<Doc> = (1..=2)
+            .map(|id| {
+                Doc::with_options(Options {
+                    client_id: crate::ClientID::new(id),
+                    offset_kind: kind,
+                    ..Options::default()
+                })
+            })
+            .collect();
+        let texts: Vec<_> = docs.iter().map(|d| d.get_or_insert_text("t")).collect();
+        let mut undo = UndoManager::<()>::new();
+        undo.expand_scope(&docs[0], &texts[0]);
+        for _ in 0..150 {
+            let p = rng.below(2) as usize;
+            let (doc, text) = (&docs[p], &texts[p]);
+            match rng.below(10) {
+                0 => exchange_updates(&[&docs[0], &docs[1]]),
+                1 if p == 0 && with_undo => {
+                    undo.undo_blocking();
+                }
+                _ => {
+                    let mut txn = doc.transact_mut();
+                    for _ in 0..=rng.below(3) {
+                        let n = chars(text, &txn);
+                        let at = rng.below(n + 1);
+                        let index = text.offset(&txn, CharOffset(at)).unwrap();
+                        match rng.below(7) {
+                            0..=3 => {
+                                let piece = PIECES[rng.below(PIECES.len() as u32) as usize];
+                                text.insert(&mut txn, index, piece);
+                            }
+                            4 => {
+                                text.insert_embed(&mut txn, index, crate::Any::from(at as f64));
+                            }
+                            _ if n > at => {
+                                let to = at + 1 + rng.below((n - at).min(4));
+                                let end = text.offset(&txn, CharOffset(to)).unwrap();
+                                text.remove_range(&mut txn, index, end - index);
+                            }
+                            _ => {}
+                        }
+                    }
+                    drop(txn);
+                    // One undo step per transaction, whatever the time between them.
+                    undo.reset();
+                }
+            }
+        }
+        exchange_updates(&[&docs[0], &docs[1]]);
+        docs.iter()
+            .zip(&texts)
+            .map(|(doc, text)| {
+                let txn = doc.transact();
+                (
+                    txn.encode_state_as_update_v1(&StateVector::default()),
+                    text.get_string(&txn),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn edits_found_from_a_search_marker_make_the_same_document_as_from_the_start() {
+        for kind in [OffsetKind::Utf16, OffsetKind::Bytes] {
+            for seed in 0..40 {
+                SEARCH_MARKERS_OFF.with(|off| off.set(true));
+                let expected = workload(seed, kind, false);
+                SEARCH_MARKERS_OFF.with(|off| off.set(false));
+                let actual = workload(seed, kind, false);
+                assert!(actual == expected, "seed {seed} with {kind:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn peers_that_undo_converge_with_search_markers() {
+        for kind in [OffsetKind::Utf16, OffsetKind::Bytes] {
+            for seed in 0..40 {
+                let peers = workload(seed, kind, true);
+                assert_eq!(peers[0].1, peers[1].1, "seed {seed} with {kind:?}");
+            }
+        }
     }
 }
 
