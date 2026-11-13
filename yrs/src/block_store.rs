@@ -620,6 +620,54 @@ mod test {
     }
 
     #[test]
+    fn a_map_entry_follows_its_value_when_it_is_squashed_into_an_earlier_one() {
+        use crate::updates::decoder::Decode;
+        use crate::{Doc, Map, ReadTxn, StateVector, Transact, Update};
+
+        let doc = Doc::with_client_id(1);
+        let map = doc.get_or_insert_map("map");
+        {
+            // Each overwrite deletes the value before it, and the removal deletes the last one.
+            // Commit squashes the four deleted values into the first (in the delete set's
+            // compaction, since they're all deleted), and the entry must then name it.
+            let mut txn = doc.transact_mut();
+            for i in 0..4 {
+                map.insert(&mut txn, "k", i);
+            }
+            map.remove(&mut txn, "k");
+        }
+        {
+            let txn = doc.transact();
+            assert_eq!(map.get(&txn, "k"), None);
+            let blocks = txn.store().blocks.get_client(&ClientID::new(1)).unwrap();
+            assert_eq!(blocks.len(), 1, "{blocks:?}");
+            let entry = *AsRef::<crate::branch::Branch>::as_ref(&map)
+                .map
+                .get("k")
+                .unwrap();
+            assert_eq!(
+                Some(entry),
+                blocks[0].as_item(),
+                "the entry names a freed value"
+            );
+        }
+        {
+            let mut txn = doc.transact_mut();
+            map.insert(&mut txn, "k", 9);
+        }
+        let update = doc
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        let peer = Doc::with_client_id(2);
+        let peer_map = peer.get_or_insert_map("map");
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(&update).unwrap())
+            .unwrap();
+        assert_eq!(map.get(&doc.transact(), "k"), Some(9.into()));
+        assert_eq!(peer_map.get(&peer.transact(), "k"), Some(9.into()));
+    }
+
+    #[test]
     fn find_index_finds_every_clock_however_block_lengths_are_spread() {
         let shapes: &[&[u32]] = &[
             &[1],
