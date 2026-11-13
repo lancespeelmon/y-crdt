@@ -141,6 +141,12 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `ybindings-core`, a crate with the rules yffi and ywasm share (7.7): the update utilities
+  (`merge_updates`, `diff_update`, `state_vector_from_update`, `apply_updates`) behind one
+  `Encoding` enum, `UndoSettings` for building undo options from a binding's settings, and the
+  preliminary-value depth limit.
+- `yrs::undo::Options::with_clock`, the default options with a given clock. On wasm, where
+  `Default` isn't available, this is how to build them.
 - yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
   subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
   so a host can release what `state` points to (plan item 7.4).
@@ -223,6 +229,14 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- ywasm's `mergeUpdatesV1([])`/`mergeUpdatesV2([])` return an encoded empty update, as Yjs does,
+  instead of zero bytes, which don't decode.
+- yffi: input that contains itself (an array input whose values point back at it) fails once it
+  nests more than 512 levels, instead of recursing until the stack overflows. The status
+  functions report it as `Y_ERR_PANIC`.
+- yffi: `yarray_try_insert_range` and `ytext_try_insert_embed` caught nothing: they called the
+  `extern "C"` function, which can't unwind, so a panic aborted the process. They now report it
+  as `Y_ERR_PANIC`.
 - yffi no longer leaks: `yoptions()` returns NULL `guid` and `collection_id` (a document
   created with a NULL guid gets a random one, as before) instead of allocating strings the
   caller couldn't free, and the array from `ytransaction_subdocs` is released with the new

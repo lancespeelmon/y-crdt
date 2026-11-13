@@ -1683,6 +1683,18 @@ pub unsafe extern "C" fn ytext_insert_embed(
     content: *const YInput,
     attrs: *const YInput,
 ) {
+    impl_ytext_insert_embed(txt, txn, index, content, attrs)
+}
+
+/// [ytext_insert_embed] as a Rust function, so a panic inside it can unwind to the `*_try_*` variant's
+/// guard (it can't unwind out of an `extern "C"` function).
+unsafe fn impl_ytext_insert_embed(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    content: *const YInput,
+    attrs: *const YInput,
+) {
     assert!(!txt.is_null());
     assert!(!txn.is_null());
     assert!(!content.is_null());
@@ -1896,6 +1908,18 @@ pub unsafe extern "C" fn yarray_get_json(
 /// input params.
 #[no_mangle]
 pub unsafe extern "C" fn yarray_insert_range(
+    array: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    items: *const YInput,
+    items_len: u32,
+) {
+    impl_yarray_insert_range(array, txn, index, items, items_len)
+}
+
+/// [yarray_insert_range] as a Rust function, so a panic inside it can unwind to the `*_try_*` variant's
+/// guard (it can't unwind out of an `extern "C"` function).
+unsafe fn impl_yarray_insert_range(
     array: *const Branch,
     txn: *mut Transaction,
     index: u32,
@@ -3027,6 +3051,14 @@ pub struct YInput {
 
 impl YInput {
     fn into(self) -> Any {
+        self.into_any(0)
+    }
+
+    /// `depth` is how far inside the top-level value this one is.
+    fn into_any(self, depth: usize) -> Any {
+        if let Err(e) = ybindings_core::check_depth(depth) {
+            panic!("{e}");
+        }
         let tag = self.tag;
         unsafe {
             match tag {
@@ -3053,7 +3085,7 @@ impl YInput {
                     let mut i = 0;
                     while i < self.len as isize {
                         let value = ptr.offset(i).read();
-                        let any = value.into();
+                        let any = value.into_any(depth + 1);
                         dst.push(any);
                         i += 1;
                     }
@@ -3069,7 +3101,7 @@ impl YInput {
                             .to_str()
                             .unwrap()
                             .to_owned();
-                        let value = values.offset(i).read().into();
+                        let value = values.offset(i).read().into_any(depth + 1);
                         dst.insert(key, value);
                         i += 1;
                     }
@@ -3153,6 +3185,9 @@ impl Prelim for YInput {
     }
 
     fn integrate(self, txn: &mut yrs::TransactionMut, inner_ref: BranchPtr) {
+        // Nested shared values integrate through yrs' inserts, which come back here: count how
+        // deep, so input that contains itself fails instead of overflowing the stack.
+        let _depth = PrelimDepth::enter();
         unsafe {
             match self.tag {
                 Y_MAP => {
@@ -3194,6 +3229,34 @@ impl Prelim for YInput {
                 _ => { /* do nothing */ }
             }
         }
+    }
+}
+
+thread_local! {
+    static PRELIM_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many [YInput::integrate] calls are on this thread's stack, while one lives.
+struct PrelimDepth;
+
+impl PrelimDepth {
+    fn enter() -> Self {
+        let depth = PRELIM_DEPTH.with(|d| {
+            let depth = d.get();
+            d.set(depth + 1);
+            depth
+        });
+        let guard = PrelimDepth;
+        if let Err(e) = ybindings_core::check_depth(depth) {
+            panic!("{e}");
+        }
+        guard
+    }
+}
+
+impl Drop for PrelimDepth {
+    fn drop(&mut self) {
+        PRELIM_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
     }
 }
 
@@ -5026,14 +5089,8 @@ pub struct YUndoManagerOptions {
 /// This object can be deallocated via `yundo_manager_destroy`.
 #[no_mangle]
 pub unsafe extern "C" fn yundo_manager(options: *const YUndoManagerOptions) -> *mut YUndoManager {
-    let mut o = yrs::undo::Options::default();
-    if let Some(options) = options.as_ref() {
-        if options.capture_timeout_millis >= 0 {
-            o.capture_timeout_millis = options.capture_timeout_millis as u64;
-        }
-    };
-    let boxed = Box::new(yrs::undo::UndoManager::with_options(o));
-    Box::into_raw(boxed)
+    let timeout = options.as_ref().map_or(-1, |o| o.capture_timeout_millis);
+    yundo_manager_with_flags(timeout, 0)
 }
 
 /// A flag for [yundo_manager_with_flags]: when undoing re-adds a map entry that a remote peer
@@ -5048,12 +5105,14 @@ pub unsafe extern "C" fn yundo_manager_with_flags(
     capture_timeout_millis: i32,
     flags: u8,
 ) -> *mut YUndoManager {
-    let mut o = yrs::undo::Options::default();
-    if capture_timeout_millis >= 0 {
-        o.capture_timeout_millis = capture_timeout_millis as u64;
-    }
-    o.ignore_remote_map_changes = flags & Y_UNDO_IGNORE_REMOTE_MAP_CHANGES != 0;
-    Box::into_raw(Box::new(yrs::undo::UndoManager::with_options(o)))
+    let settings = ybindings_core::UndoSettings {
+        // Negative means the default.
+        capture_timeout_millis: u64::try_from(capture_timeout_millis).ok(),
+        ignore_remote_map_changes: flags & Y_UNDO_IGNORE_REMOTE_MAP_CHANGES != 0,
+        tracked_origins: None,
+    };
+    let options = settings.into_options(Arc::new(yrs::time::SystemClock));
+    Box::into_raw(Box::new(yrs::undo::UndoManager::with_options(options)))
 }
 
 /// Deallocated undo manager instance created via `yundo_manager`.
@@ -6584,7 +6643,7 @@ pub unsafe extern "C" fn ytext_try_insert_embed(
         }
         let w = writeable(txn)?;
         check_insert_index(TextRef::from_raw_branch(txt).len(w), index)?;
-        ytext_insert_embed(txt, txn, index, content, attrs);
+        impl_ytext_insert_embed(txt, txn, index, content, attrs);
         Ok(())
     })
 }
@@ -6606,7 +6665,7 @@ pub unsafe extern "C" fn yarray_try_insert_range(
         let w = writeable(txn)?;
         check_insert_index(ArrayRef::from_raw_branch(array).len(w), index)?;
         if items_len > 0 {
-            yarray_insert_range(array, txn, index, items, items_len);
+            impl_yarray_insert_range(array, txn, index, items, items_len);
         }
         Ok(())
     })
@@ -6783,7 +6842,8 @@ pub unsafe extern "C" fn ymerge_updates_v1(
 ) -> i32 {
     ffi_guard(|| {
         let updates = read_buffers(updates, lens, count)?;
-        let merged = yrs::merge_updates_v1(updates).map_err(|e| e.to_string())?;
+        let merged = ybindings_core::merge_updates(ybindings_core::Encoding::V1, updates)
+            .map_err(|e| e.to_string())?;
         write_binary(merged, out, out_len)
     })
 }
@@ -6799,7 +6859,8 @@ pub unsafe extern "C" fn ymerge_updates_v2(
 ) -> i32 {
     ffi_guard(|| {
         let updates = read_buffers(updates, lens, count)?;
-        let merged = yrs::merge_updates_v2(updates).map_err(|e| e.to_string())?;
+        let merged = ybindings_core::merge_updates(ybindings_core::Encoding::V2, updates)
+            .map_err(|e| e.to_string())?;
         write_binary(merged, out, out_len)
     })
 }
@@ -6815,7 +6876,8 @@ pub unsafe extern "C" fn yencode_state_vector_from_update_v1(
 ) -> i32 {
     ffi_guard(|| {
         let update = read_buffer(update, update_len)?;
-        let sv = yrs::encode_state_vector_from_update_v1(update).map_err(|e| e.to_string())?;
+        let sv = ybindings_core::state_vector_from_update(ybindings_core::Encoding::V1, update)
+            .map_err(|e| e.to_string())?;
         write_binary(sv, out, out_len)
     })
 }
@@ -6830,7 +6892,8 @@ pub unsafe extern "C" fn yencode_state_vector_from_update_v2(
 ) -> i32 {
     ffi_guard(|| {
         let update = read_buffer(update, update_len)?;
-        let sv = yrs::encode_state_vector_from_update_v2(update).map_err(|e| e.to_string())?;
+        let sv = ybindings_core::state_vector_from_update(ybindings_core::Encoding::V2, update)
+            .map_err(|e| e.to_string())?;
         write_binary(sv, out, out_len)
     })
 }
@@ -6849,7 +6912,8 @@ pub unsafe extern "C" fn ydiff_updates_v1(
     ffi_guard(|| {
         let update = read_buffer(update, update_len)?;
         let sv = read_buffer(sv, sv_len)?;
-        let diff = yrs::diff_updates_v1(update, sv).map_err(|e| e.to_string())?;
+        let diff = ybindings_core::diff_update(ybindings_core::Encoding::V1, update, sv)
+            .map_err(|e| e.to_string())?;
         write_binary(diff, out, out_len)
     })
 }
@@ -6867,9 +6931,59 @@ pub unsafe extern "C" fn ydiff_updates_v2(
     ffi_guard(|| {
         let update = read_buffer(update, update_len)?;
         let sv = read_buffer(sv, sv_len)?;
-        let diff = yrs::diff_updates_v2(update, sv).map_err(|e| e.to_string())?;
+        let diff = ybindings_core::diff_update(ybindings_core::Encoding::V2, update, sv)
+            .map_err(|e| e.to_string())?;
         write_binary(diff, out, out_len)
     })
+}
+
+#[cfg(test)]
+mod input_depth_test {
+    use super::*;
+
+    fn panic_message(r: std::thread::Result<()>) -> String {
+        let e = r.unwrap_err();
+        e.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    }
+
+    /// A JSON array input that contains itself used to recurse until the stack overflowed.
+    #[test]
+    fn a_json_array_that_contains_itself_fails_instead_of_overflowing() {
+        unsafe {
+            let mut cell = yinput_null();
+            let mut array = yinput_json_array(&mut cell, 1);
+            array.value.values = &mut array as *mut YInput; // contains itself
+            let ptr = &array as *const YInput as usize;
+            let r = std::panic::catch_unwind(|| {
+                let _: Any = (ptr as *const YInput).read().into();
+            });
+            assert!(panic_message(r).contains("nested more than"));
+        }
+    }
+
+    /// The same for a shared array, which nests through yrs' inserts. The status functions
+    /// catch the panic.
+    #[test]
+    fn a_shared_array_that_contains_itself_fails_instead_of_overflowing() {
+        unsafe {
+            let doc = ydoc_new();
+            let root = yarray(doc, c"arr".as_ptr());
+            let mut cell = yinput_null();
+            let mut array = yinput_yarray(&mut cell, 1);
+            array.value.values = &mut array as *mut YInput;
+            let txn = ydoc_write_transaction(doc, 0, null());
+            let status = yarray_try_insert_range(root, txn, 0, &array, 1);
+            ytransaction_commit(txn);
+            assert_eq!(status, Y_ERR_PANIC);
+            let msg = CStr::from_ptr(ylast_error()).to_str().unwrap().to_owned();
+            assert!(msg.contains("nested more than"), "{msg}");
+            ydoc_destroy(doc);
+            assert_eq!(PRELIM_DEPTH.with(|d| d.get()), 0);
+        }
+    }
 }
 
 #[cfg(test)]

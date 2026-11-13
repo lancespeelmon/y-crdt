@@ -927,14 +927,15 @@ pub type CaptureTransactionFn = Arc<dyn Fn(&TransactionMut) -> bool + Send + Syn
 /// See [Options::delete_filter].
 pub type DeleteFilterFn = Arc<dyn Fn(&Item) -> bool + Send + Sync + 'static>;
 
-#[cfg(not(target_family = "wasm"))]
-impl<M> Default for Options<M> {
-    fn default() -> Self {
+impl<M> Options<M> {
+    /// The default options, timing stack items with `clock`. On wasm, where there's no system
+    /// clock (and so no `Default`), this is how to build options.
+    pub fn with_clock(clock: Arc<dyn Clock>) -> Self {
         Options {
             capture_timeout_millis: 500,
             tracked_origins: HashSet::new(),
             capture_transaction: None,
-            timestamp: Arc::new(crate::time::SystemClock),
+            timestamp: clock,
             init_undo_stack: Vec::new(),
             init_redo_stack: Vec::new(),
             delete_filter: None,
@@ -942,6 +943,13 @@ impl<M> Default for Options<M> {
             track_null_origin: None,
             max_stack_len: None,
         }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl<M> Default for Options<M> {
+    fn default() -> Self {
+        Options::with_clock(Arc::new(crate::time::SystemClock))
     }
 }
 

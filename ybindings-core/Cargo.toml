@@ -1,0 +1,14 @@
+[package]
+name = "ybindings-core"
+version = "0.28.1"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "Logic shared by the yrs bindings (yffi, ywasm): update utilities, undo options, input limits"
+repository = "https://github.com/y-crdt/y-crdt/"
+
+[dependencies]
+yrs = { path = "../yrs", version = "0.28.1", default-features = false }
+
+[lints]
+workspace = true
