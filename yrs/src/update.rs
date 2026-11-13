@@ -1148,6 +1148,55 @@ impl Iterator for IntoBlocks {
     }
 }
 
+/// A decoder in [Update::merge_updates]' heap, ordered by the block it is at.
+struct MergeCursor<I: Iterator<Item = Block>> {
+    memo: Memo<I>,
+    /// Breaks ties: lower wins.
+    rank: i64,
+}
+
+impl<I: Iterator<Item = Block>> MergeCursor<I> {
+    /// Yjs' order: higher clients first, then lower clocks, a Skip after another block at the same
+    /// clock. `Less` means "write first".
+    fn order(&self, other: &Self) -> Ordering {
+        let left = self.memo.current().unwrap();
+        let right = other.memo.current().unwrap();
+        let lid = left.id();
+        let rid = right.id();
+        let by_block = match lid.client.cmp(&rid.client) {
+            Ordering::Equal => match lid.clock.cmp(&rid.clock) {
+                Ordering::Equal if left.same_type(right) => Ordering::Equal,
+                Ordering::Equal if left.is_skip() => Ordering::Greater,
+                Ordering::Equal if right.is_skip() => Ordering::Less,
+                ordering => ordering,
+            },
+            ordering => ordering.reverse(),
+        };
+        by_block.then(self.rank.cmp(&other.rank))
+    }
+}
+
+impl<I: Iterator<Item = Block>> PartialEq for MergeCursor<I> {
+    fn eq(&self, other: &Self) -> bool {
+        self.order(other) == Ordering::Equal
+    }
+}
+
+impl<I: Iterator<Item = Block>> Eq for MergeCursor<I> {}
+
+impl<I: Iterator<Item = Block>> PartialOrd for MergeCursor<I> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<I: Iterator<Item = Block>> Ord for MergeCursor<I> {
+    /// Reversed, since [BinaryHeap] pops the greatest.
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.order(self)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::{HashMap, VecDeque};
@@ -1809,54 +1858,5 @@ mod test {
                 Err(Error::Malformed(MalformedKind::EmptyBlock))
             );
         }
-    }
-}
-
-/// A decoder in [Update::merge_updates]' heap, ordered by the block it is at.
-struct MergeCursor<I: Iterator<Item = Block>> {
-    memo: Memo<I>,
-    /// Breaks ties: lower wins.
-    rank: i64,
-}
-
-impl<I: Iterator<Item = Block>> MergeCursor<I> {
-    /// Yjs' order: higher clients first, then lower clocks, a Skip after another block at the same
-    /// clock. `Less` means "write first".
-    fn order(&self, other: &Self) -> Ordering {
-        let left = self.memo.current().unwrap();
-        let right = other.memo.current().unwrap();
-        let lid = left.id();
-        let rid = right.id();
-        let by_block = match lid.client.cmp(&rid.client) {
-            Ordering::Equal => match lid.clock.cmp(&rid.clock) {
-                Ordering::Equal if left.same_type(right) => Ordering::Equal,
-                Ordering::Equal if left.is_skip() => Ordering::Greater,
-                Ordering::Equal if right.is_skip() => Ordering::Less,
-                ordering => ordering,
-            },
-            ordering => ordering.reverse(),
-        };
-        by_block.then(self.rank.cmp(&other.rank))
-    }
-}
-
-impl<I: Iterator<Item = Block>> PartialEq for MergeCursor<I> {
-    fn eq(&self, other: &Self) -> bool {
-        self.order(other) == Ordering::Equal
-    }
-}
-
-impl<I: Iterator<Item = Block>> Eq for MergeCursor<I> {}
-
-impl<I: Iterator<Item = Block>> PartialOrd for MergeCursor<I> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<I: Iterator<Item = Block>> Ord for MergeCursor<I> {
-    /// Reversed, since [BinaryHeap] pops the greatest.
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.order(self)
     }
 }
