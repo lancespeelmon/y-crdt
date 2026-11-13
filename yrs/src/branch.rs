@@ -156,8 +156,7 @@ thread_local! {
     pub(crate) static SEARCH_MARKERS_OFF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// A remembered position in a branch's sequence: the item with ID `id` starts at content index
-/// `index` and block index `block_index`. Yjs keeps such markers so that edits near the last one
+/// A remembered position in a branch's sequence: the item with ID `id` starts at index `index`. Yjs keeps such markers so that edits near the last one
 /// don't walk the sequence from its start; this is one marker, for text.
 ///
 /// It's valid while `version` equals the branch's `seq_version`. Every insert or delete of a
@@ -167,7 +166,6 @@ thread_local! {
 pub(crate) struct SearchMarker {
     id: ID,
     index: u32,
-    block_index: u32,
     version: u64,
 }
 
@@ -274,13 +272,12 @@ impl Branch {
         self.seq_version = self.seq_version.wrapping_add(1);
     }
 
-    /// Sets the search marker to a countable, live item that starts at content index `index`
-    /// and block index `block_index`, or clears it.
-    pub(crate) fn set_search_marker(&mut self, at: Option<(ItemPtr, u32, u32)>) {
-        self.search_marker = at.map(|(item, index, block_index)| SearchMarker {
+    /// Sets the search marker to a countable, live item that starts at index `index`, or
+    /// clears it.
+    pub(crate) fn set_search_marker(&mut self, at: Option<(ItemPtr, u32)>) {
+        self.search_marker = at.map(|(item, index)| SearchMarker {
             id: item.id,
             index,
-            block_index,
             version: self.seq_version,
         });
     }
@@ -294,15 +291,14 @@ impl Branch {
         }
     }
 
-    /// A countable, live item that starts strictly before content index `index`, with its content
-    /// and block indexes, found from the search marker. `None` if there's no valid marker: the
+    /// A countable, live item that starts strictly before index `index`, with its index, found from the search marker. `None` if there's no valid marker: the
     /// branch changed since it was set, or it has formatting (whose attributes a lookup must
     /// collect from the start).
     pub(crate) fn find_search_marker(
         &self,
         store: &crate::store::Store,
         index: u32,
-    ) -> Option<(ItemPtr, u32, u32)> {
+    ) -> Option<(ItemPtr, u32)> {
         if self.has_formatting || index == 0 {
             return None;
         }
@@ -329,16 +325,14 @@ impl Branch {
             return None;
         }
         let mut at = marker.index.checked_sub(into)?;
-        let mut block_at = marker.block_index.checked_sub(into)?;
         // Step back to an item that starts before `index`.
         while at >= index {
             item = item.left?;
             if !item.is_deleted() && item.is_countable() {
                 at = at.checked_sub(item.content_len(store.offset_kind))?;
-                block_at = block_at.checked_sub(item.len())?;
             }
         }
-        Some((item, at, block_at))
+        Some((item, at))
     }
 
     pub fn is_deleted(&self) -> bool {
@@ -564,7 +558,6 @@ impl Branch {
             parent: parent.into(),
             left,
             right,
-            index: 0,
             current_attrs: None,
         };
 

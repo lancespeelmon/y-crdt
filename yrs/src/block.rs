@@ -1183,7 +1183,6 @@ pub(crate) struct ItemPosition {
     pub parent: TypePtr,
     pub left: Option<ItemPtr>,
     pub right: Option<ItemPtr>,
-    pub index: u32,
     pub current_attrs: Option<Box<Attrs>>,
 }
 
@@ -1191,15 +1190,9 @@ impl ItemPosition {
     pub fn forward(&mut self) -> bool {
         if let Some(right) = self.right.as_deref() {
             if !right.is_deleted() {
-                match &right.content {
-                    ItemContent::String(_) | ItemContent::Embed(_) => {
-                        self.index += right.len();
-                    }
-                    ItemContent::Format(key, value) => {
-                        let attrs = self.current_attrs.get_or_init();
-                        update_current_attributes(attrs, key, value.as_ref());
-                    }
-                    _ => {}
+                if let ItemContent::Format(key, value) = &right.content {
+                    let attrs = self.current_attrs.get_or_init();
+                    update_current_attributes(attrs, key, value.as_ref());
                 }
             }
 
@@ -2410,14 +2403,12 @@ impl std::fmt::Display for ItemContent {
 
 impl std::fmt::Display for ItemPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(index: {}", self.index)?;
-        if let Some(l) = self.left.as_ref() {
-            write!(f, ", left: {}", l)?;
+        match (self.left.as_ref(), self.right.as_ref()) {
+            (Some(l), Some(r)) => write!(f, "(left: {}, right: {})", l, r),
+            (Some(l), None) => write!(f, "(left: {})", l),
+            (None, Some(r)) => write!(f, "(right: {})", r),
+            (None, None) => write!(f, "()"),
         }
-        if let Some(r) = self.right.as_ref() {
-            write!(f, ", right: {}", r)?;
-        }
-        write!(f, ")")
     }
 }
 

@@ -267,7 +267,6 @@ pub trait Text: AsRef<Branch> + Sized {
             parent: TypePtr::Branch(branch),
             left: None,
             right: branch.start,
-            index: 0,
             current_attrs: Some(Box::new(Attrs::new())),
         };
         for delta in delta {
@@ -906,7 +905,6 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
             parent: this.into(),
             left: None,
             right: this.start,
-            index: 0,
             current_attrs: None,
         }
     };
@@ -917,14 +915,12 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
     let mut remaining = index;
     // Start from the search marker if it's valid: an item before `index` with known indexes.
     // The walk then reaches it just as a walk from the start would (no formatting to collect).
-    if let Some((item, at, block_at)) = this.find_search_marker(txn.store(), index) {
+    if let Some((item, at)) = this.find_search_marker(txn.store(), index) {
         pos.left = item.left;
         pos.right = Some(item);
-        pos.index = block_at;
         remaining = index - at;
     }
-    // The last countable, live item the walk passes, with its content and block indexes: the
-    // next marker.
+    // The last countable, live item the walk passes, with its index: the next marker.
     let mut passed = None;
     let store = txn.store_mut();
     let encoding = store.offset_kind;
@@ -944,9 +940,8 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
                 }
                 _ => {
                     if right.is_countable() {
-                        passed = Some((right, index - remaining, pos.index));
+                        passed = Some((right, index - remaining));
                     }
-                    let mut block_len = right.len();
                     let content_len = right.content_len(encoding);
                     if remaining < content_len {
                         // split right item
@@ -960,12 +955,10 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
                             .split_block(right, offset, OffsetKind::Utf16)
                             .unwrap();
                         splits.push(*right_half.id());
-                        block_len -= offset;
                         remaining = 0;
                     } else {
                         remaining -= content_len;
                     }
-                    pos.index += block_len;
                 }
             }
         }

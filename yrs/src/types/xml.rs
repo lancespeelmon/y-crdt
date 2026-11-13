@@ -1052,7 +1052,6 @@ pub trait Xml: AsRef<Branch> {
                 parent: BranchPtr::from(inner).into(),
                 left: left.cloned(),
                 right: None,
-                index: 0,
                 current_attrs: None,
             }
         };
