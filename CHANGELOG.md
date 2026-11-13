@@ -193,6 +193,9 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi: an iterator (array, map, XML attributes, XML tree walker, weak link, JSON path) whose
+  transaction has been committed returns NULL from its `*_next` function, with the reason in
+  `ylast_error`, instead of reading through the freed transaction. It can still be destroyed.
 - yffi: a transaction keeps its document alive, so destroying the document while a transaction
   on it is open no longer frees the store under it (a use-after-free); the document is freed when
   the transaction is committed.
