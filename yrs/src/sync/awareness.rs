@@ -169,7 +169,7 @@ impl Awareness {
                 false
             }
         };
-        if is_removed && self.on_update.has_subscribers() || self.on_change.has_subscribers() {
+        if is_removed && (self.on_update.has_subscribers() || self.on_change.has_subscribers()) {
             let e = Event::new(Vec::default(), Vec::default(), vec![client_id]);
             let mut on_change = std::mem::take(&mut self.on_change);
             on_change.trigger(|fun| fun(self, &e, None));
@@ -178,6 +178,79 @@ impl Awareness {
             on_update.trigger(|fun| fun(self, &e, None));
             self.on_update = on_update;
         }
+    }
+
+    /// Removes the states of `clients`, as Yjs' `removeAwarenessStates` does. A server calls it
+    /// for the clients of a connection that closed, then sends [Awareness::update_with_clients]
+    /// for them to the remaining peers so they drop them too.
+    ///
+    /// A removed remote client keeps its clock, so an older update from it can't bring the state
+    /// back; this client's own clock goes up, so peers see the removal as newer than its state.
+    /// Returns the clients that had a state, after notifying the observers with `origin`.
+    pub fn remove_states<I, O>(&mut self, clients: I, origin: Option<O>) -> Vec<ClientID>
+    where
+        I: IntoIterator<Item = ClientID>,
+        O: Into<Origin>,
+    {
+        let own = self.doc.client_id();
+        let now = self.clock.now();
+        let mut removed = Vec::new();
+        for client_id in clients {
+            if let Some(mut state) = self.states.get_mut(&client_id) {
+                if client_id == own {
+                    state.clock += 1;
+                    state.last_updated = now;
+                }
+                if state.data.take().is_some() {
+                    removed.push(client_id);
+                }
+            }
+        }
+        if !removed.is_empty() {
+            let origin = origin.map(Into::into);
+            let e = Event::new(Vec::default(), Vec::default(), removed.clone());
+            let mut on_change = std::mem::take(&mut self.on_change);
+            on_change.trigger(|fun| fun(self, &e, origin.as_ref()));
+            self.on_change = on_change;
+            let mut on_update = std::mem::take(&mut self.on_update);
+            on_update.trigger(|fun| fun(self, &e, origin.as_ref()));
+            self.on_update = on_update;
+        }
+        removed
+    }
+
+    /// What Yjs' awareness does every few seconds on its own (yrs has no timers, so call this
+    /// periodically, every 3 s like Yjs or so):
+    ///
+    /// - renews this client's state when half of [OUTDATED_TIMEOUT] has passed since it was last
+    ///   set, so peers don't time it out (send [Awareness::update] when it returns `renewed`);
+    /// - removes remote states not updated for [OUTDATED_TIMEOUT], with origin `"timeout"`.
+    pub fn check_timeouts(&mut self) -> TimeoutCheck {
+        let now = self.clock.now();
+        let own = self.doc.client_id();
+        let mut renewed = false;
+        let local = self
+            .states
+            .get(&own)
+            .and_then(|s| s.data.clone().map(|data| (data, s.last_updated)));
+        if let Some((data, last_updated)) = local {
+            if now.saturating_sub(last_updated) >= OUTDATED_TIMEOUT / 2 {
+                self.set_local_state_raw(data);
+                renewed = true;
+            }
+        }
+        let outdated: Vec<ClientID> = self
+            .states
+            .iter()
+            .filter(|e| {
+                *e.key() != own
+                    && e.data.is_some()
+                    && now.saturating_sub(e.last_updated) >= OUTDATED_TIMEOUT
+            })
+            .map(|e| *e.key())
+            .collect();
+        let removed = self.remove_states(outdated, Some("timeout"));
+        TimeoutCheck { renewed, removed }
     }
 
     /// Gets the state of a particular client.
@@ -504,6 +577,20 @@ impl AwarenessUpdateSummary {
     }
 }
 
+/// How long a remote client's state lasts without an update before
+/// [Awareness::check_timeouts] removes it, in the [Clock]'s units (milliseconds for
+/// [crate::sync::time::SystemClock]). The same 30 seconds as Yjs' `outdatedTimeout`.
+pub const OUTDATED_TIMEOUT: Timestamp = 30_000;
+
+/// What [Awareness::check_timeouts] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TimeoutCheck {
+    /// This client's state was renewed; send [Awareness::update] to peers.
+    pub renewed: bool,
+    /// Remote clients whose states timed out and were removed.
+    pub removed: Vec<ClientID>,
+}
+
 /// A structure that represents an encodable state of an [Awareness] struct.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AwarenessUpdate {
@@ -797,6 +884,132 @@ mod test {
         assert!(local.state::<Value>(ClientID::new(1)).is_none());
         assert_eq!(comparable_states(&local), comparable_states(&remote));
         Ok(())
+    }
+
+    /// A clock the test moves by hand.
+    fn manual_clock() -> (Arc<std::sync::atomic::AtomicU64>, impl crate::sync::Clock) {
+        let now = Arc::new(std::sync::atomic::AtomicU64::new(1_000));
+        let clock = now.clone();
+        (now, move || clock.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    fn advance(now: &std::sync::atomic::AtomicU64, by: u64) {
+        now.fetch_add(by, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn check_timeouts_renews_the_local_state_and_drops_silent_peers_like_yjs() {
+        use crate::sync::awareness::{TimeoutCheck, OUTDATED_TIMEOUT};
+        let (now, clock) = manual_clock();
+        let mut local = Awareness::with_clock(Doc::with_client_id(1), clock);
+        let mut remote = Awareness::new(Doc::with_client_id(2));
+        remote.set_local_state(json!({"name":"remote"})).unwrap();
+        local.set_local_state(json!({"name":"local"})).unwrap();
+        local.apply_update(remote.update().unwrap()).unwrap();
+
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        {
+            let events = events.clone();
+            local.on_change("sub", move |_, e, origin| {
+                let origin = origin.map(|o| o.as_ref().to_vec());
+                events.lock().unwrap().push((e.removed().to_vec(), origin));
+            });
+        }
+
+        // Nothing is due yet.
+        advance(&now, OUTDATED_TIMEOUT / 2 - 1);
+        assert_eq!(local.check_timeouts(), TimeoutCheck::default());
+
+        // Half the timeout: the local state is renewed with a higher clock, unchanged.
+        advance(&now, 1);
+        let before = local.meta(ClientID::new(1)).unwrap().0;
+        let check = local.check_timeouts();
+        assert!(check.renewed);
+        assert!(check.removed.is_empty());
+        assert_eq!(local.meta(ClientID::new(1)).unwrap().0, before + 1);
+        assert_eq!(
+            local.state::<Value>(ClientID::new(1)),
+            Some(json!({"name":"local"}))
+        );
+        assert!(events.lock().unwrap().is_empty(), "renewal is not a change");
+
+        // The full timeout since the remote's last update: it is removed, with origin "timeout".
+        advance(&now, OUTDATED_TIMEOUT / 2);
+        let check = local.check_timeouts();
+        assert_eq!(check.removed, vec![ClientID::new(2)]);
+        assert_eq!(local.state::<Value>(ClientID::new(2)), None);
+        assert_eq!(
+            local.state::<Value>(ClientID::new(1)),
+            Some(json!({"name":"local"})),
+            "the local state never times out"
+        );
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            &[(vec![ClientID::new(2)], Some(b"timeout".to_vec()))]
+        );
+
+        // Already removed: nothing more to do until the local state is due again.
+        assert!(local.check_timeouts().removed.is_empty());
+    }
+
+    #[test]
+    fn removed_states_reach_peers_and_stale_updates_do_not_revive_them() {
+        let mut server = Awareness::new(Doc::with_client_id(1));
+        let mut a = Awareness::new(Doc::with_client_id(2));
+        let mut b = Awareness::new(Doc::with_client_id(3));
+        a.set_local_state(json!({"a":1})).unwrap();
+        let stale = a.update().unwrap();
+        server.apply_update(stale.clone()).unwrap();
+        b.apply_update(server.update().unwrap()).unwrap();
+        assert!(b.state::<Value>(ClientID::new(2)).is_some());
+
+        // `a` disconnects: the server drops it and tells `b`.
+        let removed = server.remove_states([ClientID::new(2), ClientID::new(99)], Some("closed"));
+        assert_eq!(removed, vec![ClientID::new(2)], "only clients with a state");
+        b.apply_update(server.update_with_clients([ClientID::new(2)]).unwrap())
+            .unwrap();
+        assert_eq!(b.state::<Value>(ClientID::new(2)), None);
+
+        // A delayed copy of the old update doesn't bring `a` back.
+        server.apply_update(stale).unwrap();
+        assert_eq!(server.state::<Value>(ClientID::new(2)), None);
+
+        // Removing again reports nothing.
+        assert!(server
+            .remove_states([ClientID::new(2)], None::<&str>)
+            .is_empty());
+    }
+
+    #[test]
+    fn removing_the_local_state_raises_its_clock_so_peers_accept_it() {
+        let mut local = Awareness::new(Doc::with_client_id(1));
+        let mut peer = Awareness::new(Doc::with_client_id(2));
+        local.set_local_state(json!({"x":1})).unwrap();
+        peer.apply_update(local.update().unwrap()).unwrap();
+        let clock = local.meta(ClientID::new(1)).unwrap().0;
+
+        assert_eq!(
+            local.remove_states([ClientID::new(1)], None::<&str>),
+            vec![ClientID::new(1)]
+        );
+        assert_eq!(local.meta(ClientID::new(1)).unwrap().0, clock + 1);
+        peer.apply_update(local.update_with_clients([ClientID::new(1)]).unwrap())
+            .unwrap();
+        assert_eq!(peer.state::<Value>(ClientID::new(1)), None);
+    }
+
+    #[test]
+    fn removing_an_unknown_client_notifies_nobody() {
+        let mut local = Awareness::new(Doc::with_client_id(1));
+        let fired = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let fired = fired.clone();
+            local.on_change("sub", move |_, _, _| {
+                fired.store(true, std::sync::atomic::Ordering::SeqCst)
+            });
+        }
+        local.remove_state(ClientID::new(7));
+        assert!(!fired.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     /// Client states without `last_updated`: that is wall-clock time taken separately by each

@@ -31,6 +31,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Awareness parity with Yjs for servers (yrs has no timers, so these are methods to call
+  periodically): `Awareness::check_timeouts` renews the local state every 15 s and removes
+  remote states not updated for `OUTDATED_TIMEOUT` (30 s) with origin `"timeout"`, and
+  `Awareness::remove_states` removes the states of a closed connection's clients, like Yjs'
+  `removeAwarenessStates`.
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
 - `Any::MAX_DECODE_DEPTH`: decoding an `Any` value nested deeper than this returns an error.
@@ -42,6 +47,8 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- `Awareness::remove_state` no longer notifies `on_change` observers when the client had no
+  state (an operator-precedence slip).
 - Text split to be formatted is merged back at commit, as Yjs merges split items, so yrs encodes
   the same blocks as Yjs for the same edits. A format that changed nothing used to leave the text
   split for good, and a split followed by another block of the same client was never merged.
