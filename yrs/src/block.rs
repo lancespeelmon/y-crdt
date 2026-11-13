@@ -471,8 +471,8 @@ impl ItemPtr {
     ) -> Option<ItemPtr> {
         let self_ptr = self.clone();
         let item = self.deref_mut();
-        if let Some(redone) = item.redone.as_ref() {
-            let slice = txn.store.blocks.get_item_clean_start(redone)?;
+        if let Some(redone) = txn.store.redone_of(item) {
+            let slice = txn.store.blocks.get_item_clean_start(&redone)?;
             return Some(txn.store.materialize(slice));
         }
 
@@ -481,7 +481,7 @@ impl ItemPtr {
         if let Some(mut parent) = parent_block.clone() {
             if parent.is_deleted() {
                 // try to undo parent if it will be undone anyway
-                if parent.redone.is_none()
+                if !parent.info.is_redone()
                     && (!redo_items.contains(&parent)
                         || parent
                             .redo(
@@ -496,14 +496,14 @@ impl ItemPtr {
                 {
                     return None;
                 }
-                let mut redone = parent.redone;
+                let mut redone = txn.store.redone_of(&parent);
                 while let Some(id) = redone.as_ref() {
                     parent_block = txn
                         .store
                         .blocks
                         .get_item_clean_start(id)
                         .map(|slice| txn.store.materialize(slice));
-                    redone = parent_block.and_then(|ptr| ptr.redone);
+                    redone = parent_block.and_then(|ptr| txn.store.redone_of(&ptr));
                 }
             }
         }
@@ -528,7 +528,7 @@ impl ItemPtr {
                 while let Some(left_item) = left.as_deref() {
                     if let Some(left_right) = left_item.right {
                         let id = left_right.id();
-                        if left_right.redone.is_some()
+                        if left_right.info.is_redone()
                             || items_to_delete.contains(id)
                             || s1.is_deleted(id)
                             || s2.is_deleted(id)
@@ -536,8 +536,8 @@ impl ItemPtr {
                             // follow redone
                             left = Some(left_right);
                             while let Some(item) = left.as_deref() {
-                                if let Some(id) = item.redone.as_ref() {
-                                    left = match txn.store.blocks.get_item_clean_start(id) {
+                                if let Some(id) = txn.store.redone_of(item) {
+                                    left = match txn.store.blocks.get_item_clean_start(&id) {
                                         None => break,
                                         Some(slice) => {
                                             let ptr = txn.store.materialize(slice);
@@ -575,8 +575,8 @@ impl ItemPtr {
                 while let Some(trace) = left_trace.as_deref() {
                     let p = trace.parent.as_branch().and_then(|p| p.item);
                     if parent_block != p {
-                        left_trace = if let Some(redone) = trace.redone.as_ref() {
-                            let slice = txn.store.blocks.get_item_clean_start(redone);
+                        left_trace = if let Some(redone) = txn.store.redone_of(trace) {
+                            let slice = txn.store.blocks.get_item_clean_start(&redone);
                             slice.map(|s| txn.store.materialize(s))
                         } else {
                             None
@@ -601,8 +601,8 @@ impl ItemPtr {
                 while let Some(trace) = right_trace.as_deref() {
                     let p = trace.parent.as_branch().and_then(|p| p.item);
                     if parent_block != p {
-                        right_trace = if let Some(redone) = trace.redone.as_ref() {
-                            let slice = txn.store.blocks.get_item_clean_start(redone);
+                        right_trace = if let Some(redone) = txn.store.redone_of(trace) {
+                            let slice = txn.store.blocks.get_item_clean_start(&redone);
                             slice.map(|s| txn.store.materialize(s))
                         } else {
                             None
@@ -634,7 +634,8 @@ impl ItemPtr {
             item.parent_sub.clone(),
             item.content.clone(),
         )?;
-        item.redone = Some(*redone_item.id());
+        item.info.set_redone();
+        txn.store.set_redone(item, *redone_item.id());
         redone_item.info.set_keep();
         txn.integrate_item(redone_item, 0)
     }
@@ -684,7 +685,6 @@ impl ItemPtr {
                 parent: item.parent.clone(),
                 parent_sub: item.parent_sub.clone(),
                 info: item.info.clone(),
-                redone: item.redone.map(|id| ID::new(id.client, id.clock + offset)),
             });
             let new_ptr = ItemPtr::from(&mut new);
 
@@ -718,7 +718,7 @@ impl ItemPtr {
             && self.right_origin == other.right_origin
             && self.right == Some(other)
             && self.is_deleted() == other.is_deleted()
-            && (self.redone.is_none() && other.redone.is_none())
+            && !(self.info.is_redone() || other.info.is_redone())
             && (!self.info.is_linked() && !other.info.is_linked()) // linked items cannot be merged
             && self.content.try_squash(&other.content)
         {
@@ -1223,6 +1223,10 @@ impl ItemPosition {
 /// Bit flag (9st bit) for item that is linked by Weak Link references
 const ITEM_FLAG_LINKED: u16 = 0b0001_0000_0000;
 
+/// Bit flag (10th bit) for an item that undo has redone: the store's `redone` table says as
+/// what. Kept on split halves, which find their target by offset.
+const ITEM_FLAG_REDONE: u16 = 0b0010_0000_0000;
+
 /// Bit flag (4th bit) for a marked item - not used atm.
 const ITEM_FLAG_MARKED: u16 = 0b0000_1000;
 
@@ -1324,6 +1328,17 @@ impl ItemFlags {
     pub fn clear_linked(&mut self) {
         self.clear(ITEM_FLAG_LINKED)
     }
+
+    /// Whether undo has redone the item; see [crate::store::Store::redone_of].
+    #[inline]
+    pub fn is_redone(&self) -> bool {
+        self.check(ITEM_FLAG_REDONE)
+    }
+
+    #[inline]
+    pub(crate) fn set_redone(&mut self) {
+        self.set(ITEM_FLAG_REDONE)
+    }
 }
 
 impl Into<u16> for ItemFlags {
@@ -1372,10 +1387,6 @@ pub struct Item {
 
     /// Pointer to a parent collection containing current item.
     pub(crate) parent: TypePtr,
-
-    /// Used by [UndoManager] to track another block that reverts the effects of deletion of current
-    /// item.
-    pub(crate) redone: Option<ID>,
 
     /// Used only when current item is used by map-like types. In such case this item works as a
     /// key-value entry of a map, and this field contains a key used by map.
@@ -1528,7 +1539,6 @@ impl Item {
             parent,
             parent_sub,
             info,
-            redone: None,
         });
         let item_ptr = ItemPtr::from(&mut item);
         if let ItemContent::Type(branch) = &mut item.content {
@@ -2307,8 +2317,8 @@ impl std::fmt::Display for Item {
                 write!(f, ", parent: {}", other)?;
             }
         }
-        if let Some(id) = self.redone.as_ref() {
-            write!(f, ", redone: {}", id)?;
+        if self.info.is_redone() {
+            write!(f, ", redone")?;
         }
         if let Some(origin) = self.origin.as_ref() {
             write!(f, ", origin-l: {}", origin)?;
@@ -2602,4 +2612,15 @@ mod test {
         assert_eq!(a, "Zażółć gęślą jaźń\u{FFFD}");
         assert_eq!(b, "\u{FFFD}ありがとうございます");
     }
+}
+
+#[cfg(test)]
+#[test]
+fn an_item_is_at_most_144_bytes() {
+    // 160 before `redone` moved to the store's side table (6.4).
+    assert!(
+        std::mem::size_of::<Item>() <= 144,
+        "{}",
+        std::mem::size_of::<Item>()
+    );
 }

@@ -23,7 +23,7 @@ use async_lock::futures::{Read, Write};
 use async_lock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -37,6 +37,10 @@ pub struct Store {
     pub(crate) gc_filter: Option<crate::doc::GcFilter>,
     #[cfg_attr(not(feature = "weak"), allow(dead_code))]
     pub(crate) weak_links: bool,
+    /// What undo redid each redone item as (Yjs' `item.redone`), kept here rather than in every
+    /// item. Keyed by the item's ID when it was redone, with its length then: a later split
+    /// half finds its target at the same offset (redone items are never squashed).
+    pub(crate) redone: BTreeMap<(ClientID, u32), (u32, ID)>,
     pub(crate) metrics: Option<crate::metrics::Metrics>,
     pub(crate) cleanup_formatting: bool,
 
@@ -125,6 +129,7 @@ impl Store {
     /// Create a new empty store in context of a given `client_id`.
     pub(crate) fn new(options: &Options) -> Self {
         Store {
+            redone: BTreeMap::new(),
             client_id: options.client_id,
             offset_kind: options.offset_kind,
             skip_gc: options.skip_gc,
@@ -429,15 +434,33 @@ impl Store {
         SubdocGuids(self.subdocs.values())
     }
 
+    /// The ID that `item` was redone as, if undo redid it.
+    pub(crate) fn redone_of(&self, item: &crate::block::Item) -> Option<ID> {
+        if !item.info.is_redone() {
+            return None;
+        }
+        let (client, clock) = (item.id.client, item.id.clock);
+        let (&(c, start), &(len, target)) = self.redone.range(..=(client, clock)).next_back()?;
+        if c != client || clock >= start + len {
+            return None;
+        }
+        Some(ID::new(target.client, target.clock + (clock - start)))
+    }
+
+    /// Records that `item` (already flagged) was redone as `target`.
+    pub(crate) fn set_redone(&mut self, item: &crate::block::Item, target: ID) {
+        self.redone
+            .insert((item.id.client, item.id.clock), (item.len, target));
+    }
+
     pub(crate) fn follow_redone(&self, id: &ID) -> Option<ItemSlice> {
         let mut next_id = Some(*id);
         let mut slice = None;
         while let Some(next) = next_id.as_mut() {
             slice = self.blocks.get_item_clean_start(next);
             if let Some(slice) = &slice {
-                next_id = slice
-                    .ptr
-                    .redone
+                next_id = self
+                    .redone_of(&slice.ptr)
                     .map(|redone| ID::new(redone.client, redone.clock + slice.start));
             } else {
                 break;

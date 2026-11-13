@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- An item takes 144 bytes instead of 160 (part of 6.4): what undo redid an item as moved from a
+  field of every item to a table on the store, which only redone items use. Undo and redo behave
+  identically (checked against the previous version on 300 random two-peer edit, undo and redo
+  histories).
 - Updates that arrive before the ones they depend on no longer make the pending queue quadratic. A
   blocked update joins the queue without re-merging all of it when its blocks sit wholly before or
   after the queue's, and the queue is retried only once a block it waits for has arrived. Applying
