@@ -28,6 +28,7 @@ use crate::*;
 
 pub mod array;
 pub mod map;
+pub mod offset;
 pub mod text;
 #[cfg(feature = "weak")]
 pub mod weak;

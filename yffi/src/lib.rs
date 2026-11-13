@@ -396,6 +396,9 @@ pub unsafe extern "C" fn yoptions() -> YOptions {
 fn ffi_default_options() -> Options {
     Options {
         weak_links: false,
+        // `Y_OFFSET_BYTES` is 0, the flags' default: C callers count UTF-8 bytes unless they ask
+        // for UTF-16, while yrs itself now defaults to UTF-16.
+        offset_kind: OffsetKind::Bytes,
         ..Options::default()
     }
 }

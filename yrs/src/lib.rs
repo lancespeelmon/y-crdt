@@ -716,6 +716,7 @@ pub use crate::types::array::ArrayRef;
 pub use crate::types::map::Map;
 pub use crate::types::map::MapPrelim;
 pub use crate::types::map::MapRef;
+pub use crate::types::offset::{CharOffset, OffsetError, TextOffset, Utf16Offset, Utf8Offset};
 pub use crate::types::text::Text;
 pub use crate::types::text::TextPrelim;
 pub use crate::types::text::TextRef;

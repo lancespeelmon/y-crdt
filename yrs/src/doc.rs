@@ -522,9 +522,11 @@ pub struct Options {
     ///
     /// Default value: `None`.
     pub collection_id: Option<Arc<str>>,
-    /// How to we count offsets and lengths used in text operations.
+    /// How offsets and lengths in text operations are counted.
     ///
-    /// Default value: [OffsetKind::Bytes].
+    /// Default value: [OffsetKind::Utf16], as in Yjs, so indexes mean the same on every peer.
+    /// [crate::Text::try_insert_at] and the other `_at` methods take an offset in an explicit
+    /// unit whatever this is.
     pub offset_kind: OffsetKind,
     /// Determines if transactions commits should try to perform GC-ing of deleted items.
     ///
@@ -614,7 +616,7 @@ impl Options {
             client_id,
             guid: uuid_v4(),
             collection_id: None,
-            offset_kind: OffsetKind::Bytes,
+            offset_kind: OffsetKind::Utf16,
             skip_gc: false,
             auto_load: false,
             should_load: true,
@@ -631,7 +633,7 @@ impl Options {
             client_id,
             guid,
             collection_id: None,
-            offset_kind: OffsetKind::Bytes,
+            offset_kind: OffsetKind::Utf16,
             skip_gc: false,
             auto_load: false,
             should_load: true,

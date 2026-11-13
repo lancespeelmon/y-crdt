@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** text indexes count UTF-16 code units by default (`Options::offset_kind` is
+  `OffsetKind::Utf16`), as in Yjs, so an index means the same position on every peer. Set
+  `OffsetKind::Bytes` for the old behavior. ywasm already used UTF-16; yffi keeps UTF-8 bytes,
+  the default of its `Y_OFFSET_*` flag.
 - **Breaking:** the `block` and `branch` modules are private. What user code needs from them is
   at the crate root: `Prelim`, `ItemContent`, `EmbedPrelim`, `Unused` and `Item` (the
   `gc_filter` argument), next to `ClientID` and `ID`. Items, branches, their raw pointers, the
@@ -102,6 +106,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Typed text positions: `Utf8Offset`, `Utf16Offset` and `CharOffset` (and the `TextOffset`
+  they convert to). `Text::offset` turns one into an index in the document's units, and
+  `Text::try_insert_at`, `try_remove_range_at` and `try_format_at` edit at them directly,
+  whatever unit the document counts in. They return `OffsetError` for a position past the end
+  or inside a character.
 - `try_insert`, `try_remove_range` and `try_format` on `Text`, and `try_insert` and
   `try_remove_range` on `Array` and `XmlFragment`. They return the new `error::OutOfRange`
   instead of panicking, and change nothing when they fail. The panicking methods call them.
