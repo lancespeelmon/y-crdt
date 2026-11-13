@@ -1146,7 +1146,9 @@ typedef struct YBranchId {
 } YBranchId;
 
 /**
- * Returns default ceonfiguration for `YOptions`.
+ * Returns the default configuration for `YOptions`. Its `guid` and `collection_id` are NULL:
+ * a document created with a NULL `guid` gets a random one (read it back with [ydoc_guid]).
+ * Nothing in the returned value needs freeing, and strings you set in it stay yours.
  */
 struct YOptions yoptions(void);
 
@@ -1233,6 +1235,20 @@ uint8_t ydoc_should_load(YDoc *doc);
  * send a load request to their parent documents.
  */
 uint8_t ydoc_auto_load(YDoc *doc);
+
+/**
+ * Sets a function that is called with a callback's `state` once the callback is gone for good:
+ * unsubscribed, replaced under the same key, or dropped with its document or undo manager.
+ * Use it to release what `state` points to. It is called once per subscription, on the thread
+ * that removed it, and never while that callback is running. Pass NULL to stop calling it.
+ *
+ * The hook is process-wide and applies to every callback registered by the `*_observe*`
+ * functions, including ones registered before it was set.
+ *
+ * Callback arguments other than `state` (events, transactions, the values they hold) are valid
+ * only during the call: copy what you need before returning.
+ */
+void yset_callback_free_hook(void (*hook)(void*));
 
 /**
  * Subscribes a callback `cb` under a given `key` to updates (lib0 v1 encoded) produced by
@@ -1357,9 +1373,16 @@ struct YTransaction *ydoc_read_transaction(YDoc *doc);
 struct YTransaction *ydoc_write_transaction(YDoc *doc, uint32_t origin_len, const char *origin);
 
 /**
- * Returns a list of subdocs existing within current document.
+ * Returns a list of subdocs existing within current document. Release the array (not the
+ * documents) with [ysubdocs_destroy].
  */
 YDoc **ytransaction_subdocs(struct YTransaction *txn, uint32_t *len);
+
+/**
+ * Releases an array returned by [ytransaction_subdocs]. `len` is the length it reported. The
+ * documents themselves belong to their parent and aren't freed.
+ */
+void ysubdocs_destroy(YDoc **docs, uint32_t len);
 
 /**
  * Returns an array of all root-level shared types defined in a current document, including the

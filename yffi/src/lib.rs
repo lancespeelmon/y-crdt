@@ -432,10 +432,17 @@ impl From<Options> for YOptions {
     }
 }
 
-/// Returns default ceonfiguration for `YOptions`.
+/// Returns the default configuration for `YOptions`. Its `guid` and `collection_id` are NULL:
+/// a document created with a NULL `guid` gets a random one (read it back with [ydoc_guid]).
+/// Nothing in the returned value needs freeing, and strings you set in it stay yours.
 #[no_mangle]
 pub unsafe extern "C" fn yoptions() -> YOptions {
-    ffi_default_options().into()
+    let mut options: YOptions = ffi_default_options().into();
+    // `From<Options>` allocates the strings; the defaults don't need them, and the caller,
+    // who is free to overwrite these fields, would have no way to free them.
+    drop(CString::from_raw(options.guid as *mut c_char));
+    options.guid = std::ptr::null();
+    options
 }
 
 /// The defaults of a document created through this API: weak links off.
@@ -578,6 +585,36 @@ impl CallbackState {
     fn new(state: *mut c_void) -> Self {
         CallbackState(state)
     }
+}
+
+impl Drop for CallbackState {
+    fn drop(&mut self) {
+        let hook = CALLBACK_FREE_HOOK.load(std::sync::atomic::Ordering::Acquire);
+        if hook != 0 {
+            // SAFETY: only `yset_callback_free_hook` stores into it, and only a function pointer.
+            let hook: extern "C" fn(*mut c_void) = unsafe { std::mem::transmute(hook) };
+            hook(self.0);
+        }
+    }
+}
+
+/// The hook set by [yset_callback_free_hook], as an address (0 for none).
+static CALLBACK_FREE_HOOK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Sets a function that is called with a callback's `state` once the callback is gone for good:
+/// unsubscribed, replaced under the same key, or dropped with its document or undo manager.
+/// Use it to release what `state` points to. It is called once per subscription, on the thread
+/// that removed it, and never while that callback is running. Pass NULL to stop calling it.
+///
+/// The hook is process-wide and applies to every callback registered by the `*_observe*`
+/// functions, including ones registered before it was set.
+///
+/// Callback arguments other than `state` (events, transactions, the values they hold) are valid
+/// only during the call: copy what you need before returning.
+#[no_mangle]
+pub extern "C" fn yset_callback_free_hook(hook: Option<extern "C" fn(*mut c_void)>) {
+    let addr = hook.map_or(0, |f| f as usize);
+    CALLBACK_FREE_HOOK.store(addr, std::sync::atomic::Ordering::Release);
 }
 
 /// Builds an observer key out of a raw byte sequence. Empty (`len == 0`) keys are allowed.
@@ -830,7 +867,8 @@ pub unsafe extern "C" fn ydoc_write_transaction(
     }
 }
 
-/// Returns a list of subdocs existing within current document.
+/// Returns a list of subdocs existing within current document. Release the array (not the
+/// documents) with [ysubdocs_destroy].
 #[no_mangle]
 pub unsafe extern "C" fn ytransaction_subdocs(
     txn: *mut Transaction,
@@ -844,6 +882,16 @@ pub unsafe extern "C" fn ytransaction_subdocs(
     let out = subdocs.into_boxed_slice();
     *len = out.len() as u32;
     Box::into_raw(out) as *mut _
+}
+
+/// Releases an array returned by [ytransaction_subdocs]. `len` is the length it reported. The
+/// documents themselves belong to their parent and aren't freed.
+#[no_mangle]
+pub unsafe extern "C" fn ysubdocs_destroy(docs: *mut *mut Doc, len: u32) {
+    if !docs.is_null() {
+        let slice = std::ptr::slice_from_raw_parts_mut(docs, len as usize);
+        drop(Box::from_raw(slice));
+    }
 }
 
 /// A root-level shared type of a document: its name paired with a pointer to its branch.

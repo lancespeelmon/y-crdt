@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- An item takes 144 bytes instead of 160 (part of 6.4): what undo redid an item as moved from a
+  field of every item to a table on the store, which only redone items use. Undo and redo behave
+  identically (checked against the previous version on 300 random two-peer edit, undo and redo
+  histories).
 - Updates that arrive before the ones they depend on no longer make the pending queue quadratic. A
   blocked update joins the queue without re-merging all of it when its blocks sit wholly before or
   after the queue's, and the queue is retried only once a block it waits for has arrived. Applying
@@ -143,6 +147,9 @@ repository and its release notes.
   preliminary-value depth limit.
 - `yrs::undo::Options::with_clock`, the default options with a given clock. On wasm, where
   `Default` isn't available, this is how to build them.
+- yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
+  subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
+  so a host can release what `state` points to (plan item 7.4).
 - Binding parity (plan item 7.6):
   - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
     `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
@@ -230,6 +237,10 @@ repository and its release notes.
 - yffi: `yarray_try_insert_range` and `ytext_try_insert_embed` caught nothing: they called the
   `extern "C"` function, which can't unwind, so a panic aborted the process. They now report it
   as `Y_ERR_PANIC`.
+- yffi no longer leaks: `yoptions()` returns NULL `guid` and `collection_id` (a document
+  created with a NULL guid gets a random one, as before) instead of allocating strings the
+  caller couldn't free, and the array from `ytransaction_subdocs` is released with the new
+  `ysubdocs_destroy`.
 - yffi: `yinput_weak` borrows its weak link instead of taking it over. Inserting the input took
   the caller's reference, so the documented `yweak_destroy` afterwards freed a source the
   inserted link still pointed to. Callers that didn't destroy it now leak one reference instead.
