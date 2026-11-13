@@ -743,6 +743,8 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
     };
 
     let mut format_ptrs = HashMap::new();
+    // Like Yjs' `splitItem`, every split is merged back at commit if nothing came between.
+    let mut splits = Vec::new();
     let store = txn.store_mut();
     let encoding = store.offset_kind;
     let mut remaining = index;
@@ -770,10 +772,11 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
                         } else {
                             remaining
                         };
-                        store
+                        let right_half = store
                             .blocks
                             .split_block(right, offset, OffsetKind::Utf16)
                             .unwrap();
+                        splits.push(*right_half.id());
                         block_len -= offset;
                         remaining = 0;
                     } else {
@@ -790,6 +793,7 @@ fn find_position(this: BranchPtr, txn: &mut TransactionMut, index: u32) -> Optio
             None
         };
     }
+    txn.merge_blocks.extend(splits);
 
     for (_, block_ptr) in format_ptrs {
         if let Some(item) = block_ptr {
@@ -912,6 +916,7 @@ fn insert_format(
                             txn.store_mut()
                                 .blocks
                                 .split_block(right, offset, OffsetKind::Utf16);
+                        txn.merge_blocks.extend(new_right.map(|r| *r.id()));
                         pos.left = Some(right);
                         pos.right = new_right;
                         break;
@@ -925,6 +930,7 @@ fn insert_format(
                             txn.store_mut()
                                 .blocks
                                 .split_block(right, len, OffsetKind::Utf16);
+                        txn.merge_blocks.extend(new_right.map(|r| *r.id()));
                         pos.left = Some(right);
                         pos.right = new_right;
                         break;
@@ -1515,6 +1521,46 @@ mod test {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    /// The full state of a doc of client 1 after `edit`, which gets the text and the map.
+    fn state_after(edit: impl Fn(&TextRef, &crate::MapRef, &mut TransactionMut)) -> Vec<u8> {
+        let doc = Doc::with_client_id(1);
+        let text = doc.get_or_insert_text("text");
+        let map = doc.get_or_insert_map("map");
+        text.insert(&mut doc.transact_mut(), 0, "aaa");
+        edit(&text, &map, &mut doc.transact_mut());
+        let state = doc
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        state
+    }
+
+    fn unbold() -> Attrs {
+        Attrs::from([("bold".into(), Any::Null)])
+    }
+
+    #[test]
+    fn a_format_that_changes_nothing_leaves_the_text_in_one_block() {
+        // Yjs splits the text to format it and merges the halves back at commit, so it writes
+        // "aaa" as one block. yrs used to keep the split.
+        let expected = state_after(|_, _, _| {});
+        let unbolded = state_after(|text, _, txn| text.format(txn, 0, 1, unbold()));
+        assert_eq!(unbolded, expected);
+    }
+
+    #[test]
+    fn a_split_is_merged_back_even_when_another_block_follows_it() {
+        // The map entry comes right after the text's split halves in client 1's blocks. Merging
+        // used to try only "map entry into the right half", never "right half into the left".
+        let expected = state_after(|_, map, txn| {
+            map.insert(txn, "k", 1);
+        });
+        let unbolded = state_after(|text, map, txn| {
+            map.insert(txn, "k", 1);
+            text.format(txn, 1, 2, unbold());
+        });
+        assert_eq!(unbolded, expected);
+    }
 
     #[test]
     fn insert_empty_string() {

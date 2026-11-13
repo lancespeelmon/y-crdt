@@ -42,6 +42,9 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- Text split to be formatted is merged back at commit, as Yjs merges split items, so yrs encodes
+  the same blocks as Yjs for the same edits. A format that changed nothing used to leave the text
+  split for good, and a split followed by another block of the same client was never merged.
 - Updates received out of order could stay pending forever, so a peer never showed content that
   had arrived. A pending update recorded only which client it waited for, sometimes the wrong
   one (one whose blocks it held itself), and compared clocks, which can't see a hole that yrs
