@@ -199,6 +199,8 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
+  the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type
   that's already in a document (directly or inside a preliminary array, map or XML node), or
   a value with no CRDT representation. The check runs before anything changes, so the
