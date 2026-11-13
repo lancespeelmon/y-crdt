@@ -3014,4 +3014,76 @@ int32_t yxmltext_try_remove_range(const Branch *txt,
                                   uint32_t index,
                                   uint32_t len);
 
+/**
+ * Like [ytext_format], but returns [Y_ERR_INVALID] instead of aborting when the range runs
+ * past the end of the text or `attrs` isn't a map, with nothing changed.
+ */
+int32_t ytext_try_format(const Branch *txt,
+                         YTransaction *txn,
+                         uint32_t index,
+                         uint32_t len,
+                         const struct YInput *attrs);
+
+/**
+ * Like [ytext_insert_embed], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+ * past the end of the text or `attrs` (if not NULL) isn't a map, with nothing inserted.
+ */
+int32_t ytext_try_insert_embed(const Branch *txt,
+                               YTransaction *txn,
+                               uint32_t index,
+                               const struct YInput *content,
+                               const struct YInput *attrs);
+
+/**
+ * Like [yarray_insert_range], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+ * past the end of the array, with nothing inserted.
+ */
+int32_t yarray_try_insert_range(const Branch *array,
+                                YTransaction *txn,
+                                uint32_t index,
+                                const struct YInput *items,
+                                uint32_t items_len);
+
+/**
+ * Like [yxmlelem_insert_elem], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+ * past the last child or `name` isn't valid UTF-8, with nothing inserted. On success the new
+ * element is written to `out`, if `out` isn't NULL.
+ */
+int32_t yxmlelem_try_insert_elem(const Branch *xml,
+                                 YTransaction *txn,
+                                 uint32_t index,
+                                 const char *name,
+                                 Branch **out);
+
+/**
+ * Like [yxmlelem_insert_text], but returns [Y_ERR_INVALID] instead of aborting when `index` is
+ * past the last child, with nothing inserted. On success the new text is written to `out`, if
+ * `out` isn't NULL.
+ */
+int32_t yxmlelem_try_insert_text(const Branch *xml,
+                                 YTransaction *txn,
+                                 uint32_t index,
+                                 Branch **out);
+
+/**
+ * Like [yxmltext_insert], but returns [Y_ERR_INVALID] instead of aborting when `index` is past
+ * the end of the text, `str` isn't valid UTF-8 or `attrs` (if not NULL) isn't a map, with
+ * nothing inserted.
+ */
+int32_t yxmltext_try_insert(const Branch *txt,
+                            YTransaction *txn,
+                            uint32_t index,
+                            const char *str,
+                            const struct YInput *attrs);
+
+/**
+ * Like [yxmltext_format], but returns [Y_ERR_INVALID] instead of aborting when the range runs
+ * past the end of the text or `attrs` isn't a map, with nothing changed.
+ */
+int32_t yxmltext_try_format(const Branch *txt,
+                            YTransaction *txn,
+                            uint32_t index,
+                            uint32_t len,
+                            const struct YInput *attrs);
+
 #endif
