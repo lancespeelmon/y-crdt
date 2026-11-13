@@ -1037,20 +1037,20 @@ impl<'doc> TransactionMut<'doc> {
         }
         .or(item.parent_sub);
 
-        let mut parent = match &item.parent {
-            TypePtr::Branch(branch) => *branch,
+        let resolved = match &item.parent {
+            TypePtr::Branch(branch) => Some(*branch),
             TypePtr::Named(name) => {
-                let branch = store.get_or_create_type(name.clone(), TypeRef::Undefined);
+                Some(store.get_or_create_type(name.clone(), TypeRef::Undefined))
+            }
+            TypePtr::ID(id) => store.blocks.get_item(id).and_then(|i| i.as_branch()),
+            TypePtr::Unknown => None,
+        };
+        let mut parent = match resolved {
+            Some(branch) => {
                 item.parent = TypePtr::Branch(branch);
                 branch
             }
-            TypePtr::ID(id)
-                if let Some(branch) = store.blocks.get_item(id).and_then(|i| i.as_branch()) =>
-            {
-                item.parent = TypePtr::Branch(branch);
-                branch
-            }
-            _ => {
+            None => {
                 self.integrate_gc(item.range(), offset);
                 return None;
             }
