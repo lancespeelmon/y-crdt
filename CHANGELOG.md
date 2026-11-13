@@ -140,6 +140,12 @@ repository and its release notes.
 - yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
   subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
   so a host can release what `state` points to (plan item 7.4).
+- Binding parity (plan item 7.6):
+  - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
+    `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
+    `yundo_manager_with_flags` takes `Y_UNDO_IGNORE_REMOTE_MAP_CHANGES`.
+  - ywasm: `diffUpdateV1`/`V2` and `encodeStateVectorFromUpdateV1`/`V2`, next to the existing
+    `mergeUpdatesV1`/`V2`.
 - Server lifecycle (plan item 6.8):
   - `ReadTxn::write_state_as_update_v1` writes the v1 state to an `std::io::Write` in 64 KiB
     chunks, with the same bytes as `encode_state_as_update_v1`;
@@ -213,6 +219,12 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi: `yinput_weak` borrows its weak link instead of taking it over. Inserting the input took
+  the caller's reference, so the documented `yweak_destroy` afterwards freed a source the
+  inserted link still pointed to. Callers that didn't destroy it now leak one reference instead.
+- yffi: an iterator (array, map, XML attributes, XML tree walker, weak link, JSON path) whose
+  transaction has been committed returns NULL from its `*_next` function, with the reason in
+  `ylast_error`, instead of reading through the freed transaction. It can still be destroyed.
 - yffi: a transaction keeps its document alive, so destroying the document while a transaction
   on it is open no longer frees the store under it (a use-after-free); the document is freed when
   the transaction is committed.
