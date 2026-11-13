@@ -147,6 +147,11 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: cargo publish ybindings-core
+        run: sleep 20 && cd ./ybindings-core && cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
       - name: cargo publish yffi
         run: sleep 20 && cd ./yffi && cargo publish
         env:
