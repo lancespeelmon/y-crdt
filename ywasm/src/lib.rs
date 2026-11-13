@@ -52,6 +52,10 @@ pub use crate::weak::YWeakLinkEvent as WeakLinkEvent;
 
 /// Installs the panic hook when the module loads, so a panic inside WebAssembly is logged with
 /// its message through `console.error` instead of only an opaque `unreachable` trap.
+///
+/// A wasm module has one start function, so a crate that links ywasm as a library and has its
+/// own can turn this off with `default-features = false` and call [set_panic_hook] itself.
+#[cfg(feature = "console_error_panic_hook")]
 #[wasm_bindgen(start)]
 fn start() {
     set_panic_hook();

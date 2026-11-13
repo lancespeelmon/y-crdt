@@ -6342,3 +6342,23 @@ pub unsafe extern "C" fn yxmlelem_try_remove_range(
             .map_err(|e| e.to_string())
     })
 }
+
+/// Like [yxmltext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+/// runs past the end of the text, with nothing removed.
+#[no_mangle]
+pub unsafe extern "C" fn yxmltext_try_remove_range(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() {
+            return Err("XML text is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        XmlTextRef::from_raw_branch(txt)
+            .try_remove_range(txn, index, len)
+            .map_err(|e| e.to_string())
+    })
+}

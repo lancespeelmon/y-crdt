@@ -2733,3 +2733,16 @@ TEST_CASE("try functions return a status and leave the last error") {
     ytransaction_commit(read);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("yxmltext_try_remove_range refuses a range past the end") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *frag = yxmlfragment(doc, "xml");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    Branch *txt = yxmlelem_insert_text(frag, txn, 0);
+    yxmltext_insert(txt, txn, 0, "abc", NULL);
+    REQUIRE_EQ(yxmltext_try_remove_range(txt, txn, 1, 5), Y_ERR_INVALID);
+    REQUIRE_EQ(yxmltext_try_remove_range(txt, txn, 1, 2), Y_OK);
+    REQUIRE_EQ(yxmltext_len(txt, txn), 1);
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}

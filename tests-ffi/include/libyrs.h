@@ -2992,4 +2992,13 @@ int32_t yxmlelem_try_remove_range(const Branch *xml,
                                   uint32_t index,
                                   uint32_t len);
 
+/**
+ * Like [yxmltext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+ * runs past the end of the text, with nothing removed.
+ */
+int32_t yxmltext_try_remove_range(const Branch *txt,
+                                  YTransaction *txn,
+                                  uint32_t index,
+                                  uint32_t len);
+
 #endif

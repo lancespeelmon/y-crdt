@@ -71,6 +71,8 @@ def compare(path, threshold):
               f"{change:+7.1f}%{flag}")
     for name in sorted(set(now) - set(base)):
         print(f"{name[:60]:60} {'(new)':>12} {fmt(now[name]['median_ns']):>12}")
+    for name in sorted(set(base) - set(now)):
+        print(f"{name[:60]:60} {fmt(base[name]['median_ns']):>12} {'(missing)':>12}")
     sys.exit(1 if regressions else 0)
 
 
