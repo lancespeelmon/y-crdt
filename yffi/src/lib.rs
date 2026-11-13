@@ -3008,6 +3008,9 @@ impl Prelim for YInput {
                         TypeRef::XmlElement(name)
                     }
                     Y_WEAK_LINK => {
+                        // The input borrows the caller's reference (`yinput_weak`): take one
+                        // of our own, so the caller still frees theirs with `yweak_destroy`.
+                        Arc::increment_strong_count(self.value.weak);
                         let source = Arc::from_raw(self.value.weak);
                         TypeRef::WeakLink(source)
                     }
@@ -3723,6 +3726,9 @@ pub unsafe extern "C" fn yinput_ydoc(doc: *mut Doc) -> YInput {
 
 /// Function constructor used to create a string `YInput` cell with weak reference to another
 /// element(s) living inside of the same document.
+///
+/// The input borrows `weak`: inserting it doesn't take ownership, so release `weak` with
+/// [yweak_destroy] as usual, after the insert.
 #[no_mangle]
 pub unsafe extern "C" fn yinput_weak(weak: *const Weak) -> YInput {
     YInput {
@@ -6560,4 +6566,38 @@ pub unsafe extern "C" fn yxmltext_try_format(
             .try_format(txn, index, len, attrs)
             .map_err(|e| e.to_string())
     })
+}
+
+#[cfg(test)]
+mod weak_input_test {
+    use super::*;
+
+    #[test]
+    fn inserting_a_weak_input_leaves_the_caller_its_reference() {
+        unsafe {
+            let mut options = yoptions();
+            options.flags = Y_WEAK_LINKS;
+            let doc = ydoc_new_with_options(options);
+            let txt = ytext(doc, c"text".as_ptr());
+            let map = ymap(doc, c"map".as_ptr());
+            let txn = ydoc_write_transaction(doc, 0, null());
+            ytext_insert(txt, txn, 0, c"hello world".as_ptr(), null());
+            let (mut start, mut end) = (0u32, 4u32);
+            let weak = ytext_quote(txt, txn, &mut start, &mut end, 0, 0);
+            Arc::increment_strong_count(weak);
+            let held = Arc::from_raw(weak); // to watch the count
+            assert_eq!(Arc::strong_count(&held), 2); // ours and the caller's
+
+            let value = yinput_weak(weak);
+            ymap_insert(map, txn, c"link".as_ptr(), &value);
+            // the inserted link took a reference of its own
+            assert_eq!(Arc::strong_count(&held), 3);
+            yweak_destroy(weak);
+            assert_eq!(Arc::strong_count(&held), 2);
+
+            ytransaction_commit(txn);
+            ydoc_destroy(doc);
+            drop(held);
+        }
+    }
 }
