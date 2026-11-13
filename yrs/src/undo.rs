@@ -761,15 +761,31 @@ impl<M: std::fmt::Debug> std::fmt::Debug for UndoManager<M> {
 
 impl<M> Drop for UndoManager<M> {
     /// Never panics. Removing the manager's callbacks needs a transaction on each of its
-    /// documents; if one is in a transaction (the manager is dropped inside a callback, say), its
-    /// callbacks can't be removed now. They hold the manager's state by pointer, so the state is
-    /// then leaked rather than freed, and the callbacks turn inert and remove themselves later.
+    /// documents. If another thread holds one, drop waits for it. If this thread holds one (the
+    /// manager is dropped inside a callback, say), the callbacks can't be removed now: they hold
+    /// the manager's state by pointer and may still be running further up the stack, so the state
+    /// is leaked rather than freed, and the callbacks turn inert (the after-transaction one
+    /// removes itself at its next call).
     fn drop(&mut self) {
+        use crate::{Transact, TransactionAcqError};
         let origin = Origin::from(Arc::as_ptr(&self.state) as usize);
         let mut removed = true;
         for doc in self.state.docs.values() {
-            removed &= doc.unobserve_destroy(origin.clone()).is_ok();
-            removed &= doc.unobserve_after_transaction(origin.clone()).is_ok();
+            match doc.try_transact_mut() {
+                Ok(txn) => {
+                    txn.unobserve_destroy(origin.clone());
+                    txn.unobserve_after_transaction(origin.clone());
+                }
+                // This thread is inside one of the doc's transactions: possibly in one of our own
+                // callbacks, further up the stack, still using the state.
+                Err(TransactionAcqError::Reentrant) => removed = false,
+                // Another thread's transaction: wait for it, then remove the callbacks.
+                Err(_) => {
+                    let txn = doc.transact_mut();
+                    txn.unobserve_destroy(origin.clone());
+                    txn.unobserve_after_transaction(origin.clone());
+                }
+            }
         }
         if !removed {
             self.alive.store(false, Ordering::Release);

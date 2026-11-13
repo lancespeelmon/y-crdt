@@ -1,6 +1,7 @@
 use crate::Origin;
 use arc_swap::{ArcSwapOption, AsRaw};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Data structure used to handle publish/subscribe callbacks of a specific type.
@@ -12,6 +13,9 @@ pub struct Observer<F> {
     callbacks: HashMap<Origin, ArcSwapOption<F>>,
     /// Subscriptions not yet moved into `callbacks`, which can't change while a trigger walks it.
     pending: Mutex<Vec<(Origin, F)>>,
+    /// Whether `pending` may be non-empty, so [Observer::has_subscribers] (called on every
+    /// commit) doesn't lock it when there is nothing to find.
+    has_pending: AtomicBool,
 }
 
 impl<F> Observer<F> {
@@ -20,12 +24,14 @@ impl<F> Observer<F> {
         Observer {
             callbacks: HashMap::new(),
             pending: Mutex::new(Vec::new()),
+            has_pending: AtomicBool::new(false),
         }
     }
 
     /// Returns `true` if this observer has any active subscribers.
     pub fn has_subscribers(&self) -> bool {
-        !self.callbacks.is_empty() || !self.pending().is_empty()
+        !self.callbacks.is_empty()
+            || (self.has_pending.load(Ordering::Acquire) && !self.pending().is_empty())
     }
 
     fn pending(&self) -> std::sync::MutexGuard<'_, Vec<(Origin, F)>> {
@@ -39,6 +45,7 @@ impl<F> Observer<F> {
         let mut pending = self.pending();
         pending.retain(|(other, _)| *other != id);
         pending.push((id, callback));
+        self.has_pending.store(true, Ordering::Release);
     }
 
     /// Removes a callback by its key. Returns `true` if the callback was found and removed.
@@ -73,7 +80,11 @@ impl<F> Observer<F> {
     /// under the same key.
     fn drain_pending(&mut self) {
         self.callbacks.retain(|_, v| v.load().is_some());
+        if !*self.has_pending.get_mut() {
+            return;
+        }
         let pending = std::mem::take(&mut *self.pending());
+        *self.has_pending.get_mut() = false;
         for (id, callback) in pending {
             self.callbacks
                 .insert(id, ArcSwapOption::new(Some(Arc::new(callback))));
