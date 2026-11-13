@@ -106,6 +106,18 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: `ylast_error()` and status codes (`Y_OK`, `Y_ERR_INVALID`, `Y_ERR_PANIC`), with
+  `ytext_try_insert`, `ytext_try_remove_range`, `yarray_try_remove_range`,
+  `yxmlelem_try_remove_range` and `yxmltext_try_remove_range`, which return a status instead of aborting on a bad index or a
+  read-only transaction. A `release-ffi` cargo profile builds yffi with `panic = "unwind"`, so
+  a panic inside yrs comes back as `Y_ERR_PANIC` instead of aborting the host.
+- ywasm installs its panic hook when the module loads, so panics are logged with their message;
+  `setPanicHook` is still there. The module is optimized with `wasm-opt -Oz`, and CI holds it to
+  a size budget.
+- Benchmarks: `benchmarks/baseline.py` stores criterion results as baselines in the repository
+  and compares runs against them; allocation and memory budgets for hot paths are checked by
+  `yrs/tests/allocations.rs`. See `benchmarks/README.md`.
+- `docs/UNIFFI.md`: the plan for Swift and Kotlin bindings.
 - Typed text positions: `Utf8Offset`, `Utf16Offset` and `CharOffset` (and the `TextOffset`
   they convert to). `Text::offset` turns one into an index in the document's units, and
   `Text::try_insert_at`, `try_remove_range_at` and `try_format_at` edit at them directly,

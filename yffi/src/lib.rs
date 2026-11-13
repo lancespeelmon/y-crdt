@@ -6196,3 +6196,169 @@ pub unsafe extern "C" fn ybranch_json(branch: *mut Branch, txn: *mut Transaction
         CString::new(json).unwrap().into_raw()
     }
 }
+
+// Status codes and the per-thread error message (plan item 7.1). Functions that return a status
+// leave a description of the last failure on the calling thread, which `ylast_error` reads.
+
+/// Status of a call that succeeded.
+pub const Y_OK: i32 = 0;
+/// Status of a call refused for bad input, before it changed anything. [ylast_error] says why.
+pub const Y_ERR_INVALID: i32 = -1;
+/// Status of a call that panicked inside yrs. [ylast_error] has the panic message. The
+/// document may be left half-updated: drop it and reload it from a known state.
+///
+/// A panic is only caught when the library is built with `panic = "unwind"`, as the
+/// `release-ffi` profile does (`cargo build -p yffi --profile release-ffi`). Under
+/// `panic = "abort"`, the default release profile, it still aborts the process.
+pub const Y_ERR_PANIC: i32 = -2;
+
+thread_local! {
+    static LAST_ERROR: std::cell::RefCell<Option<CString>> = const { std::cell::RefCell::new(None) };
+}
+
+fn set_last_error(message: String) {
+    let message = CString::new(message.replace('\0', " ")).unwrap_or_default();
+    LAST_ERROR.with(|e| *e.borrow_mut() = Some(message));
+}
+
+/// Runs `f`, turning its error or panic into a status code and the thread's last error.
+fn ffi_guard(f: impl FnOnce() -> Result<(), String>) -> i32 {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(Ok(())) => Y_OK,
+        Ok(Err(message)) => {
+            set_last_error(message);
+            Y_ERR_INVALID
+        }
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panic inside yrs".to_string());
+            set_last_error(message);
+            Y_ERR_PANIC
+        }
+    }
+}
+
+/// Returns the message of the last call on this thread that returned a status other than
+/// [Y_OK], or NULL if there was none. The caller owns the string and frees it with
+/// [ystring_destroy]. A later failing call replaces the message; successful calls leave it.
+#[no_mangle]
+pub extern "C" fn ylast_error() -> *mut c_char {
+    LAST_ERROR.with(|e| match &*e.borrow() {
+        Some(message) => message.clone().into_raw(),
+        None => null_mut(),
+    })
+}
+
+/// Opens the write transaction behind `txn`, or explains why it can't be used.
+unsafe fn writeable<'a>(
+    txn: *mut Transaction,
+) -> Result<&'a mut yrs::TransactionMut<'static>, String> {
+    let txn = txn.as_mut().ok_or("transaction is NULL")?;
+    txn.as_mut()
+        .ok_or_else(|| "transaction is read-only".to_string())
+}
+
+/// Like [ytext_insert] without attributes, but returns a status instead of aborting:
+/// [Y_ERR_INVALID] if `index` is past the end of the text or `value` isn't valid UTF-8, with
+/// nothing inserted.
+#[no_mangle]
+pub unsafe extern "C" fn ytext_try_insert(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    value: *const c_char,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() || value.is_null() {
+            return Err("text or value is NULL".into());
+        }
+        let chunk = CStr::from_ptr(value).to_str().map_err(|e| e.to_string())?;
+        let txn = writeable(txn)?;
+        TextRef::from_raw_branch(txt)
+            .try_insert(txn, index, chunk)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Like [ytext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+/// runs past the end of the text, with nothing removed.
+#[no_mangle]
+pub unsafe extern "C" fn ytext_try_remove_range(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    length: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() {
+            return Err("text is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        TextRef::from_raw_branch(txt)
+            .try_remove_range(txn, index, length)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Like [yarray_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+/// runs past the end of the array, with nothing removed.
+#[no_mangle]
+pub unsafe extern "C" fn yarray_try_remove_range(
+    array: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if array.is_null() {
+            return Err("array is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        ArrayRef::from_raw_branch(array)
+            .try_remove_range(txn, index, len)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Like [yxmlelem_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+/// runs past the last child, with nothing removed.
+#[no_mangle]
+pub unsafe extern "C" fn yxmlelem_try_remove_range(
+    xml: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if xml.is_null() {
+            return Err("XML element is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        XmlElementRef::from_raw_branch(xml)
+            .try_remove_range(txn, index, len)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Like [yxmltext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+/// runs past the end of the text, with nothing removed.
+#[no_mangle]
+pub unsafe extern "C" fn yxmltext_try_remove_range(
+    txt: *const Branch,
+    txn: *mut Transaction,
+    index: u32,
+    len: u32,
+) -> i32 {
+    ffi_guard(|| {
+        if txt.is_null() {
+            return Err("XML text is NULL".into());
+        }
+        let txn = writeable(txn)?;
+        XmlTextRef::from_raw_branch(txt)
+            .try_remove_range(txn, index, len)
+            .map_err(|e| e.to_string())
+    })
+}

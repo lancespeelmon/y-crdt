@@ -50,8 +50,19 @@ pub use crate::undo::YUndoManager as UndoManager;
 pub use crate::weak::YWeakLink as WeakLink;
 pub use crate::weak::YWeakLinkEvent as WeakLinkEvent;
 
-/// When called will call console log errors whenever internal panic is called from within
-/// WebAssembly module.
+/// Installs the panic hook when the module loads, so a panic inside WebAssembly is logged with
+/// its message through `console.error` instead of only an opaque `unreachable` trap.
+///
+/// A wasm module has one start function, so a crate that links ywasm as a library and has its
+/// own can turn this off with `default-features = false` and call [set_panic_hook] itself.
+#[cfg(feature = "console_error_panic_hook")]
+#[wasm_bindgen(start)]
+fn start() {
+    set_panic_hook();
+}
+
+/// Installs the panic hook. The module now does this when it loads, so calling it is only
+/// needed for hosts that replaced the hook since; it is kept for compatibility.
 #[wasm_bindgen(js_name = setPanicHook)]
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the

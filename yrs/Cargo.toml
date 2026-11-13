@@ -33,6 +33,7 @@ indexmap = "2.5"
 tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
 
 [dev-dependencies]
+dhat = "0.3"
 criterion = "0.8"
 flate2 = "1"
 ropey = "1.6.0"
@@ -59,7 +60,8 @@ harness = false
 
 [lib]
 doctest = true
-bench = true
+# Criterion benches live in benches/; the lib has none, and its test harness rejects their flags.
+bench = false
 doc = true
 
 [lints]

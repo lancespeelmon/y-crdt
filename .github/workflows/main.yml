@@ -276,6 +276,13 @@ jobs:
       - name: build wasm
         run: wasm-pack build --release --target nodejs ./ywasm
 
+      # 1,167,242 bytes when set. Raise it in the change that needs more, not to make CI pass.
+      - name: wasm size budget
+        run: |
+          size=$(stat -c %s ywasm/pkg/ywasm_bg.wasm)
+          echo "ywasm_bg.wasm: $size bytes (budget 1250000)"
+          test "$size" -le 1250000
+
       - name: test web assembly
         run: cd ./tests-wasm && npm i && npm test
 

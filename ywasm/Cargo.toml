@@ -34,5 +34,9 @@ js-sys = "0.3"
 
 [dev-dependencies]
 
+# Smallest output: browsers download this module, and CI holds it to a size budget.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz"]
+
 [lints]
 workspace = true

@@ -365,6 +365,26 @@ typedef struct StickyIndex {} StickyIndex;
  */
 #define Y_EVENT_KEY_CHANGE_UPDATE 6
 
+/**
+ * Status of a call that succeeded.
+ */
+#define Y_OK 0
+
+/**
+ * Status of a call refused for bad input, before it changed anything. [ylast_error] says why.
+ */
+#define Y_ERR_INVALID -1
+
+/**
+ * Status of a call that panicked inside yrs. [ylast_error] has the panic message. The
+ * document may be left half-updated: drop it and reload it from a known state.
+ *
+ * A panic is only caught when the library is built with `panic = "unwind"`, as the
+ * `release-ffi` profile does (`cargo build -p yffi --profile release-ffi`). Under
+ * `panic = "abort"`, the default release profile, it still aborts the process.
+ */
+#define Y_ERR_PANIC -2
+
 typedef struct TransactionInner TransactionInner;
 
 /**
@@ -2930,5 +2950,55 @@ uint8_t ybranch_alive(Branch *branch);
  * initialized locally) or doesn't have JSON representation a NULL pointer can be returned.
  */
 char *ybranch_json(Branch *branch, YTransaction *txn);
+
+/**
+ * Returns the message of the last call on this thread that returned a status other than
+ * [Y_OK], or NULL if there was none. The caller owns the string and frees it with
+ * [ystring_destroy]. A later failing call replaces the message; successful calls leave it.
+ */
+char *ylast_error(void);
+
+/**
+ * Like [ytext_insert] without attributes, but returns a status instead of aborting:
+ * [Y_ERR_INVALID] if `index` is past the end of the text or `value` isn't valid UTF-8, with
+ * nothing inserted.
+ */
+int32_t ytext_try_insert(const Branch *txt, YTransaction *txn, uint32_t index, const char *value);
+
+/**
+ * Like [ytext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+ * runs past the end of the text, with nothing removed.
+ */
+int32_t ytext_try_remove_range(const Branch *txt,
+                               YTransaction *txn,
+                               uint32_t index,
+                               uint32_t length);
+
+/**
+ * Like [yarray_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+ * runs past the end of the array, with nothing removed.
+ */
+int32_t yarray_try_remove_range(const Branch *array,
+                                YTransaction *txn,
+                                uint32_t index,
+                                uint32_t len);
+
+/**
+ * Like [yxmlelem_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+ * runs past the last child, with nothing removed.
+ */
+int32_t yxmlelem_try_remove_range(const Branch *xml,
+                                  YTransaction *txn,
+                                  uint32_t index,
+                                  uint32_t len);
+
+/**
+ * Like [yxmltext_remove_range], but returns [Y_ERR_INVALID] instead of aborting when the range
+ * runs past the end of the text, with nothing removed.
+ */
+int32_t yxmltext_try_remove_range(const Branch *txt,
+                                  YTransaction *txn,
+                                  uint32_t index,
+                                  uint32_t len);
 
 #endif
