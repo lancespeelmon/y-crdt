@@ -1002,14 +1002,9 @@ impl<'doc> TransactionMut<'doc> {
         let known_state = store.blocks.known_state(&update.blocks);
         update.blocks.exclude(&known_state);
 
-        // we need to check early since update clients are consumed during `update.integrate`
-        let mut retry = match &store.pending {
-            Some(pending) => pending
-                .missing
-                .iter()
-                .any(|(client, _)| update.blocks.clients.contains_key(client)),
-            None => false,
-        };
+        // Retry the pending update only once a block it waits for has arrived (step 3). Blocks
+        // from a client it waits on that don't fill the gap join it instead of re-running it.
+        let mut retry = false;
 
         // 2. Integrate incoming update
         let (remaining, remaining_ds) = update.integrate(self)?;
@@ -1032,7 +1027,12 @@ impl<'doc> TransactionMut<'doc> {
                     for (&client, &clock) in remaining.missing.iter() {
                         pending.missing.set_min(client, clock);
                     }
-                    pending.update = Update::merge_updates(vec![pending.update, remaining.update]);
+                    // Usually the blocked blocks sit wholly before or after the queue's, and
+                    // join it in O(new); otherwise merge the two.
+                    if let Err(rest) = pending.update.try_merge_disjoint(remaining.update) {
+                        let queued = std::mem::take(&mut pending.update);
+                        pending.update = Update::merge_updates(vec![queued, rest]);
+                    }
                 }
                 Some(pending)
             } else {

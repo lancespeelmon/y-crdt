@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Updates that arrive before the ones they depend on no longer make the pending queue quadratic. A
+  blocked update joins the queue without re-merging all of it when its blocks sit wholly before or
+  after the queue's, and the queue is retried only once a block it waits for has arrived. Applying
+  8,000 one-character updates in reverse order takes 2.7 ms instead of 385 ms.
 - yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
   instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
   pointers to them, which is all the API allows, is unaffected.
@@ -212,6 +216,9 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi: a transaction keeps its document alive, so destroying the document while a transaction
+  on it is open no longer frees the store under it (a use-after-free); the document is freed when
+  the transaction is committed.
 - Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
   the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type
@@ -285,9 +292,14 @@ repository and its release notes.
   instead of as an object with numbered keys.
 
 ### Removed
+- **Breaking:** `yrs::atomic::AtomicRef` is gone. Nothing in yrs or its bindings used it, and it
+  was `Send` and `Sync` for every `T`, which let a non-thread-safe value cross threads. Use the
+  `arc-swap` crate (`ArcSwap`), which is what yrs uses internally.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- `benchmarks/compare/compare.mjs` runs B1/B4 workloads against Yjs and ywasm and checks they
+  agree; results in `benchmarks/COMPARISON.md` (ywasm 0.08–0.29× Yjs's time).
 - `yrs/tests/relay.rs`: a reference relay (a per-document actor speaking y-protocols, with
   message and update limits, awareness timeouts and removal on disconnect, and eviction through a
   persistence hook) and the tests that keep it working. CI's clippy also checks
