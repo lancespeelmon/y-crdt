@@ -653,6 +653,92 @@ impl Update {
         self.delete_set.encode(encoder)
     }
 
+    /// Merges `other` into `self` without a full merge when, for every client, `other`'s
+    /// blocks are contiguous and lie wholly before or wholly after `self`'s. A gap between them
+    /// becomes a `Skip`, as [Update::merge_updates] writes it, and the result encodes the same.
+    /// Gives `other` back when that doesn't hold, or when a `Skip` would have to grow over a gap.
+    ///
+    /// This is O(`other`): the pending queue uses it so that each blocked update joins the
+    /// queue without re-merging all of it.
+    pub(crate) fn try_merge_disjoint(&mut self, other: Update) -> Result<(), Update> {
+        fn end(b: &Block) -> u32 {
+            b.clock_start() + b.len()
+        }
+        for (client, ob) in other.blocks.clients.iter() {
+            let (Some(of), Some(ol)) = (ob.front(), ob.back()) else {
+                continue;
+            };
+            if ob
+                .iter()
+                .zip(ob.iter().skip(1))
+                .any(|(a, b)| end(a) != b.clock_start())
+            {
+                return Err(other);
+            }
+            let Some(sb) = self.blocks.clients.get(client) else {
+                continue;
+            };
+            let (Some(sf), Some(sl)) = (sb.front(), sb.back()) else {
+                continue;
+            };
+            let ok = if end(ol) <= sf.clock_start() {
+                end(ol) == sf.clock_start() || !matches!(ol, Block::Skip(_))
+            } else if of.clock_start() >= end(sl) {
+                of.clock_start() == end(sl) || !matches!(sl, Block::Skip(_))
+            } else {
+                false
+            };
+            if !ok {
+                return Err(other);
+            }
+        }
+        let Update { blocks, delete_set } = other;
+        self.delete_set.merge_with(delete_set);
+        for (client, ob) in blocks.clients {
+            if ob.is_empty() {
+                continue;
+            }
+            // `other`'s run, squashed as the full merge would.
+            let mut run: VecDeque<Block> = VecDeque::with_capacity(ob.len());
+            for b in ob {
+                if !run.back_mut().is_some_and(|last| last.try_squash(&b)) {
+                    run.push_back(b);
+                }
+            }
+            let sb = self.blocks.clients.entry(client).or_default();
+            let (Some(sf), Some(sl)) = (sb.front(), sb.back()) else {
+                *sb = run;
+                continue;
+            };
+            let run_start = run.front().map(Block::clock_start).unwrap_or_default();
+            let run_end = run.back().map(end).unwrap_or_default();
+            if run_end <= sf.clock_start() {
+                let gap = sf.clock_start() - run_end;
+                if gap > 0 {
+                    run.push_back(Block::Skip(BlockRange::new(ID::new(client, run_end), gap)));
+                }
+                while let Some(mut b) = run.pop_back() {
+                    if sb.front().is_some_and(|first| b.try_squash(first)) {
+                        sb.pop_front();
+                    }
+                    sb.push_front(b);
+                }
+            } else {
+                let sl_end = end(sl);
+                let gap = run_start - sl_end;
+                if gap > 0 {
+                    run.push_front(Block::Skip(BlockRange::new(ID::new(client, sl_end), gap)));
+                }
+                for b in run {
+                    if !sb.back_mut().is_some_and(|last| last.try_squash(&b)) {
+                        sb.push_back(b);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Merges the given updates into a single one.
     pub fn merge_updates<T>(block_stores: T) -> Update
     where
@@ -1211,6 +1297,111 @@ mod test {
         merge_updates_v1, Any, Doc, GetString, IdSet, Options, ReadTxn, StateVector, Text,
         Transact, WriteTxn, XmlFragment, XmlOut, ID,
     };
+
+    /// Small diffs from three clients editing one text, oldest first. Each diff covers one
+    /// contiguous clock range per client, and later diffs cover later ranges.
+    fn interleaved_diffs(rng: &mut fastrand::Rng, n: usize) -> Vec<Update> {
+        let docs: Vec<Doc> = (1..=3).map(Doc::with_client_id).collect();
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            let d = &docs[rng.usize(0..docs.len())];
+            let txt = d.get_or_insert_text("t");
+            let sv = d.transact().state_vector();
+            {
+                let mut txn = d.transact_mut();
+                let len = txt.len(&txn);
+                if len > 2 && rng.u8(0..4) == 0 {
+                    txt.remove_range(&mut txn, rng.u32(0..len - 1), 1);
+                } else {
+                    txt.insert(&mut txn, rng.u32(0..=len), "ab");
+                }
+            }
+            let u = d.transact().encode_diff_v1(&sv);
+            for other in &docs {
+                other
+                    .transact_mut()
+                    .apply_update(Update::decode_v1(&u).unwrap())
+                    .unwrap();
+            }
+            out.push(u);
+        }
+        out.into_iter()
+            .map(|u| Update::decode_v1(&u).unwrap())
+            .collect()
+    }
+
+    fn merged(us: &[Update]) -> Update {
+        Update::merge_updates(
+            us.iter()
+                .map(|u| Update::decode_v1(&u.encode_v1()).unwrap()),
+        )
+    }
+
+    #[test]
+    fn merge_disjoint_encodes_like_a_full_merge() {
+        let mut rng = fastrand::Rng::with_seed(7);
+        let (mut fast, mut fallback) = (0, 0);
+        for _ in 0..300 {
+            let us = interleaved_diffs(&mut rng, 12);
+            // Two non-overlapping index ranges; either may come first.
+            let mut cut = [rng.usize(0..=12), rng.usize(0..=12), rng.usize(0..=12)];
+            cut.sort();
+            let (mid, hi) = (&us[cut[0]..cut[1]], &us[cut[1]..cut[2]]);
+            let (a, b) = if rng.bool() { (mid, hi) } else { (hi, mid) };
+            let expected = Update::merge_updates([merged(a), merged(b)]).encode_v1();
+            let mut got = merged(a);
+            match got.try_merge_disjoint(merged(b)) {
+                Ok(()) => {
+                    fast += 1;
+                    assert_eq!(got.encode_v1(), expected);
+                }
+                Err(_) => fallback += 1,
+            }
+        }
+        // Most of these take the fast path; the rest are left to the full merge.
+        assert!(fast > fallback, "fast {fast}, fallback {fallback}");
+    }
+
+    #[test]
+    fn merge_disjoint_refuses_overlapping_updates() {
+        let mut rng = fastrand::Rng::with_seed(11);
+        let us = interleaved_diffs(&mut rng, 8);
+        let mut a = merged(&us[..5]);
+        assert!(a.try_merge_disjoint(merged(&us[3..])).is_err());
+    }
+
+    #[test]
+    fn updates_in_any_order_converge_with_the_pending_queue() {
+        let mut rng = fastrand::Rng::with_seed(3);
+        for _ in 0..50 {
+            let mut us: Vec<Vec<u8>> = interleaved_diffs(&mut rng, 40)
+                .iter()
+                .map(|u| u.encode_v1())
+                .collect();
+            let expected = Doc::with_client_id(9);
+            for u in &us {
+                expected
+                    .transact_mut()
+                    .apply_update(Update::decode_v1(u).unwrap())
+                    .unwrap();
+            }
+            rng.shuffle(&mut us);
+            let got = Doc::with_client_id(9);
+            for u in &us {
+                got.transact_mut()
+                    .apply_update(Update::decode_v1(u).unwrap())
+                    .unwrap();
+            }
+            let (et, gt) = (
+                expected.get_or_insert_text("t"),
+                got.get_or_insert_text("t"),
+            );
+            let (e, g) = (expected.transact(), got.transact());
+            assert!(g.store().pending_update().is_none());
+            assert_eq!(et.get_string(&e), gt.get_string(&g));
+            assert_eq!(e.state_vector(), g.state_vector());
+        }
+    }
 
     #[test]
     fn update_decode() {

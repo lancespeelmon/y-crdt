@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Updates that arrive before the ones they depend on no longer make the pending queue quadratic. A
+  blocked update joins the queue without re-merging all of it when its blocks sit wholly before or
+  after the queue's, and the queue is retried only once a block it waits for has arrived. Applying
+  8,000 one-character updates in reverse order takes 2.7 ms instead of 385 ms.
 - yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
   instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
   pointers to them, which is all the API allows, is unaffected.
