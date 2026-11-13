@@ -247,6 +247,14 @@ typedef struct StickyIndex {} StickyIndex;
 #define Y_CLEANUP_FMT (1 << 4)
 
 /**
+ * Boolean flag that allows creating weak links in the document. Off by default: weak links are
+ * a yrs extension, and Yjs peers reject every update that contains one. While it is off,
+ * `ymap_link`, `ytext_quote` and `yarray_quote` return NULL. Weak links received from other yrs
+ * peers are still read.
+ */
+#define Y_WEAK_LINKS (1 << 5)
+
+/**
  * Error code: couldn't read data from input stream.
  */
 #define ERR_CODE_IO 1
@@ -390,6 +398,7 @@ typedef struct YOptions {
    * - `Y_AUTO_LOAD`: all subdocuments should be loaded automatically.
    * - `Y_SHOULD_LOAD`: should current document be synced with its provider immediatelly?
    * - `Y_CLEANUP_TEXT_FMT`: automatically remove dangling formatting attributes.
+   * - `Y_WEAK_LINKS`: allow creating weak links (`ymap_link`, `ytext_quote`, `yarray_quote`).
    */
   uint8_t flags;
 } YOptions;

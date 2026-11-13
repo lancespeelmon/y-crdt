@@ -11,6 +11,13 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking (yffi, ywasm):** weak links are off by default in documents created through the
+  bindings, because Yjs peers reject every update that contains one. Opt in with yffi's new
+  `Y_WEAK_LINKS` option flag or ywasm's `weakLinks: true`. While off, `ymap_link`,
+  `ytext_quote` and `yarray_quote` return NULL, and ywasm's `link` and `quote` throw. Weak
+  links received from other yrs peers are still read. In Rust the new `Options::weak_links`
+  defaults to `true` (the `weak` feature is already opt-in); with it off, `link` returns `None`
+  and `quote` returns the new `QuoteError::Disabled`.
 - **Breaking:** `Number` has a new `BigInt(i64)` variant for JavaScript `BigInt`s (lib0 tag 122).
   They used to decode as `Number::Int` and go back out as JS numbers, losing their type and
   precision. `Number::BigInt` compares equal to a `Number::Int` of the same value. ywasm

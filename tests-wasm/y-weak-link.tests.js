@@ -6,8 +6,19 @@ import * as t from 'lib0/testing'
 /**
  * @param {t.TestCase} tc
  */
-export const testBasicMap = tc => {
+export const testWeakLinksAreRefusedByDefault = tc => {
+    // Yjs peers reject updates with weak links, so documents opt in to them.
     const doc = new Y.YDoc({clientID: 1})
+    const map = doc.getMap('map')
+    const array = doc.getArray('array')
+    map.set('a', 1)
+    array.insert(0, [1, 2])
+    t.fails(() => map.link('a'))
+    t.fails(() => array.quote(0, 1))
+}
+
+export const testBasicMap = tc => {
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
     const map = doc.getMap('map')
 
     const nested = new Y.YMap()
@@ -29,9 +40,9 @@ export const testBasicMap = tc => {
  * @param {t.TestCase} tc
  */
 export const testBasicArray = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     array0.insert(0, [1, 2, 3])
     const link = array0.quote(1, 1)
@@ -54,9 +65,9 @@ export const testBasicArray = tc => {
  * @param {t.TestCase} tc
  */
 export const testArrayQuoteMultipleElements = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     const nested = new Y.YMap({'key': 'value'})
     array0.insert(0, [1, 2, nested, 3])
@@ -106,9 +117,9 @@ export const testArrayQuoteMultipleElements = tc => {
  * @param {t.TestCase} tc
  */
 export const testSelfQuotation = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     array0.insert(0, [1, 2, 3, 4])
     const link0 = array0.quote(0, 3, false, true)
@@ -142,9 +153,9 @@ export const testSelfQuotation = tc => {
  * @param {t.TestCase} tc
  */
 export const testUpdate = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
     map0.set('a', new Y.YMap([['a1', 'hello']]))
     const link0 = /** @type {Y.YWeakLink} */ (map0.link('a'))
@@ -169,9 +180,9 @@ export const testUpdate = tc => {
  * @param {t.TestCase} tc
  */
 export const testDeleteWeakLink = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
     map0.set('a', new Y.YMap([['a1', 'hello']]))
     const link0 = /** @type {Y.YWeakLink} */ (map0.link('a'))
@@ -198,9 +209,9 @@ export const testDeleteWeakLink = tc => {
  * @param {t.TestCase} tc
  */
 export const testDeleteSource = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
     map0.set('a', new Y.YMap([['a1', 'hello']]))
     const link0 = /** @type {Y.YWeakLink} */ (map0.link('a'))
@@ -225,9 +236,9 @@ export const testDeleteSource = tc => {
  * @param {t.TestCase} tc
  */
 export const testObserveMapUpdate = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
     map0.set('a', 'value')
     const link0 = /** @type {Y.YWeakLink} */ (map0.link('a'))
@@ -259,9 +270,9 @@ export const testObserveMapUpdate = tc => {
  * @param {t.TestCase} tc
  */
 export const testObserveMapDelete = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
     map0.set('a', 'value')
     const link0 = /** @type {Y.YWeakLink} */ (map0.link('a'))
@@ -292,9 +303,9 @@ export const testObserveMapDelete = tc => {
  * @param {t.TestCase} tc
  */
 export const testObserveArray = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     array0.insert(0, ['A', 'B', 'C'])
     const link0 = /** @type {Y.YWeakLink} */ (array0.quote(1, 2))
@@ -337,7 +348,7 @@ export const testObserveArray = tc => {
  */
 export const testDeepObserveTransitive = tc => {
     // test observers in a face of linked chains of values
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
 
     /*
        Structure:
@@ -382,7 +393,7 @@ export const testDeepObserveTransitive = tc => {
  */
 export const testDeepObserveTransitive2 = tc => {
     // test observers in a face of multi-layer linked chains of values
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
 
     /*
        Structure:
@@ -433,7 +444,7 @@ export const testDeepObserveTransitive2 = tc => {
  */
 export const testDeepObserveMap = tc => {
     // test observers in a face of linked chains of values
-    const doc = new Y.YDoc()
+    const doc = new Y.YDoc({weakLinks: true})
     /*
        Structure:
          - map (observed):
@@ -495,7 +506,7 @@ export const testDeepObserveMap = tc => {
  * @param {t.TestCase} tc
  */
 export const testDeepObserveArray = tc => {
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
     /*
        Structure:
          - map:
@@ -560,9 +571,9 @@ export const testDeepObserveArray = tc => {
  * @param {t.TestCase} tc
  */
 export const testDeepObserveNewElementWithinQuotedRange = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     const m1 = new Y.YMap()
     const m3 = new Y.YMap()
@@ -635,7 +646,7 @@ export const testDeepObserveNewElementWithinQuotedRange = tc => {
  * @param {t.TestCase} tc
  */
 export const testMapDeepObserve = tc => { //FIXME
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
     const outer = doc.getMap('outer')
     const inner = new Y.YMap()
     outer.set('inner', inner)
@@ -684,7 +695,7 @@ export const testMapDeepObserve = tc => { //FIXME
  */
 export const testDeepObserveRecursive = tc => {
     // test observers in a face of cycled chains of values
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
     /*
        Structure:
         array (observed):
@@ -757,11 +768,11 @@ export const testDeepObserveRecursive = tc => {
  * @param {t.TestCase} tc
  */
 export const testRemoteMapUpdate = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const map1 = doc1.getMap('map')
-    const doc2 = new Y.YDoc({clientID: 3})
+    const doc2 = new Y.YDoc({clientID: 3, weakLinks: true})
     const map2 = doc2.getMap('map')
 
     map0.set('key', 1)
@@ -793,10 +804,10 @@ export const testRemoteMapUpdate = tc => {
  * @param {t.TestCase} tc
  */
 export const testTextBasic = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const array0 = doc0.getArray('array')
     const text0 = doc0.getText('text')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
     const text1 = doc1.getText('text')
 
@@ -821,7 +832,7 @@ export const testTextBasic = tc => {
  * @param {t.TestCase} tc
  */
 export const testQuoteFormattedText = tc => {
-    const doc = new Y.YDoc({clientID: 1})
+    const doc = new Y.YDoc({clientID: 1, weakLinks: true})
     const array = doc.getArray('array')
     const fragment = doc.getXmlFragment('fragment')
     const text = new Y.YXmlText('')
@@ -859,10 +870,10 @@ export const testQuoteFormattedText = tc => {
  * @param {t.TestCase} tc
  */
 export const testTextLowerBoundary = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const text0 = doc0.getText('text')
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const text1 = doc1.getText('text')
 
     text0.insert(0, 'abcdef')
@@ -887,10 +898,10 @@ export const testTextLowerBoundary = tc => {
  * @param {t.TestCase} tc
  */
 export const testTextUpperBoundary = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const text0 = doc0.getText('text')
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const text1 = doc1.getText('text')
 
     text0.insert(0, 'abcdef')
@@ -915,10 +926,10 @@ export const testTextUpperBoundary = tc => {
  * @param {t.TestCase} tc
  */
 export const testArrayLowerBoundary = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
 
     array0.insert(0, ['a', 'b', 'c', 'd', 'e', 'f'])
@@ -944,10 +955,10 @@ export const testArrayLowerBoundary = tc => {
  * @param {t.TestCase} tc
  */
 export const testArrayUpperBoundary = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const map0 = doc0.getMap('map')
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const array1 = doc1.getArray('array')
 
     array0.insert(0, ['a', 'b', 'c', 'd', 'e', 'f'])
@@ -974,10 +985,10 @@ export const testArrayUpperBoundary = tc => {
  * @param {t.TestCase} tc
  */
 export const testTextUnbounded = tc => {
-    const doc0 = new Y.YDoc({clientID: 1})
+    const doc0 = new Y.YDoc({clientID: 1, weakLinks: true})
     const text0 = doc0.getText('text')
     const array0 = doc0.getArray('array')
-    const doc1 = new Y.YDoc({clientID: 2})
+    const doc1 = new Y.YDoc({clientID: 2, weakLinks: true})
     const text1 = doc1.getText('text')
 
     text0.insert(0, 'def')

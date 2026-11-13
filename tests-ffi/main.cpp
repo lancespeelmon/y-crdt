@@ -1914,8 +1914,35 @@ TEST_CASE("Relative position") {
     ydoc_destroy(doc);
 }
 
-TEST_CASE("Weak link references") {
+TEST_CASE("Weak links are refused unless the document allows them") {
     YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    Branch *arr = yarray(doc, "array");
+    Branch *map = ymap(doc, "map");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    ytext_insert(txt, txn, 0, "hello", NULL);
+    YInput one = yinput_long(1);
+    yarray_insert_range(arr, txn, 0, &one, 1);
+    ymap_insert(map, txn, "key", &one);
+
+    uint32_t start = 1;
+    uint32_t end = 3;
+    REQUIRE(ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE) == NULL);
+    start = 0;
+    end = 0;
+    REQUIRE(yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_FALSE) == NULL);
+    REQUIRE(ymap_link(map, txn, "key") == NULL);
+    REQUIRE((yoptions().flags & Y_WEAK_LINKS) == 0);
+
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}
+
+TEST_CASE("Weak link references") {
+    YOptions o = yoptions();
+    o.flags = Y_OFFSET_UTF16 | Y_WEAK_LINKS;
+    o.id = 1;
+    YDoc *doc = ydoc_new_with_options(o);
     Branch *txt = ytext(doc, "text");
     Branch *arr = yarray(doc, "array");
     Branch *map = ymap(doc, "map");

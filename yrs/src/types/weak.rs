@@ -691,6 +691,9 @@ pub trait Quotable: AsRef<Branch> + Sized {
         T: ReadTxn,
         R: RangeBounds<u32>,
     {
+        if !txn.store().weak_links {
+            return Err(QuoteError::Disabled);
+        }
         let this = BranchPtr::from(self.as_ref());
         let start = match range.start_bound() {
             Bound::Included(&i) => Some((i, Assoc::Before)),
@@ -788,6 +791,9 @@ pub enum QuoteError {
     /// of reference.
     #[error("Quoted range spans beyond the bounds of current collection")]
     OutOfBounds,
+    /// The document doesn't allow weak links: see [crate::Options::weak_links].
+    #[error("weak links are disabled for this document")]
+    Disabled,
 }
 
 pub(crate) fn join_linked_range(mut block: ItemPtr, txn: &mut TransactionMut) {
@@ -861,6 +867,44 @@ pub(crate) fn join_linked_range(mut block: ItemPtr, txn: &mut TransactionMut) {
 
 #[cfg(test)]
 mod test {
+    #[test]
+    fn a_document_can_refuse_weak_links_but_still_reads_them() {
+        use crate::types::weak::QuoteError;
+        use crate::{Array, Doc, Map, Options, Quotable, ReadTxn, Transact, WriteTxn};
+
+        let allowed = Doc::with_client_id(1);
+        let refusing = Doc::with_options(Options {
+            weak_links: false,
+            ..Options::with_client_id(crate::ClientID::new(2))
+        });
+        for doc in [&allowed, &refusing] {
+            let mut txn = doc.transact_mut();
+            txn.get_or_insert_map("map").insert(&mut txn, "a", 1);
+            txn.get_or_insert_array("array").insert(&mut txn, 0, 1);
+        }
+        let map = refusing.get_or_insert_map("map");
+        let array = refusing.get_or_insert_array("array");
+        assert!(map.link(&refusing.transact(), "a").is_none());
+        assert!(matches!(
+            array.quote(&refusing.transact(), 0..1),
+            Err(QuoteError::Disabled)
+        ));
+
+        // A peer that allows them can still send one, and it is read.
+        let source = allowed.get_or_insert_map("map");
+        let link = source.link(&allowed.transact(), "a").unwrap();
+        source.insert(&mut allowed.transact_mut(), "link", link);
+        crate::test_utils::exchange_updates(&[&allowed, &refusing]);
+        let txn = refusing.transact();
+        match map.get(&txn, "link") {
+            Some(Out::YWeakLink(weak)) => {
+                let weak: WeakRef<crate::MapRef> = WeakRef::from(weak);
+                assert_eq!(weak.try_deref_value(&txn), Some(1.into()));
+            }
+            other => panic!("expected a weak link, got {:?}", other),
+        }
+    }
+
     use std::collections::{Bound, HashMap};
     use std::ops::RangeBounds;
     use std::sync::{Arc, Mutex};

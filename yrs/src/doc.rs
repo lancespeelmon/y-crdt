@@ -538,6 +538,15 @@ pub struct Options {
     ///
     /// Default value: `None`, which collects every deleted item.
     pub gc_filter: Option<GcFilter>,
+
+    /// Whether weak links (the `weak` feature's [crate::WeakRef]) may be created in this document.
+    /// They are a yrs extension: Yjs can't decode them and rejects any update that contains one,
+    /// so turn this off when Yjs peers share the document. While it is off, `link` returns
+    /// `None` and `quote` returns [crate::types::weak::QuoteError::Disabled]. Weak links that
+    /// arrive in updates are still read. Has no effect without the `weak` feature.
+    ///
+    /// Default value: `true`. yffi and ywasm documents default to `false`.
+    pub weak_links: bool,
 }
 
 /// The predicate of [Options::gc_filter]. Two filters are equal only if they are the same `Arc`.
@@ -583,6 +592,7 @@ impl Options {
             cleanup_formatting: true,
             meta: None,
             gc_filter: None,
+            weak_links: true,
         }
     }
 
@@ -598,6 +608,7 @@ impl Options {
             cleanup_formatting: false,
             meta: None,
             gc_filter: None,
+            weak_links: true,
         }
     }
 

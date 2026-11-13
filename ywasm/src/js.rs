@@ -907,6 +907,8 @@ pub(crate) mod errors {
     pub const ANOTHER_RW_TX: &'static str = "another read-write transaction is in progress";
     pub const OUT_OF_BOUNDS: &'static str = "index outside of the bounds of an array";
     pub const KEY_NOT_FOUND: &'static str = "key was not found in a map";
+    pub const WEAK_LINKS_DISABLED: &'static str =
+        "weak links are disabled for this document: create it with `weakLinks: true`";
     pub const INVALID_PRELIM_OP: &'static str = "preliminary type doesn't support this operation";
     pub const INVALID_FMT: &'static str = "given object cannot be used as formatting attributes";
     pub const INVALID_XML_ATTRS: &'static str = "given object cannot be used as XML attributes";
