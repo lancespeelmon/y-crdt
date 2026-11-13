@@ -80,6 +80,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Observability: an optional `tracing` feature with `yrs::decode`, `yrs::apply_update`,
+  `yrs::commit` and `yrs::encode` spans that record block counts, and a `metrics::MetricsHook`
+  trait (no metrics crate dependency) installed per document with the new `Options::metrics`.
+  It receives applied and pending update sizes, commit sizes and encoded sizes. With neither
+  enabled, nothing is counted.
 - `Doc::try_get_or_insert::<T>(name)`, `WriteTxn::try_get_or_insert` and `Root::try_get_or_create`, which fail with the new
   `RootTypeMismatch` when the root exists with another type, as Yjs' `doc.get` throws.
   `get_or_insert_*` still reinterpret it.

@@ -346,6 +346,7 @@ impl Into<Options> for YOptions {
             meta: None,
             gc_filter: None,
             weak_links,
+            metrics: None,
         }
     }
 }

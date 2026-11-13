@@ -570,6 +570,12 @@ pub struct Options {
     ///
     /// Default value: `true`. yffi and ywasm documents default to `false`.
     pub weak_links: bool,
+
+    /// Receives counts of this document's updates, commits and encodings, for metrics. See
+    /// [crate::metrics].
+    ///
+    /// Default value: `None`.
+    pub metrics: Option<crate::metrics::Metrics>,
 }
 
 /// The predicate of [Options::gc_filter]. Two filters are equal only if they are the same `Arc`.
@@ -616,6 +622,7 @@ impl Options {
             meta: None,
             gc_filter: None,
             weak_links: true,
+            metrics: None,
         }
     }
 
@@ -632,6 +639,7 @@ impl Options {
             meta: None,
             gc_filter: None,
             weak_links: true,
+            metrics: None,
         }
     }
 

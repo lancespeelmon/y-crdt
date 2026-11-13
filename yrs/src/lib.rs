@@ -641,6 +641,7 @@ mod ids;
 mod input;
 pub mod iter;
 pub mod json_path;
+pub mod metrics;
 pub mod observer;
 mod out;
 pub mod permanent_user_data;
