@@ -273,6 +273,8 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- `benchmarks/compare/compare.mjs` runs B1/B4 workloads against Yjs and ywasm and checks they
+  agree; results in `benchmarks/COMPARISON.md` (ywasm 0.08–0.29× Yjs's time).
 - `yrs/tests/relay.rs`: a reference relay (a per-document actor speaking y-protocols, with
   message and update limits, awareness timeouts and removal on disconnect, and eviction through a
   persistence hook) and the tests that keep it working. CI's clippy also checks

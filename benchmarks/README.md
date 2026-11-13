@@ -39,8 +39,8 @@ the machine.
 ywasm is built with `wasm-opt -Oz`, and CI fails if `ywasm_bg.wasm` grows past the budget in
 `.github/workflows/main.yml`. Raise the budget deliberately, in the same change that needs it.
 
-## Not here yet
+## Against Yjs
 
-The plan also asks for memory benchmarks (peak heap per document size) and a published
-comparison with Yjs, Loro, Automerge and y-octo on the B1–B4 suites. Both need a harness that
-runs the other libraries, which is a separate project.
+`benchmarks/compare/compare.mjs` runs B1 and B4 workloads against Yjs and ywasm in Node. See
+[COMPARISON.md](COMPARISON.md) for how to run it and the last results. Loro, Automerge and
+y-octo aren't in it yet, and neither is peak memory per document size.
