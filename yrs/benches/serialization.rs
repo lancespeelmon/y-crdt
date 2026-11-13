@@ -174,5 +174,35 @@ fn bench_serialization(c: &mut Criterion) {
     custom_group.finish();
 }
 
-criterion_group!(serialization, bench_encoding, bench_serialization);
+/// Plan item 6.3: merging many small updates, as a server compacting a document's history does.
+fn bench_merge_updates(c: &mut Criterion) {
+    use yrs::{ReadTxn, Text, Transact};
+    let mut group = c.benchmark_group("merge_updates");
+    group.sampling_mode(SamplingMode::Flat);
+    for n in [1_000usize, 16_000] {
+        let docs: Vec<yrs::Doc> = (0..16).map(|i| yrs::Doc::with_client_id(i + 1)).collect();
+        let mut updates = Vec::with_capacity(n);
+        for i in 0..n {
+            let doc = &docs[i % docs.len()];
+            let sv = doc.transact().state_vector();
+            let text = doc.get_or_insert_text("text");
+            let mut txn = doc.transact_mut();
+            let len = text.len(&txn);
+            text.insert(&mut txn, len, "x");
+            drop(txn);
+            updates.push(doc.transact().encode_state_as_update_v1(&sv));
+        }
+        group.bench_function(format!("v1/{n}"), |b| {
+            b.iter(|| yrs::merge_updates_v1(black_box(&updates)).unwrap())
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    serialization,
+    bench_encoding,
+    bench_serialization,
+    bench_merge_updates
+);
 criterion_main!(serialization);

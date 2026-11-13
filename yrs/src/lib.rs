@@ -683,7 +683,7 @@ pub use crate::alt::{
     encode_state_vector_from_update_v1, encode_state_vector_from_update_v2, merge_updates_v1,
     merge_updates_v2, obfuscate_update_v1, obfuscate_update_v2, parse_update_meta_v1,
     parse_update_meta_v2, snapshot_contains_update_v1, snapshot_contains_update_v2,
-    ObfuscateOptions, UpdateMeta,
+    ObfuscateOptions, UpdateAccumulator, UpdateMeta,
 };
 pub use crate::any::{Any, AnyMap, Number};
 pub use crate::block::ClientID;
