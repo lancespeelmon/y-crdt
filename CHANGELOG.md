@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Finding the block that holds a clock starts its search at an interpolated guess, as Yjs does.
+  The guess was computed with integer division, so it was always the first block; applying a
+  B4.2 update set takes 2.08 ms instead of 2.29 ms.
 - A write transaction no longer builds an event for a changed type that nobody observes (no
   observers on it, no deep observers above it), and reuses its bookkeeping collections from
   the previous transaction. A one-character insert makes 2 allocations instead of 8; appending

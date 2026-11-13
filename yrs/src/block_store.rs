@@ -57,7 +57,11 @@ impl ClientBlockList {
         } else if clock > end {
             None // clock lands past the last block, so no block owns it.
         } else {
-            let mut mid = ((clock / end) * right as u32) as usize;
+            // Clocks are spread roughly evenly over the blocks, so start where `clock` would be if
+            // they were, as Yjs does. (This used to divide the clocks as integers, which is 0 for
+            // every clock but the last, so the search always started at the first block.)
+            let mut mid = (u64::from(clock) * right as u64 / u64::from(end.max(1))) as usize;
+            mid = mid.min(right);
             while left <= right {
                 block = unsafe { &*self.inner[mid].get() };
                 (start, end) = block.clock_range();
@@ -66,6 +70,8 @@ impl ClientBlockList {
                         return Some(mid);
                     }
                     left = mid + 1;
+                } else if mid == 0 {
+                    return None; // before the first block
                 } else {
                     right = mid - 1;
                 }
