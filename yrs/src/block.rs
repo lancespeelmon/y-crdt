@@ -450,6 +450,7 @@ impl ItemPtr {
         items_to_delete: &IdSet,
         s1: &UndoStack<M>,
         s2: &UndoStack<M>,
+        ignore_remote_map_changes: bool,
     ) -> Option<ItemPtr> {
         let self_ptr = self.clone();
         let item = self.deref_mut();
@@ -466,7 +467,14 @@ impl ItemPtr {
                 if parent.redone.is_none()
                     && (!redo_items.contains(&parent)
                         || parent
-                            .redo(txn, redo_items, items_to_delete, s1, s2)
+                            .redo(
+                                txn,
+                                redo_items,
+                                items_to_delete,
+                                s1,
+                                s2,
+                                ignore_remote_map_changes,
+                            )
                             .is_none())
                 {
                     return None;
@@ -495,7 +503,7 @@ impl ItemPtr {
         let mut left = None;
         let mut right = None;
         if let Some(sub) = item.parent_sub.as_ref() {
-            if item.right.is_some() {
+            if item.right.is_some() && !ignore_remote_map_changes {
                 left = Some(self_ptr);
                 // Iterate right while is in itemsToDelete
                 // If it is intended to delete right while item is redone,

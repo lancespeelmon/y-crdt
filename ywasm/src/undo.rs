@@ -46,6 +46,10 @@ impl YUndoManager {
             timestamp: Arc::new(crate::awareness::JsClock),
             init_undo_stack: Vec::new(),
             init_redo_stack: Vec::new(),
+            delete_filter: None,
+            ignore_remote_map_changes: false,
+            track_null_origin: None,
+            max_stack_len: None,
         };
         if options.is_object() {
             if let Ok(js) = Reflect::get(&options, &JsValue::from_str("captureTimeout")) {
@@ -55,12 +59,22 @@ impl YUndoManager {
             }
             if let Ok(js) = Reflect::get(&options, &JsValue::from_str("trackedOrigins")) {
                 if js_sys::Array::is_array(&js) {
+                    // As in Yjs, `null` in the list tracks changes made without an origin, and
+                    // a list without it doesn't.
+                    let mut track_null = false;
                     let array = js_sys::Array::from(&js);
                     for js in array.iter() {
-                        let v = Js::from(js);
-                        o.tracked_origins.insert(v.into());
+                        if js.is_null() || js.is_undefined() {
+                            track_null = true;
+                        } else {
+                            o.tracked_origins.insert(Js::from(js).into());
+                        }
                     }
+                    o.track_null_origin = Some(track_null);
                 }
+            }
+            if let Ok(js) = Reflect::get(&options, &JsValue::from_str("ignoreRemoteMapChanges")) {
+                o.ignore_remote_map_changes = js.is_truthy();
             }
         }
         Ok(YUndoManager(UndoManager::with_options(o)))

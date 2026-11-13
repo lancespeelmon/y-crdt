@@ -11,6 +11,14 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `undo::Options` has four new fields, Yjs' `deleteFilter` (`delete_filter`) and
+  `ignoreRemoteMapChanges` (`ignore_remote_map_changes`), plus `track_null_origin` and
+  `max_stack_len` (a bound Yjs doesn't have: the oldest items are dropped and what they kept
+  becomes collectable). ywasm's `YUndoManager` accepts `ignoreRemoteMapChanges`, and `null`
+  in `trackedOrigins`.
+- **Breaking:** the UndoManager tracks transactions without an origin as Yjs does: when it is
+  created with no tracked origins (Yjs' default `{null}`), and still after
+  `include_origin`. They used to stop being tracked once any origin was included.
 - **Breaking:** `Options` has a new `gc_filter: Option<GcFilter>` field, Yjs' `gcFilter`:
   garbage collection skips the deleted items it returns `false` for. Struct literals of
   `Options` need the field, or `..Default::default()`.
