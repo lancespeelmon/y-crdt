@@ -1151,11 +1151,17 @@ impl<'doc> TransactionMut<'doc> {
         // 8. get merge_structs and try to merge to left
         for id in self.merge_blocks.iter() {
             if let Some(blocks) = self.store.blocks.get_client_mut(&id.client) {
-                if let Some(replaced_pos) = blocks.find_index(id.clock) {
-                    if replaced_pos + 1 < blocks.len() {
-                        blocks.squash_left(replaced_pos + 1);
-                    } else if replaced_pos > 0 {
-                        blocks.squash_left(replaced_pos);
+                // Like Yjs' `tryMergeDeleteSet`: merge the next block into this one, then this
+                // one into the previous, which a split leaves as the other half.
+                if let Some(pos) = blocks.find_index(id.clock) {
+                    if pos + 1 < blocks.len() {
+                        blocks.squash_left(pos + 1);
+                    }
+                }
+                // Merging the next block may have shifted this one; look it up again.
+                if let Some(pos) = blocks.find_index(id.clock) {
+                    if pos > 0 {
+                        blocks.squash_left(pos);
                     }
                 }
             }
