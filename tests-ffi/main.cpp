@@ -2834,6 +2834,8 @@ TEST_CASE("the callback free hook is called once per subscription when it ends")
     REQUIRE_EQ(freed_states[2], 3);
 
     yset_callback_free_hook(NULL);
+}
+
 TEST_CASE("a transaction keeps its document alive until it's committed") {
     YDoc *doc = ydoc_new_with_id(1);
     Branch *txt = ytext(doc, "text");
