@@ -216,6 +216,9 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi: `yinput_weak` borrows its weak link instead of taking it over. Inserting the input took
+  the caller's reference, so the documented `yweak_destroy` afterwards freed a source the
+  inserted link still pointed to. Callers that didn't destroy it now leak one reference instead.
 - yffi: an iterator (array, map, XML attributes, XML tree walker, weak link, JSON path) whose
   transaction has been committed returns NULL from its `*_next` function, with the reason in
   `ylast_error`, instead of reading through the freed transaction. It can still be destroyed.
