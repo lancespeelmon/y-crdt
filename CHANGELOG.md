@@ -11,6 +11,8 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Array inserts and removals, and removing XML children, find their index from the search
+  marker too: inserting at random positions in an array (B1.11) takes 20 ms instead of 34 ms.
 - Text edits find their index from a search marker, as in Yjs: the position of the last local
   edit, kept while nothing else changes the text before it. Edits near the previous one no longer
   walk the text from its start. Applying the B4 editing trace takes 161 ms instead of 2.25 s,
