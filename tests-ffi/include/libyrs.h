@@ -299,7 +299,7 @@ typedef struct StickyIndex {} StickyIndex;
 /**
  * Error code: update block assigned to parent that is not a valid shared ref of deleted block.
  */
-#define ERR_INVALID_PARENT 9
+#define ERR_INVALID_PARENT 11
 
 #define YCHANGE_ADD 1
 

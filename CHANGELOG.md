@@ -27,6 +27,9 @@ repository and its release notes.
 - **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook
   name, like `TypeRef::XmlElement` carries its tag. `XmlHookRef::hook_name` returns it.
 
+- **Breaking (yffi):** `ERR_INVALID_PARENT` is now 11. It was 9, the same value as
+  `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
+
 ### Added
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
@@ -67,6 +70,10 @@ repository and its release notes.
 - yffi: `yinput_null`/`yinput_undefined` and the matching `YOutput` constructors no longer
   return uninitialized memory in the value field.
 - The C header `libyrs.h` now includes `ERR_MALFORMED`.
+- yffi: `ychunks_destroy`, `yundo_manager_destroy`, `ysticky_index_destroy`, `yweak_destroy` and
+  `yweak_iter_destroy` accept NULL, like the other destroy functions.
+- yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
+  as UTF-8 unchecked (undefined behaviour).
 
 ### Removed
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
