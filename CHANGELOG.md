@@ -186,6 +186,10 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi no longer leaks: `yoptions()` returns NULL `guid` and `collection_id` (a document
+  created with a NULL guid gets a random one, as before) instead of allocating strings the
+  caller couldn't free, and the array from `ytransaction_subdocs` is released with the new
+  `ysubdocs_destroy`.
 - `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
   decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
   2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a

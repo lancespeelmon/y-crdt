@@ -386,10 +386,17 @@ impl From<Options> for YOptions {
     }
 }
 
-/// Returns default ceonfiguration for `YOptions`.
+/// Returns the default configuration for `YOptions`. Its `guid` and `collection_id` are NULL:
+/// a document created with a NULL `guid` gets a random one (read it back with [ydoc_guid]).
+/// Nothing in the returned value needs freeing, and strings you set in it stay yours.
 #[no_mangle]
 pub unsafe extern "C" fn yoptions() -> YOptions {
-    ffi_default_options().into()
+    let mut options: YOptions = ffi_default_options().into();
+    // `From<Options>` allocates the strings; the defaults don't need them, and the caller,
+    // who is free to overwrite these fields, would have no way to free them.
+    drop(CString::from_raw(options.guid as *mut c_char));
+    options.guid = std::ptr::null();
+    options
 }
 
 /// The defaults of a document created through this API: weak links off.
@@ -784,7 +791,8 @@ pub unsafe extern "C" fn ydoc_write_transaction(
     }
 }
 
-/// Returns a list of subdocs existing within current document.
+/// Returns a list of subdocs existing within current document. Release the array (not the
+/// documents) with [ysubdocs_destroy].
 #[no_mangle]
 pub unsafe extern "C" fn ytransaction_subdocs(
     txn: *mut Transaction,
@@ -798,6 +806,16 @@ pub unsafe extern "C" fn ytransaction_subdocs(
     let out = subdocs.into_boxed_slice();
     *len = out.len() as u32;
     Box::into_raw(out) as *mut _
+}
+
+/// Releases an array returned by [ytransaction_subdocs]. `len` is the length it reported. The
+/// documents themselves belong to their parent and aren't freed.
+#[no_mangle]
+pub unsafe extern "C" fn ysubdocs_destroy(docs: *mut *mut Doc, len: u32) {
+    if !docs.is_null() {
+        let slice = std::ptr::slice_from_raw_parts_mut(docs, len as usize);
+        drop(Box::from_raw(slice));
+    }
 }
 
 /// A root-level shared type of a document: its name paired with a pointer to its branch.
