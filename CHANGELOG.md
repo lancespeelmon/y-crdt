@@ -80,7 +80,7 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
-- `Doc::try_get_or_insert::<T>(name)` and `Root::try_get_or_create`, which fail with the new
+- `Doc::try_get_or_insert::<T>(name)`, `WriteTxn::try_get_or_insert` and `Root::try_get_or_create`, which fail with the new
   `RootTypeMismatch` when the root exists with another type, as Yjs' `doc.get` throws.
   `get_or_insert_*` still reinterpret it.
 - `PermanentUserData` (Yjs' class of the same name): maps client IDs to users and records who

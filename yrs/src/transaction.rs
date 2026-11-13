@@ -352,6 +352,19 @@ pub trait WriteTxn: Sized {
         XmlFragmentRef::root(name).get_or_create(self)
     }
 
+    /// Returns the root type `name` as an `S`, creating it if needed, or
+    /// [RootTypeMismatch](crate::RootTypeMismatch) if it exists with another type. See
+    /// [Doc::try_get_or_insert](crate::Doc::try_get_or_insert).
+    fn try_get_or_insert<S: crate::types::RootRef>(
+        &mut self,
+        name: impl Into<Arc<str>>,
+    ) -> Result<S, crate::RootTypeMismatch>
+    where
+        Self: Sized,
+    {
+        crate::Root::<S>::new(name).try_get_or_create(self)
+    }
+
     /// Prunes a pending updates from the current document and returns them.
     /// Returns `None` if current document didn't have any pending updates.
     fn prune_pending(&mut self) -> Option<Update> {
