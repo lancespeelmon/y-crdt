@@ -1,5 +1,5 @@
 use crate::block::{ClientID, Item, ItemContent, ItemPtr, Prelim};
-use crate::branch::BranchPtr;
+use crate::branch::{BranchPtr, Root, RootTypeMismatch};
 use crate::encoding::read::Error;
 use crate::event::{SubdocsEvent, TransactionCleanupEvent, UpdateEvent};
 use crate::store::{DocStore, StoreInner};
@@ -297,6 +297,29 @@ impl Doc {
     /// types during the document creation.
     pub fn get_or_insert_xml_fragment<N: Into<Arc<str>>>(&self, name: N) -> XmlFragmentRef {
         XmlFragmentRef::root(name).get_or_create(&mut self.transact_mut())
+    }
+
+    /// Returns the root type `name` as an `S` ([TextRef], [MapRef], [ArrayRef] or
+    /// [XmlFragmentRef]), creating it if needed. Unlike `get_or_insert_*`, which reinterpret a
+    /// root of another type, this fails with [RootTypeMismatch], as Yjs' `doc.get` throws.
+    ///
+    /// ```
+    /// use yrs::{Doc, MapRef, TextRef};
+    ///
+    /// let doc = Doc::new();
+    /// doc.get_or_insert_text("name");
+    /// assert!(doc.try_get_or_insert::<TextRef>("name").is_ok());
+    /// assert!(doc.try_get_or_insert::<MapRef>("name").is_err());
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Like `get_or_insert_*`, if another transaction is in progress.
+    pub fn try_get_or_insert<S: RootRef>(
+        &self,
+        name: impl Into<Arc<str>>,
+    ) -> Result<S, RootTypeMismatch> {
+        Root::<S>::new(name).try_get_or_create(&mut self.transact_mut())
     }
 
     define_doc_observer!(
@@ -726,6 +749,35 @@ impl DocAddr {
 
 #[cfg(test)]
 mod test {
+    #[test]
+    fn a_root_of_another_type_is_an_error_but_an_unknown_one_takes_the_type() {
+        use crate::updates::decoder::Decode;
+        use crate::{ArrayRef, MapRef, StateVector, Text, TextRef, Update};
+
+        let source = Doc::with_client_id(1);
+        source
+            .get_or_insert_text("remote")
+            .insert(&mut source.transact_mut(), 0, "hi");
+        let doc = Doc::with_client_id(2);
+        doc.get_or_insert_map("local");
+        let update = source
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        doc.transact_mut()
+            .apply_update(Update::decode_v1(&update).unwrap())
+            .unwrap();
+
+        let err = doc.try_get_or_insert::<TextRef>("local").unwrap_err();
+        assert_eq!(&*err.name, "local");
+        assert_eq!(err.existing, crate::types::TypeRef::Map);
+        assert!(doc.try_get_or_insert::<MapRef>("local").is_ok());
+        // Known only from the update, so its type is open, as in Yjs.
+        let text = doc.try_get_or_insert::<TextRef>("remote").unwrap();
+        assert_eq!(text.get_string(&doc.transact()), "hi");
+        assert!(doc.try_get_or_insert::<ArrayRef>("remote").is_err());
+        assert!(doc.try_get_or_insert::<ArrayRef>("new").is_ok());
+    }
+
     use crate::block::{Block, BlockRange, ClientID, ItemContent};
     use crate::encoding::read::MalformedKind;
     use crate::error::Error;

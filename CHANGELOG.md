@@ -11,6 +11,8 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking (ywasm):** `getText`, `getArray`, `getMap` and `getXmlFragment` throw when the root
+  exists with another type, like Yjs, instead of reinterpreting it.
 - **Breaking:** `Any::Map` holds an `AnyMap` (`indexmap::IndexMap<String, Any>`) instead of a
   `HashMap`, so entries keep their insertion order as JS object keys do. Decoding and
   re-encoding a map gives the same bytes, and JSON output is deterministic. `Any` can be built
@@ -72,6 +74,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `Doc::try_get_or_insert::<T>(name)` and `Root::try_get_or_create`, which fail with the new
+  `RootTypeMismatch` when the root exists with another type, as Yjs' `doc.get` throws.
+  `get_or_insert_*` still reinterpret it.
 - `PermanentUserData` (Yjs' class of the same name): maps client IDs to users and records who
   deleted what, in the same document layout as Yjs, so both read each other's data.
   Recording is explicit (`record_deletions`, `record_local_deletions`), since yrs has no timers.

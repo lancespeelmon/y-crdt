@@ -641,6 +641,36 @@ impl<S: RootRef> Root<S> {
         let branch = store.get_or_create_type(self.name.clone(), S::type_ref());
         S::from(branch)
     }
+
+    /// Like [Root::get_or_create], but fails if the root already exists with another type,
+    /// where [Root::get_or_create] reinterprets it. Yjs throws in that case. A root whose type is
+    /// still unknown (created by a remote update that only referenced it) takes on `S`'s type.
+    pub fn try_get_or_create<T: WriteTxn>(&self, txn: &mut T) -> Result<S, RootTypeMismatch> {
+        let requested = S::type_ref();
+        if let Some(existing) = txn.store_mut().get_type(self.name.clone()) {
+            if existing.type_ref != TypeRef::Undefined && existing.type_ref != requested {
+                return Err(RootTypeMismatch {
+                    name: self.name.clone(),
+                    existing: existing.type_ref.clone(),
+                    requested,
+                });
+            }
+        }
+        Ok(self.get_or_create(txn))
+    }
+}
+
+/// A root type was requested with a type other than the one it has. See
+/// [Root::try_get_or_create].
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("root type `{name}` is a {existing:?}, not a {requested:?}")]
+pub struct RootTypeMismatch {
+    /// The root's name.
+    pub name: Arc<str>,
+    /// Its type.
+    pub existing: TypeRef,
+    /// The type that was asked for.
+    pub requested: TypeRef,
 }
 
 impl<S: SharedRef> Root<S> {

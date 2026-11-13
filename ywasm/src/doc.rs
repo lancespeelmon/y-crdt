@@ -163,12 +163,16 @@ impl YDoc {
     ///
     /// If there was no instance with this name before, it will be created and then returned.
     ///
-    /// If there was an instance with this name, but it was of different type, it will be projected
-    /// onto `YText` instance.
+    /// Throws if there is a root of another type with this name, as Yjs does.
     #[wasm_bindgen(js_name = getText)]
-    pub fn get_text(&self, name: &str) -> YText {
-        let shared_ref = self.get_or_insert_text(name);
-        YText(SharedCollection::integrated(shared_ref, self.0.clone()))
+    pub fn get_text(&self, name: &str) -> Result<YText> {
+        let shared_ref = self
+            .try_get_or_insert::<yrs::TextRef>(name)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(YText(SharedCollection::integrated(
+            shared_ref,
+            self.0.clone(),
+        )))
     }
 
     /// Returns a `YArray` shared data type, that's accessible for subsequent accesses using given
@@ -176,12 +180,16 @@ impl YDoc {
     ///
     /// If there was no instance with this name before, it will be created and then returned.
     ///
-    /// If there was an instance with this name, but it was of different type, it will be projected
-    /// onto `YArray` instance.
+    /// Throws if there is a root of another type with this name, as Yjs does.
     #[wasm_bindgen(js_name = getArray)]
-    pub fn get_array(&self, name: &str) -> YArray {
-        let shared_ref = self.get_or_insert_array(name);
-        YArray(SharedCollection::integrated(shared_ref, self.0.clone()))
+    pub fn get_array(&self, name: &str) -> Result<YArray> {
+        let shared_ref = self
+            .try_get_or_insert::<yrs::ArrayRef>(name)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(YArray(SharedCollection::integrated(
+            shared_ref,
+            self.0.clone(),
+        )))
     }
 
     /// Returns a `YMap` shared data type, that's accessible for subsequent accesses using given
@@ -189,12 +197,16 @@ impl YDoc {
     ///
     /// If there was no instance with this name before, it will be created and then returned.
     ///
-    /// If there was an instance with this name, but it was of different type, it will be projected
-    /// onto `YMap` instance.
+    /// Throws if there is a root of another type with this name, as Yjs does.
     #[wasm_bindgen(js_name = getMap)]
-    pub fn get_map(&self, name: &str) -> YMap {
-        let shared_ref = self.get_or_insert_map(name);
-        YMap(SharedCollection::integrated(shared_ref, self.0.clone()))
+    pub fn get_map(&self, name: &str) -> Result<YMap> {
+        let shared_ref = self
+            .try_get_or_insert::<yrs::MapRef>(name)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(YMap(SharedCollection::integrated(
+            shared_ref,
+            self.0.clone(),
+        )))
     }
 
     /// Returns a `YXmlFragment` shared data type, that's accessible for subsequent accesses using
@@ -202,12 +214,16 @@ impl YDoc {
     ///
     /// If there was no instance with this name before, it will be created and then returned.
     ///
-    /// If there was an instance with this name, but it was of different type, it will be projected
-    /// onto `YXmlFragment` instance.
+    /// Throws if there is a root of another type with this name, as Yjs does.
     #[wasm_bindgen(js_name = getXmlFragment)]
-    pub fn get_xml_fragment(&self, name: &str) -> YXmlFragment {
-        let shared_ref = self.get_or_insert_xml_fragment(name);
-        YXmlFragment(SharedCollection::integrated(shared_ref, self.0.clone()))
+    pub fn get_xml_fragment(&self, name: &str) -> Result<YXmlFragment> {
+        let shared_ref = self
+            .try_get_or_insert::<yrs::XmlFragmentRef>(name)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(YXmlFragment(SharedCollection::integrated(
+            shared_ref,
+            self.0.clone(),
+        )))
     }
 
     #[wasm_bindgen(js_name = on)]

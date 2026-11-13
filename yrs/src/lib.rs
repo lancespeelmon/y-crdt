@@ -669,6 +669,7 @@ pub use crate::branch::BranchID;
 pub use crate::branch::Hook;
 pub use crate::branch::Nested;
 pub use crate::branch::Root;
+pub use crate::branch::RootTypeMismatch;
 pub use crate::doc::Doc;
 pub use crate::doc::GcFilter;
 pub use crate::doc::OffsetKind;
