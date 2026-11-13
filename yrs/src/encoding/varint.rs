@@ -2,8 +2,11 @@ use crate::encoding::read::{Error, Read};
 use crate::encoding::write::Write;
 use std::convert::TryInto;
 
+/// Trait implemented by the integer types that can be encoded as a variable-length integer.
 pub trait VarInt: Sized + Copy {
+    /// Writes this number into `w` as a variable-length integer.
     fn write<W: Write>(&self, w: &mut W);
+    /// Reads a variable-length integer from `r`.
     fn read<R: Read>(r: &mut R) -> Result<Self, Error>;
 }
 
@@ -280,8 +283,11 @@ fn read_var_i64<R: Read>(reader: &mut R) -> Result<i64, Error> {
     }
 }
 
+/// Trait implemented by the integer types that can be encoded as a variable-length integer with a separate sign, which keeps `-0` apart from `0`.
 pub trait SignedVarInt: Sized + Copy {
+    /// Writes `value` into `w` as a variable-length integer.
     fn write_signed<W: Write>(value: &Signed<Self>, w: &mut W);
+    /// Reads a signed variable-length integer from `r`.
     fn read_signed<R: Read>(r: &mut R) -> Result<Signed<Self>, Error>;
 }
 
@@ -295,6 +301,7 @@ pub struct Signed<T: Sized + Copy> {
 }
 
 impl<T: Sized + Copy> Signed<T> {
+    /// Creates a number with the given `value` and sign.
     pub fn new(value: T, is_negative: bool) -> Self {
         Signed { value, is_negative }
     }

@@ -5,10 +5,13 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// The update couldn't be decoded.
     #[error("{0}")]
     ReadError(#[from] crate::encoding::read::Error),
+    /// The update couldn't be applied.
     #[error("failed to apply update: {0}")]
     UpdateError(#[from] UpdateError),
+    /// The operation can't be executed on a document that has garbage collection enabled.
     #[error("Cannot execute this operation when document garbage collection is set")]
     Gc,
 }
@@ -17,6 +20,7 @@ pub enum Error {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum UpdateError {
+    /// A block's parent, identified by the first value, must be either deleted or a shared type. The second value is the type tag that was found instead.
     #[error("block parent {0} must be deleted or shared ref type. Type: {1}")]
     InvalidParent(ID, u8),
 }

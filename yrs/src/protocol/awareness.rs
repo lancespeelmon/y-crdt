@@ -86,6 +86,7 @@ impl Awareness {
         self.on_update.subscribe(key.into(), Box::new(f))
     }
 
+    /// Removes a callback that was subscribed under the given `key` via [Awareness::on_update]. Returns `true` if there was one.
     pub fn unobserve_update<K>(&mut self, key: K) -> bool
     where
         K: Into<Origin>,
@@ -113,6 +114,7 @@ impl Awareness {
         self.on_change.subscribe(key.into(), Box::new(f))
     }
 
+    /// Removes a callback that was subscribed under the given `key` via [Awareness::on_change]. Returns `true` if there was one.
     pub fn unobserve_change<K>(&mut self, key: K) -> bool
     where
         K: Into<Origin>,
@@ -543,6 +545,7 @@ impl std::fmt::Debug for Awareness {
     }
 }
 
+/// Iterator over the clients known to an [Awareness] and their states, created by [Awareness::iter].
 pub struct AwarenessIter<'a>(dashmap::iter::Iter<'a, ClientID, ClientState>);
 
 impl<'a> Iterator for AwarenessIter<'a> {
@@ -644,6 +647,7 @@ pub enum AwarenessError {
     /// Client ID was not found in [Awareness] metadata.
     #[error("client ID `{0}` not found")]
     ClientNotFound(ClientID),
+    /// The state couldn't be serialized to JSON.
     #[error("couldn't serialize awareness state: {0}")]
     Serde(#[from] serde_json::Error),
 }
@@ -651,10 +655,14 @@ pub enum AwarenessError {
 /// The name this module's error had before [AwarenessError].
 pub type Error = AwarenessError;
 
+/// The state that an [Awareness] keeps for a client.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientState {
+    /// The clock of this state. It increases every time the client updates its state.
     pub clock: u32,
+    /// The time of the last update of this state, according to the [Awareness] clock.
     pub last_updated: Timestamp,
+    /// The state as a JSON string, or `None` if the client has been removed.
     pub data: Option<Arc<str>>,
 }
 
@@ -675,6 +683,7 @@ pub struct Event {
 }
 
 impl Event {
+    /// Creates an event for the given lists of added, updated and removed clients.
     pub fn new(added: Vec<ClientID>, updated: Vec<ClientID>, removed: Vec<ClientID>) -> Self {
         Event {
             summary: AwarenessUpdateSummary {
@@ -685,6 +694,7 @@ impl Event {
         }
     }
 
+    /// Returns the summary of the clients that were added, updated and removed.
     pub fn summary(&self) -> &AwarenessUpdateSummary {
         &self.summary
     }

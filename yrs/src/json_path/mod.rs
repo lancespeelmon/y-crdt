@@ -8,12 +8,15 @@ pub use iter_txn::JsonPathIter;
 
 /// Trait implemented by types capable of evaluating JSON Paths.
 pub trait JsonPathEval {
+    /// The type of the iterator over the values that match a path.
     type Iter<'a>
     where
         Self: 'a;
+    /// Returns an iterator over the values that match the given `path`.
     fn json_path<'a>(&'a self, path: &'a JsonPath<'a>) -> Self::Iter<'a>;
 }
 
+/// A JSON path query. Use [JsonPath::parse] to create one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct JsonPath<'a> {
     tokens: Vec<JsonPathToken<'a>>,
@@ -80,9 +83,11 @@ impl<'a> Display for JsonPathToken<'a> {
     }
 }
 
+/// An error from parsing a JSON path.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ParseError {
+    /// The string isn't a valid JSON path. It describes why.
     #[error("{0}")]
     InvalidJsonPath(String),
 }

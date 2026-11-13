@@ -9,6 +9,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
+/// Deserializes a value of type `T` from an [Any].
 pub fn from_any<'de, T: Deserialize<'de>>(any: &'de Any) -> Result<T, Error> {
     let deserializer = AnyDeserializer { value: any };
     T::deserialize(deserializer)

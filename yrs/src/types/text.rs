@@ -157,6 +157,7 @@ impl TryFrom<Out> for TextRef {
     }
 }
 
+/// Trait implemented by the collaborative text types: [TextRef] and [XmlTextRef].
 pub trait Text: AsRef<Branch> + Sized {
     /// The length of the text, in the document's [OffsetKind] units: UTF-16 code units by
     /// default.
@@ -252,6 +253,7 @@ pub trait Text: AsRef<Branch> + Sized {
         Ok(())
     }
 
+    /// Applies a sequence of [Delta] changes to this text, in order, starting from its beginning.
     fn apply_delta<D, P>(&self, txn: &mut TransactionMut, delta: D)
     where
         D: IntoIterator<Item = Delta<P>>,
@@ -1281,10 +1283,12 @@ pub struct Diff<T> {
 }
 
 impl<T> Diff<T> {
+    /// Creates a chunk of data with the given formatting `attributes`, and with no custom data attached.
     pub fn new(insert: Out, attributes: Option<Box<Attrs>>) -> Self {
         Self::with_change(insert, attributes, None)
     }
 
+    /// Creates a chunk of data with the given formatting `attributes`, with custom data `ychange` attached.
     pub fn with_change(insert: Out, attributes: Option<Box<Attrs>>, ychange: Option<T>) -> Self {
         Diff {
             insert,
@@ -1301,6 +1305,7 @@ impl<T> From<Diff<T>> for Delta {
     }
 }
 
+/// A [Prelim] that creates a text from a sequence of [Delta] changes.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeltaPrelim(Vec<Delta<In>>);
@@ -1354,26 +1359,34 @@ impl<T> std::fmt::Display for Diff<T> {
     }
 }
 
+/// Describes how a chunk of text differs between two snapshots: it's been added or removed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct YChange {
+    /// Whether the chunk has been added or removed.
     pub kind: ChangeKind,
+    /// The ID of the first item of the chunk.
     pub id: ID,
 }
 
 impl YChange {
+    /// Creates a description of a change of the given `kind` made by the item with the given `id`.
     pub fn new(kind: ChangeKind, id: ID) -> Self {
         YChange { kind, id }
     }
 
+    /// Returns the given `change` as it is. Can be used as the function that computes custom data of a [Diff].
     #[inline]
     pub fn identity(change: YChange) -> YChange {
         change
     }
 }
 
+/// The kind of a [YChange].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeKind {
+    /// The chunk has been added.
     Added,
+    /// The chunk has been removed.
     Removed,
 }
 
@@ -1617,6 +1630,7 @@ impl TextEvent {
 pub struct TextPrelim(String);
 
 impl TextPrelim {
+    /// Creates a preliminary text with the given initial `value`.
     #[inline]
     pub fn new<S: Into<String>>(value: S) -> Self {
         TextPrelim(value.into())

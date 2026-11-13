@@ -349,15 +349,23 @@ pub const MSG_AUTH: u8 = 2;
 /// Tag id for [Message::AwarenessQuery].
 pub const MSG_QUERY_AWARENESS: u8 = 3;
 
+/// The permission value of a [Message::Auth] that denies access.
 pub const PERMISSION_DENIED: u8 = 0;
+/// The permission value of a [Message::Auth] that grants access.
 pub const PERMISSION_GRANTED: u8 = 1;
 
+/// A message of the y-sync protocol.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
+    /// A document synchronization message.
     Sync(SyncMessage),
+    /// An authorization reply: `None` grants permission, `Some` denies it with the given reason.
     Auth(Option<String>),
+    /// A request for the awareness state of all clients.
     AwarenessQuery,
+    /// An update of the awareness state.
     Awareness(AwarenessUpdate),
+    /// A message with a custom tag, which this crate doesn't interpret, and its payload.
     Custom(u8, Vec<u8>),
 }
 
@@ -429,10 +437,14 @@ pub const MSG_SYNC_STEP_2: u8 = 1;
 /// Tag id for [SyncMessage::Update].
 pub const MSG_SYNC_UPDATE: u8 = 2;
 
+/// A document synchronization message, sent as part of a [Message::Sync].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncMessage {
+    /// The first step of the sync: carries the sender's state vector, to ask for the updates that it's missing.
     SyncStep1(StateVector),
+    /// The second step of the sync: carries an update with the data that the other side was missing.
     SyncStep2(Vec<u8>),
+    /// An incremental update of the document.
     Update(Vec<u8>),
 }
 
@@ -494,7 +506,10 @@ pub enum ProtocolError {
 
     /// An incoming Y-protocol authorization request has been denied.
     #[error("permission denied to access: {reason}")]
-    PermissionDenied { reason: String },
+    PermissionDenied {
+        /// The reason of the denial.
+        reason: String,
+    },
 
     /// Thrown whenever an unknown message tag has been sent.
     #[error("unsupported message tag identifier: {0}")]
@@ -504,6 +519,7 @@ pub enum ProtocolError {
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
 
+    /// An update couldn't be applied.
     #[error("failed to apply update: {0}")]
     Update(#[from] UpdateError),
 
@@ -518,6 +534,7 @@ pub enum ProtocolError {
 pub struct MessageReader<'a, D: Decoder>(&'a mut D);
 
 impl<'a, D: Decoder> MessageReader<'a, D> {
+    /// Creates a reader over the messages in the `decoder`.
     pub fn new(decoder: &'a mut D) -> Self {
         MessageReader(decoder)
     }

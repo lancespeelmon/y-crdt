@@ -49,14 +49,17 @@ pub struct StickyIndex {
 }
 
 impl StickyIndex {
+    /// Creates a sticky index in the given `scope`, associated with a block according to `assoc`.
     pub fn new(scope: IndexScope, assoc: Assoc) -> Self {
         StickyIndex { scope, assoc }
     }
 
+    /// Creates a sticky index that refers to the block with the given `id`.
     pub fn from_id(id: ID, assoc: Assoc) -> Self {
         Self::new(IndexScope::Relative(id), assoc)
     }
 
+    /// Creates a sticky index that refers to a collection itself, which is useful when it's empty.
     pub fn from_type<T, B>(_txn: &T, branch: &B, assoc: Assoc) -> Self
     where
         T: ReadTxn,
@@ -73,6 +76,7 @@ impl StickyIndex {
         }
     }
 
+    /// Returns the scope that this index is placed in.
     #[inline]
     pub fn scope(&self) -> &IndexScope {
         &self.scope
@@ -237,6 +241,7 @@ impl StickyIndex {
         }
     }
 
+    /// Creates a sticky index at the given `index` of the collection `branch`. Returns `None` if the index is out of bounds.
     pub fn at<T: ReadTxn>(
         txn: &T,
         branch: BranchPtr,
@@ -488,6 +493,7 @@ pub enum IndexScope {
 }
 
 impl IndexScope {
+    /// Returns the scope that refers to the collection `branch` itself.
     pub fn from_branch(branch: BranchPtr) -> Self {
         match branch.id() {
             BranchID::Nested(id) => IndexScope::Nested(id),

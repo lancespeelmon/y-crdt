@@ -1,3 +1,6 @@
+// Internals: re-exported only through the hidden `yrs::internals` module, exempt from the docs requirement.
+#![allow(missing_docs)]
+
 use crate::block_store::BlockStore;
 use crate::branch::{Branch, BranchID, BranchPtr};
 use crate::doc::{DocAddr, OffsetKind};
@@ -183,6 +186,7 @@ pub struct ID {
 }
 
 impl ID {
+    /// Creates an identifier of the block that was inserted by `client` at the given `clock` value.
     pub fn new(client: ClientID, clock: u32) -> Self {
         ID { client, clock }
     }
@@ -819,6 +823,7 @@ impl Item {
         (start, end)
     }
 
+    /// Writes this item into an `encoder`: its info byte, origins, parent reference and content.
     pub fn encode<E: Encoder>(&self, encoder: &mut E) {
         let info = self.info();
         let cant_copy_parent_info = info & (HAS_ORIGIN | HAS_RIGHT_ORIGIN) == 0;
@@ -866,6 +871,7 @@ impl Item {
         &self.id
     }
 
+    /// Returns the range of clock values that this item occupies.
     #[inline]
     pub fn range(&self) -> BlockRange {
         BlockRange::new(self.id, self.len)
@@ -1540,6 +1546,7 @@ impl Item {
         Some(item)
     }
 
+    /// Returns the range of clock values that this item occupies.
     #[inline]
     pub fn block_range(&self) -> BlockRange {
         BlockRange::new(self.id, self.len)
@@ -1600,6 +1607,7 @@ impl Item {
         self.len
     }
 
+    /// Returns the length of this item's content, measured in the units of the given offset `kind`.
     pub fn content_len(&self, kind: OffsetKind) -> u32 {
         match kind {
             // `len` is the content's length in UTF-16 code units: it's set from it when the item
@@ -1615,6 +1623,7 @@ impl Item {
         ID::new(self.id.client, self.id.clock + self.len() - 1)
     }
 
+    /// Returns the info byte of this item, as written to the update: origin/parent flags combined with the content's reference number.
     pub fn info(&self) -> u8 {
         let info = if self.origin.is_some() { HAS_ORIGIN } else { 0 } // is left null
             | if self.right_origin.is_some() { HAS_RIGHT_ORIGIN } else { 0 } // is right null
@@ -2077,6 +2086,7 @@ impl ItemContent {
         }
     }
 
+    /// Writes this content into an `encoder`, in the form expected by the update format.
     pub fn encode<E: Encoder>(&self, encoder: &mut E) {
         match self {
             ItemContent::Deleted(len) => encoder.write_len(*len),
@@ -2106,6 +2116,7 @@ impl ItemContent {
         }
     }
 
+    /// Reads the content identified by `ref_num` from a `decoder`. Fails if the data is malformed or the content type is unknown.
     pub fn decode<D: Decoder>(decoder: &mut D, ref_num: u8) -> Result<Self, Error> {
         match ref_num & 0b1111 {
             BLOCK_ITEM_DELETED_REF_NUMBER => Ok(ItemContent::Deleted(decoder.read_len()?)),
@@ -2460,7 +2471,9 @@ impl TryFrom<ItemPtr> for Unused {
 /// Prelim container for types passed over to [TextRef::insert_embed](crate::Text::insert_embed) and [TextRef::insert_embed_with_attributes](crate::Text::insert_embed_with_attributes) methods.
 #[derive(Debug)]
 pub enum EmbedPrelim<T> {
+    /// A primitive value that is embedded as-is.
     Primitive(Any),
+    /// A shared collection (a [Prelim] type) that is embedded.
     Shared(T),
 }
 

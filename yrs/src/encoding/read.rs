@@ -8,27 +8,35 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DecodeError {
+    /// A variable-length integer is malformed.
     #[error("failed to decode variable length integer")]
     InvalidVarInt,
 
+    /// The input ended before the given number of bytes could be read.
     #[error("while trying to read more data (expected: {0} bytes), an unexpected end of buffer was reached")]
     EndOfBuffer(usize),
 
+    /// A value that's invalid at its position was found, e.g. an unknown tag or a length that is out of bounds.
     #[error("while reading, an unexpected value was found")]
     UnexpectedValue,
 
+    /// Memory for the decoded data couldn't be allocated.
     #[error("failed to allocate memory: {0}")]
     NotEnoughMemory(#[from] TryReserveError),
 
+    /// A JSON string couldn't be parsed.
     #[error("JSON parsing error: {0}")]
     InvalidJSON(#[from] serde_json::Error),
 
+    /// The data couldn't be deserialized into the named target type.
     #[error("couldn't deserialize to target type of {0}")]
     TypeMismatch(&'static str),
 
+    /// The data is not a valid update.
     #[error("malformed update: {0}")]
     Malformed(MalformedKind),
 
+    /// An error with a custom message.
     #[error("{0}")]
     Custom(String),
 }
@@ -37,6 +45,7 @@ pub enum DecodeError {
 pub type Error = DecodeError;
 
 impl DecodeError {
+    /// Creates a [DecodeError::TypeMismatch] that names the type `T`.
     pub fn type_mismatch<T>() -> Self {
         DecodeError::TypeMismatch(type_name::<T>())
     }
@@ -46,7 +55,9 @@ impl DecodeError {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum MalformedKind {
+    /// A string is not valid UTF-8.
     Utf8,
+    /// A block with a length of 0 was found.
     EmptyBlock,
 }
 
@@ -59,17 +70,22 @@ impl Display for MalformedKind {
     }
 }
 
+/// A [Read] implementation over a slice of bytes.
 #[derive(Default)]
 pub struct Cursor<'a> {
+    /// The bytes that are being read.
     pub buf: &'a [u8],
+    /// The index in `buf` of the next byte to read.
     pub next: usize,
 }
 
 impl<'a> Cursor<'a> {
+    /// Creates a cursor that reads `buf` from its start.
     pub fn new(buf: &'a [u8]) -> Cursor<'a> {
         Cursor { buf, next: 0 }
     }
 
+    /// Checks if there are bytes left to read.
     pub fn has_content(&self) -> bool {
         self.next != self.buf.len()
     }
@@ -112,7 +128,9 @@ impl<'a> Read for Cursor<'a> {
     }
 }
 
+/// A source of bytes that primitive values are read from, in the lib0 encoding.
 pub trait Read: Sized {
+    /// Takes the next `len` bytes and advances by that many. Fails with [DecodeError::EndOfBuffer] if fewer remain.
     fn read_exact(&mut self, len: usize) -> Result<&[u8], Error>;
 
     /// Returns the number of bytes this reader can still produce.

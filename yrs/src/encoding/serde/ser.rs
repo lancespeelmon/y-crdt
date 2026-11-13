@@ -9,6 +9,7 @@ use std::convert::TryInto;
 use std::fmt::Display;
 use thiserror::Error;
 
+/// Serializes a `value` into an [Any].
 pub fn to_any<T: Serialize>(value: &T) -> Result<Any, AnySerializeError> {
     value.serialize(AnySerializer)
 }

@@ -33,6 +33,7 @@ impl StateVector {
         self.0.len()
     }
 
+    /// Creates a state vector from the given clocks of clients.
     pub fn new(map: HashMap<ClientID, u32, BuildHasherDefault<ClientHasher>>) -> Self {
         StateVector(map)
     }
@@ -44,6 +45,7 @@ impl StateVector {
         id.clock <= self.get(&id.client)
     }
 
+    /// Checks if this state vector has an entry for the given client.
     pub fn contains_client(&self, client_id: &ClientID) -> bool {
         self.0.contains_key(client_id)
     }
@@ -226,6 +228,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Creates a snapshot from the given state vector and delete set.
     pub fn new(state_map: StateVector, delete_set: IdSet) -> Self {
         Snapshot {
             state_map,

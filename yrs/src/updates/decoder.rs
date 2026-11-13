@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 /// A trait that can be implemented by any other type in order to support lib0 decoding capability.
 pub trait Decode: Sized {
+    /// Decodes a value of this type from the `decoder`.
     fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, Error>;
 
     /// Helper function for decoding 1st version of lib0 encoding.
@@ -112,6 +113,7 @@ pub struct DecoderV1<'a> {
 }
 
 impl<'a> DecoderV1<'a> {
+    /// Creates a decoder that reads from the given `cursor`.
     pub fn new(cursor: Cursor<'a>) -> Self {
         DecoderV1 { cursor }
     }
@@ -265,6 +267,7 @@ impl<'a> DecoderV2<'a> {
         }
     }
 
+    /// Creates a decoder that reads from the given `cursor`. Fails if the data is malformed.
     pub fn new(mut cursor: Cursor<'a>) -> Result<Self, Error> {
         if cursor.has_content() {
             // read feature flag - currently unused

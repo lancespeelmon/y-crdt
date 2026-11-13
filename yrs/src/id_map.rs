@@ -14,7 +14,9 @@ use std::hash::Hash;
 use std::ops::{Deref, Range};
 use std::sync::Arc;
 
+/// Removes from a collection of IDs the ones that are present in another one.
 pub trait Diff<D> {
+    /// Removes from `self` every ID that `other` covers.
     fn diff_with(&mut self, other: &D);
 }
 
@@ -57,10 +59,12 @@ impl<A> Deref for ContentAttributes<A> {
 }
 
 impl<A> ContentAttributes<A> {
+    /// Creates an empty set of attributes.
     pub fn new() -> Self {
         ContentAttributes(SmallVec::new())
     }
 
+    /// Creates a set from the given `attrs`.
     pub fn from_attrs(attrs: SmallVec<[ContentAttribute<A>; 2]>) -> Self {
         ContentAttributes(attrs)
     }
@@ -70,6 +74,7 @@ impl<A> ContentAttributes<A> {
 // IdMap<A>
 // ---------------------------------------------------------------------------
 
+/// Maps ranges of block IDs to the [ContentAttributes] attached to them. It's an [IdSet] that carries attributes.
 #[derive(Debug, Clone)]
 pub struct IdMap<A: PartialEq + Eq + Hash + Clone> {
     attrs: HashSet<ContentAttribute<A>>,
@@ -77,6 +82,7 @@ pub struct IdMap<A: PartialEq + Eq + Hash + Clone> {
 }
 
 impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
+    /// Creates an empty map.
     pub fn new() -> Self {
         IdMap {
             inner: IdMapInner::new(),
@@ -92,6 +98,7 @@ impl<A: PartialEq + Eq + Hash + Clone> Default for IdMap<A> {
 }
 
 impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
+    /// Creates a map that attaches the same `attrs` to every range in `id_set`.
     pub fn from_set(id_set: IdSet, attrs: Vec<ContentAttribute<A>>) -> Self {
         let mut id_map = IdMap::new();
         let mut attrs: SmallVec<[ContentAttribute<A>; 2]> = attrs.into();
@@ -108,18 +115,22 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
         id_map
     }
 
+    /// Returns an iterator over the ranges in this map and their attributes.
     pub fn iter(&self) -> Iter<'_, A> {
         Iter::new(self)
     }
 
+    /// Checks if this map contains no ranges.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    /// Checks if the given `id` is covered by any range in this map.
     pub fn contains(&self, id: &ID) -> bool {
         self.inner.contains(id)
     }
 
+    /// Returns the sub-ranges of `range` along with their attributes. Parts of `range` that this map doesn't cover are returned with no attributes.
     pub fn attributions(&self, range: &BlockRange) -> Vec<AttrRange<A>> {
         let client = range.client;
         let block_start = range.clock;
@@ -169,6 +180,7 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
         result
     }
 
+    /// Attaches `attrs` to the given `range`. Does nothing if either is empty.
     pub fn insert(&mut self, range: BlockRange, attrs: Vec<ContentAttribute<A>>) {
         if attrs.is_empty() || range.len == 0 {
             return;
@@ -181,6 +193,7 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
             .insert_range(range.client, range.clock_range(), content_attrs);
     }
 
+    /// Removes the given `range` from this map.
     pub fn remove(&mut self, range: &BlockRange) {
         if range.len == 0 {
             return;
@@ -195,6 +208,7 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
         }
     }
 
+    /// Merges the ranges of `other` into this map, unioning the attributes of overlapping ones.
     pub fn merge_with(&mut self, other: Self) {
         self.inner.merge_with(&other.inner);
         // Merge the attr dedup sets
@@ -203,6 +217,7 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
         }
     }
 
+    /// Returns a map merged from all of the given `id_maps`.
     pub fn merge_many(id_maps: &[Self]) -> Self {
         let mut result = IdMap::new();
         for map in id_maps {
@@ -214,10 +229,12 @@ impl<A: PartialEq + Eq + Hash + Clone> IdMap<A> {
         result
     }
 
+    /// Keeps in this map only the ranges that `other` also covers.
     pub fn intersect_with(&mut self, other: &Self) {
         self.inner.intersect_with(&other.inner);
     }
 
+    /// Returns a map that has only the ranges whose attributes satisfy the `predicate`.
     pub fn filter<F>(&self, predicate: F) -> Self
     where
         F: Fn(&[ContentAttribute<A>]) -> bool,
@@ -453,13 +470,17 @@ impl<A: DeserializeOwned + PartialEq + Eq + Hash + Clone> Decode for IdMap<A> {
     }
 }
 
+/// A range of clocks, along with the attributes attached to it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct AttrRange<A> {
+    /// The range of clock values.
     pub range: Range<u32>,
+    /// The attributes attached to every clock value in the range.
     pub attrs: ContentAttributes<A>,
 }
 
 impl<A> AttrRange<A> {
+    /// Creates a range that has no attributes.
     pub fn new(range: Range<u32>) -> Self {
         AttrRange {
             range,
@@ -467,6 +488,7 @@ impl<A> AttrRange<A> {
         }
     }
 
+    /// Returns this range with its attributes replaced by `attrs`.
     pub fn with_attrs(self, attrs: SmallVec<[ContentAttribute<A>; 2]>) -> Self {
         AttrRange {
             range: self.range,
@@ -484,6 +506,7 @@ impl<A> Clone for AttrRange<A> {
     }
 }
 
+/// A named attribute attached to a range of IDs in an [IdMap].
 #[derive(Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ContentAttribute<A>(Arc<ContentAttributeInner<A>>);
 
@@ -494,6 +517,7 @@ struct ContentAttributeInner<A> {
 }
 
 impl<A> ContentAttribute<A> {
+    /// Creates an attribute with the given `name` and `value`.
     pub fn new<S: Into<String>>(name: S, value: A) -> Self {
         ContentAttribute(Arc::new(ContentAttributeInner {
             name: name.into(),
@@ -501,10 +525,12 @@ impl<A> ContentAttribute<A> {
         }))
     }
 
+    /// Returns the name of this attribute.
     pub fn name(&self) -> &str {
         &self.0.name
     }
 
+    /// Returns the value of this attribute.
     pub fn value(&self) -> &A {
         &self.0.value
     }

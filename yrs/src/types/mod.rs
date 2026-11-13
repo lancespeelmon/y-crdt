@@ -26,12 +26,17 @@ use crate::updates::decoder::{Decode, Decoder};
 use crate::updates::encoder::{Encode, Encoder};
 use crate::*;
 
+/// Collaborative array.
 pub mod array;
+/// Collaborative map.
 pub mod map;
 pub mod offset;
+/// Collaborative text.
 pub mod text;
+/// Weak links: references to values or ranges that live in other collections.
 #[cfg(feature = "weak")]
 pub mod weak;
+/// Collaborative XML types.
 pub mod xml;
 
 /// Type ref identifier for an [ArrayRef] type.
@@ -65,24 +70,35 @@ pub const TYPE_REFS_DOC: u8 = 9;
 /// which have been integrated from remote peers before they were defined locally.
 pub const TYPE_REFS_UNDEFINED: u8 = 15;
 
+/// The kind of a shared collection. Written to the update to tell peers which type to create. See the `TYPE_REFS_*` constants for the tags used on the wire.
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TypeRef {
+    /// An [ArrayRef].
     Array = TYPE_REFS_ARRAY,
+    /// A [MapRef].
     Map = TYPE_REFS_MAP,
+    /// A [TextRef].
     Text = TYPE_REFS_TEXT,
+    /// An [XmlElementRef], with the name of the XML node.
     XmlElement(Arc<str>) = TYPE_REFS_XML_ELEMENT,
+    /// An [XmlFragmentRef].
     XmlFragment = TYPE_REFS_XML_FRAGMENT,
     /// An XML hook, with its hook name.
     XmlHook(Arc<str>) = TYPE_REFS_XML_HOOK,
+    /// An [XmlTextRef].
     XmlText = TYPE_REFS_XML_TEXT,
+    /// A sub-document.
     SubDoc = TYPE_REFS_DOC,
+    /// A weak link, with the source that it quotes.
     #[cfg(feature = "weak")]
     WeakLink(Arc<LinkSource>) = TYPE_REFS_WEAK,
+    /// A root-level type that was received from a remote peer before it was defined locally.
     Undefined = TYPE_REFS_UNDEFINED,
 }
 
 impl TypeRef {
+    /// Returns the tag that identifies this type on the wire. It's one of the `TYPE_REFS_*` constants.
     pub fn kind(&self) -> u8 {
         match self {
             TypeRef::Array => TYPE_REFS_ARRAY,
@@ -288,8 +304,10 @@ impl Decode for TypeRef {
     }
 }
 
+/// Trait implemented by shared types that emit events: observing changes made to them by transactions.
 #[cfg(feature = "sync")]
 pub trait Observable: AsRef<Branch> {
+    /// The type of event emitted by this collection.
     type Event;
 
     /// Subscribes a given callback to be triggered whenever current y-type is changed.
@@ -314,16 +332,24 @@ pub trait Observable: AsRef<Branch> {
         })
     }
 
+    /// Removes a callback that was subscribed under the given `key`. Returns `true` if there was one.
     fn unobserve<K: Into<Origin>>(&self, key: K) -> bool {
         let mut branch = BranchPtr::from(self.as_ref());
         branch.unobserve(&key.into())
     }
 }
 
+/// Trait implemented by shared types that emit events: observing changes made to them by transactions.
 #[cfg(not(feature = "sync"))]
 pub trait Observable: AsRef<Branch> {
+    /// The type of event emitted by this collection.
     type Event;
 
+    /// Subscribes a given callback to be triggered whenever current y-type is changed.
+    /// A callback is triggered whenever a transaction gets committed. This function does not
+    /// trigger if changes have been observed by nested shared collections.
+    ///
+    /// The callback is registered under `key` and can be removed via [Observable::unobserve].
     fn observe<K, F>(&self, key: K, mut f: F)
     where
         K: Into<Origin>,
@@ -337,6 +363,7 @@ pub trait Observable: AsRef<Branch> {
         })
     }
 
+    /// Removes a callback that was subscribed under the given `key`. Returns `true` if there was one.
     fn unobserve<K: Into<Origin>>(&self, key: K) -> bool {
         let mut branch = BranchPtr::from(self.as_ref());
         branch.unobserve(&key.into())
@@ -360,6 +387,7 @@ pub trait GetString {
 /// elements created prior to them, while root-level types are virtually immortal and technically
 /// exist for the whole lifespan of their document.
 pub trait RootRef: SharedRef {
+    /// Returns the [TypeRef] that identifies this type.
     fn type_ref() -> TypeRef;
 
     /// Create a logical collaborative collection reference to a root-level type with a given `name`
@@ -380,6 +408,7 @@ pub trait SharedRef: From<BranchPtr> + AsRef<Branch> {
 /// Trait which allows conversion back to a prelim type that can be used to create a new shared
 /// that's a deep copy equivalent of a current type.
 pub trait AsPrelim {
+    /// The [Prelim] type that creates a copy of this type.
     type Prelim: Prelim<Return = Self>;
 
     /// Converts current type contents into a [Prelim] type that can be used to create a new
@@ -390,6 +419,7 @@ pub trait AsPrelim {
 /// Trait which allows to generate a [Prelim]-compatible type that - when integrated - will be
 /// converted into an instance of a current type.
 pub trait DefaultPrelim {
+    /// The [Prelim] type that creates a new, default instance of this type.
     type Prelim: Prelim<Return = Self>;
 
     /// Returns an instance of [Prelim]-compatible type, which will turn into reference of a current
@@ -401,6 +431,7 @@ pub trait DefaultPrelim {
 /// nested types.
 #[cfg(feature = "sync")]
 pub trait DeepObservable: AsRef<Branch> {
+    /// Subscribes a callback, under the given `key`, that is triggered when this collection or any collection nested in it changes. It's called with all the events that a transaction produced for them. It can be removed via [DeepObservable::unobserve_deep].
     fn observe_deep<K, F>(&self, key: K, f: F)
     where
         K: Into<Origin>,
@@ -410,14 +441,18 @@ pub trait DeepObservable: AsRef<Branch> {
         branch.observe_deep(key.into(), f)
     }
 
+    /// Removes a callback that was subscribed under the given `key` via [DeepObservable::observe_deep]. Returns `true` if there was one.
     fn unobserve_deep<K: Into<Origin>>(&self, key: K) -> bool {
         let mut branch = BranchPtr::from(self.as_ref());
         branch.unobserve_deep(&key.into())
     }
 }
 
+/// Trait implemented by all Y-types, allowing for observing events which are emitted by
+/// nested types.
 #[cfg(not(feature = "sync"))]
 pub trait DeepObservable: AsRef<Branch> {
+    /// Subscribes a callback, under the given `key`, that is triggered when this collection or any collection nested in it changes. It's called with all the events that a transaction produced for them. It can be removed via [DeepObservable::unobserve_deep].
     fn observe_deep<K, F>(&self, key: K, f: F)
     where
         K: Into<Origin>,
@@ -427,6 +462,7 @@ pub trait DeepObservable: AsRef<Branch> {
         branch.observe_deep(key.into(), f)
     }
 
+    /// Removes a callback that was subscribed under the given `key` via [DeepObservable::observe_deep]. Returns `true` if there was one.
     fn unobserve_deep<K: Into<Origin>>(&self, key: K) -> bool {
         let mut branch = BranchPtr::from(self.as_ref());
         branch.unobserve_deep(&key.into())
@@ -748,6 +784,7 @@ pub enum Delta<T = Out> {
 }
 
 impl<T> Delta<T> {
+    /// Converts the value carried by an insertion with `f`, leaving the other kinds of changes as they are.
     pub fn map<U, F>(self, f: F) -> Delta<U>
     where
         F: FnOnce(T) -> U,
@@ -761,18 +798,22 @@ impl<T> Delta<T> {
 }
 
 impl Delta<In> {
+    /// Creates a change that keeps the next `len` characters unchanged.
     pub fn retain(len: u32) -> Self {
         Delta::Retain(len, None)
     }
 
+    /// Creates a change that inserts the given `value`.
     pub fn insert<T: Into<In>>(value: T) -> Self {
         Delta::Inserted(value.into(), None)
     }
 
+    /// Creates a change that inserts the given `value`, formatted with `attrs`.
     pub fn insert_with<T: Into<In>>(value: T, attrs: Attrs) -> Self {
         Delta::Inserted(value.into(), Some(Box::new(attrs)))
     }
 
+    /// Creates a change that deletes the next `len` characters.
     pub fn delete(len: u32) -> Self {
         Delta::Deleted(len)
     }
@@ -900,6 +941,7 @@ pub(crate) fn event_change_set(txn: &TransactionMut, start: Option<ItemPtr>) -> 
     ChangeSet::new(added, deleted, delta)
 }
 
+/// The events that a transaction emitted for a collection and the collections nested in it, ordered from the shallowest to the deepest.
 pub struct Events<'a>(Vec<&'a Event>);
 
 impl<'a> Events<'a> {
@@ -913,11 +955,13 @@ impl<'a> Events<'a> {
         Events(events)
     }
 
+    /// Returns an iterator over the events.
     pub fn iter(&self) -> EventsIter {
         EventsIter(self.0.iter())
     }
 }
 
+/// Iterator over [Events], created by [Events::iter].
 pub struct EventsIter<'a>(std::slice::Iter<'a, &'a Event>);
 
 impl<'a> Iterator for EventsIter<'a> {
@@ -941,11 +985,17 @@ impl<'a> ExactSizeIterator for EventsIter<'a> {
 
 /// Generalized wrapper around events fired by specialized shared data types.
 pub enum Event {
+    /// An event of a [TextRef].
     Text(TextEvent),
+    /// An event of an [ArrayRef].
     Array(ArrayEvent),
+    /// An event of a [MapRef].
     Map(MapEvent),
+    /// An event of an [XmlElementRef] or an [XmlFragmentRef].
     XmlFragment(XmlEvent),
+    /// An event of an [XmlTextRef].
     XmlText(XmlTextEvent),
+    /// An event of a [WeakRef].
     #[cfg(feature = "weak")]
     Weak(WeakEvent),
 }
@@ -1056,6 +1106,7 @@ impl Event {
     }
 }
 
+/// Trait implemented by shared types to convert their contents into JSON-like [Any] values.
 pub trait ToJson {
     /// Converts all contents of a current type into a JSON-like representation.
     fn to_json<T: ReadTxn>(&self, txn: &T) -> Any;

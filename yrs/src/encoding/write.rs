@@ -10,9 +10,12 @@ impl Write for Vec<u8> {
     }
 }
 
+/// A destination that bytes of primitive values are written to, in the lib0 encoding.
 pub trait Write: Sized {
+    /// Writes all of the bytes in `buf`.
     fn write_all(&mut self, buf: &[u8]);
 
+    /// Writes a single byte.
     fn write_u8(&mut self, value: u8) {
         self.write_all(&[value])
     }

@@ -2,6 +2,10 @@
     html_logo_url = "https://raw.githubusercontent.com/y-crdt/y-crdt/main/logo-yrs.svg",
     html_favicon_url = "https://raw.githubusercontent.com/y-crdt/y-crdt/main/logo-yrs.svg"
 )]
+#![deny(missing_docs)]
+// The crate docs link to the `protocol` module, which only exists with its feature.
+#![cfg_attr(not(feature = "protocol"), allow(rustdoc::broken_intra_doc_links))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! Yrs (read: "wires") is a high performance CRDT implementation based on the idea of **Shared Types**.
 //! It is a compatible port of the [Yjs](https://github.com/yjs/yjs) CRDT.
@@ -618,29 +622,38 @@
 mod alt;
 mod block;
 mod block_store;
+/// The document, its options and its events.
 pub mod doc;
 mod event;
 mod id_map;
 mod id_set;
 mod store;
 mod transaction;
+/// Shared types: collections that sync between peers, their events and their prelim values.
 pub mod types;
 mod update;
+/// Encoders and decoders for the v1 and v2 update formats.
 pub mod updates;
 mod utils;
 
+/// [Any] values, a JSON-like data model with a compact binary encoding.
 pub mod any;
 pub mod atomic;
 mod block_iter;
 mod branch;
+/// Binary encoding primitives, and the serde (de)serialization support built on them.
 pub mod encoding;
+/// Errors returned by this crate.
 pub mod error;
 mod gc;
 mod ids;
 mod input;
+/// Iterators over the contents of shared collections.
 pub mod iter;
+/// JSONPath queries over shared types.
 pub mod json_path;
 pub mod metrics;
+/// [Observer], used to manage subscriptions to events.
 pub mod observer;
 mod out;
 pub mod permanent_user_data;
@@ -659,8 +672,10 @@ pub mod sync {
 mod test_utils;
 #[cfg(test)]
 mod tests;
+/// Clocks and timestamps.
 pub mod time;
 mod transact;
+/// [UndoManager](crate::undo::UndoManager) and the types that configure and report on it.
 pub mod undo;
 
 pub use crate::alt::{
@@ -748,10 +763,13 @@ pub mod internals {
     pub use crate::store::Store;
 }
 
+/// The old name of [Out].
 #[deprecated(since = "0.19.0", note = "Use `yrs::Out` instead")]
 pub type Value = Out;
 
+/// An [UndoManager](crate::undo::UndoManager) that attaches no metadata to its stack items.
 pub type UndoManager = crate::undo::UndoManager<()>;
+/// A UUID, as a string.
 pub type Uuid = std::sync::Arc<str>;
 
 /// Generate random v4 UUID.

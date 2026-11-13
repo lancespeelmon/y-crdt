@@ -160,10 +160,14 @@ fn refuse_deadlock(check: Result<(), TransactionAcqError>) {
 /// Trait implemented by [Doc] and shared types, used for carrying over the responsibilities of
 /// creating new transactions, used as a unit of work in Yrs.
 pub trait AsyncTransact<'doc> {
+    /// The future that resolves to a read-only [Transaction].
     type Read: Future<Output = Transaction<'doc>>;
+    /// The future that resolves to a read-write [TransactionMut].
     type Write: Future<Output = TransactionMut<'doc>>;
 
+    /// Returns a future that resolves to a read-only transaction once it can be acquired.
     fn transact(&'doc self) -> Self::Read;
+    /// Returns a future that resolves to a read-write transaction once it can be acquired.
     fn transact_mut(&'doc self) -> Self::Write;
 
     /// Creates and returns a read-write capable transaction with an `origin` classifier attached.
@@ -208,6 +212,7 @@ impl<'doc> AsyncTransact<'doc> for Doc {
     }
 }
 
+/// A future that resolves to a [Transaction] when the document's lock is available. Created by [AsyncTransact::transact].
 pub struct AcquireTransaction<'doc> {
     fut: Read<'doc, Store>,
 }
@@ -223,6 +228,7 @@ impl<'doc> Future for AcquireTransaction<'doc> {
     }
 }
 
+/// A future that resolves to a [TransactionMut] when the document's lock is available. Created by [AsyncTransact::transact_mut] and [AsyncTransact::transact_mut_with].
 pub struct AcquireTransactionMut<'doc> {
     doc: Doc,
     origin: Option<Origin>,
@@ -247,13 +253,17 @@ impl<'doc> Future for AcquireTransactionMut<'doc> {
     }
 }
 
+/// An error returned when a transaction couldn't be acquired.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum TransactionAcqError {
+    /// A read-only transaction couldn't be acquired, because a read-write transaction is active.
     #[error("Failed to acquire read-only transaction. Drop read-write transaction and retry.")]
     SharedAcqFailed,
+    /// A read-write transaction couldn't be acquired, because other transactions are active.
     #[error("Failed to acquire read-write transaction. Drop other transactions and retry.")]
     ExclusiveAcqFailed,
+    /// The parent document that contains this collection has been dropped.
     #[error("All references to a parent document containing this structure has been dropped.")]
     DocumentDropped,
     /// This thread already holds a transaction on the document that the new one would wait on
