@@ -2819,3 +2819,33 @@ TEST_CASE("a transaction keeps its document alive until it's committed") {
     ystring_destroy(str);
     ytransaction_commit(txn); // and now it's freed
 }
+
+TEST_CASE("iterators stop instead of reading through a committed transaction") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *arr = yarray(doc, "array");
+    Branch *map = ymap(doc, "map");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    YInput values[] = {yinput_long(1), yinput_long(2)};
+    yarray_insert_range(arr, txn, 0, values, 2);
+    YInput v = yinput_long(3);
+    ymap_insert(map, txn, "k", &v);
+    ytransaction_commit(txn);
+
+    txn = ydoc_read_transaction(doc);
+    YArrayIter *ai = yarray_iter(arr, txn);
+    YMapIter *mi = ymap_iter(map, txn);
+    YOutput *first = yarray_iter_next(ai);
+    REQUIRE(first != NULL);
+    youtput_destroy(first);
+    ytransaction_commit(txn);
+
+    REQUIRE(yarray_iter_next(ai) == NULL);
+    char *err = ylast_error();
+    REQUIRE(err != NULL);
+    REQUIRE(strstr(err, "committed") != NULL);
+    ystring_destroy(err);
+    REQUIRE(ymap_iter_next(mi) == NULL);
+    yarray_iter_destroy(ai);
+    ymap_iter_destroy(mi);
+    ydoc_destroy(doc);
+}

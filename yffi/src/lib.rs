@@ -119,30 +119,34 @@ pub type Doc = yrs::Doc;
 pub type Branch = yrs::internals::Branch;
 
 /// Iterator structure used by shared array data type.
-#[repr(transparent)]
-pub struct ArrayIter(NativeArrayIter<&'static Transaction, Transaction>);
+pub struct ArrayIter(NativeArrayIter<&'static Transaction, Transaction>, TxnLive);
 
 /// Iterator structure used by `yweak_iter` function call.
-#[repr(transparent)]
-pub struct WeakIter(NativeUnquote<'static, Transaction>);
+pub struct WeakIter(NativeUnquote<'static, Transaction>, TxnLive);
 
 /// Iterator structure used by shared map data type. Map iterators are unordered - there's no
 /// specific order in which map entries will be returned during consecutive iterator calls.
-#[repr(transparent)]
-pub struct MapIter(NativeMapIter<'static, &'static Transaction, Transaction>);
+pub struct MapIter(
+    NativeMapIter<'static, &'static Transaction, Transaction>,
+    TxnLive,
+);
 
 /// Iterator structure used by XML nodes (elements and text) to iterate over node's attributes.
 /// Attribute iterators are unordered - there's no specific order in which map entries will be
 /// returned during consecutive iterator calls.
-#[repr(transparent)]
-pub struct Attributes(NativeAttributes<'static, &'static Transaction, Transaction>);
+pub struct Attributes(
+    NativeAttributes<'static, &'static Transaction, Transaction>,
+    TxnLive,
+);
 
 /// Iterator used to traverse over the complex nested tree structure of a XML node. XML node
 /// iterator walks only over `YXmlElement` and `YXmlText` nodes. It does so in ordered manner (using
 /// the order in which children are ordered within their parent nodes) and using **depth-first**
 /// traverse.
-#[repr(transparent)]
-pub struct TreeWalker(NativeTreeWalker<'static, &'static Transaction, Transaction>);
+pub struct TreeWalker(
+    NativeTreeWalker<'static, &'static Transaction, Transaction>,
+    TxnLive,
+);
 
 /// Transaction is one of the core types in Yrs. All operations that need to touch or
 /// modify a document's contents (a.k.a. block store), need to be executed in scope of a
@@ -154,7 +158,34 @@ pub struct Transaction(
     TransactionInner,
     // Dropped after the transaction (fields drop in order), which borrows this document's store.
     #[allow(dead_code)] Doc,
+    TxnLive,
 );
+
+/// Whether a transaction is still open, shared with the iterators made from it: they borrow the
+/// transaction, so once it's committed (and freed) they must stop instead of reading through it.
+#[derive(Clone)]
+struct TxnLive(Arc<std::sync::atomic::AtomicBool>);
+
+impl TxnLive {
+    fn new() -> Self {
+        TxnLive(Arc::new(std::sync::atomic::AtomicBool::new(true)))
+    }
+
+    /// Whether the transaction is open; if not, says so in [ylast_error].
+    fn check(&self) -> bool {
+        let alive = self.0.load(std::sync::atomic::Ordering::Acquire);
+        if !alive {
+            set_last_error("the transaction this iterator reads from was committed".into());
+        }
+        alive
+    }
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        self.2 .0.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
 
 /// Iterator structure used by json path queries to traverse over the results of a query.
 #[repr(C)]
@@ -162,6 +193,7 @@ pub struct JsonPathIter {
     query: String,
     json_path: Box<JsonPath<'static>>,
     inner: NativeJsonPathIter<'static, Transaction>,
+    live: TxnLive,
 }
 
 enum TransactionInner {
@@ -174,6 +206,7 @@ impl Transaction {
         Transaction(
             TransactionInner::ReadOnly(unsafe { std::mem::transmute(txn) }),
             doc.clone(),
+            TxnLive::new(),
         )
     }
 
@@ -181,7 +214,12 @@ impl Transaction {
         Transaction(
             TransactionInner::ReadWrite(unsafe { std::mem::transmute(txn) }),
             doc.clone(),
+            TxnLive::new(),
         )
+    }
+
+    fn live(&self) -> TxnLive {
+        self.2.clone()
     }
 
     fn is_writeable(&self) -> bool {
@@ -965,6 +1003,7 @@ pub unsafe extern "C" fn ytransaction_json_path(
         query,
         json_path,
         inner,
+        live: txn.live(),
     });
     Box::into_raw(iter)
 }
@@ -974,6 +1013,9 @@ pub unsafe extern "C" fn ytransaction_json_path(
 pub unsafe extern "C" fn yjson_path_iter_next(iter: *mut JsonPathIter) -> *mut YOutput {
     assert!(!iter.is_null());
     let iter = iter.as_mut().unwrap();
+    if !iter.live.check() {
+        return std::ptr::null_mut();
+    }
     if let Some(value) = iter.inner.next() {
         let youtput = YOutput::from(value);
         Box::into_raw(Box::new(youtput))
@@ -1909,7 +1951,10 @@ pub unsafe extern "C" fn yarray_iter(
 
     let txn = txn.as_ref().unwrap();
     let array = &ArrayRef::from_raw_branch(array) as *const ArrayRef;
-    Box::into_raw(Box::new(ArrayIter(array.as_ref().unwrap().iter(txn))))
+    Box::into_raw(Box::new(ArrayIter(
+        array.as_ref().unwrap().iter(txn),
+        txn.live(),
+    )))
 }
 
 /// Releases all of an `YArray` iterator resources created by calling [yarray_iter].
@@ -1929,6 +1974,10 @@ pub unsafe extern "C" fn yarray_iter_next(iterator: *mut ArrayIter) -> *mut YOut
     assert!(!iterator.is_null());
 
     let iter = iterator.as_mut().unwrap();
+
+    if !iter.1.check() {
+        return std::ptr::null_mut();
+    }
     if let Some(v) = iter.0.next() {
         let out = YOutput::from(v);
         Box::into_raw(Box::new(out))
@@ -1947,7 +1996,10 @@ pub unsafe extern "C" fn ymap_iter(map: *const Branch, txn: *const Transaction) 
 
     let txn = txn.as_ref().unwrap();
     let map = &MapRef::from_raw_branch(map) as *const MapRef;
-    Box::into_raw(Box::new(MapIter(map.as_ref().unwrap().iter(txn))))
+    Box::into_raw(Box::new(MapIter(
+        map.as_ref().unwrap().iter(txn),
+        txn.live(),
+    )))
 }
 
 /// Releases all of an `YMap` iterator resources created by calling [ymap_iter].
@@ -1968,6 +2020,10 @@ pub unsafe extern "C" fn ymap_iter_next(iter: *mut MapIter) -> *mut YMapEntry {
     assert!(!iter.is_null());
 
     let iter = iter.as_mut().unwrap();
+
+    if !iter.1.check() {
+        return std::ptr::null_mut();
+    }
     if let Some((key, value)) = iter.0.next() {
         let output = YOutput::from(value);
         Box::into_raw(Box::new(YMapEntry::new(key, Box::new(output))))
@@ -2253,7 +2309,10 @@ pub unsafe extern "C" fn yxmlelem_attr_iter(
 
     let xml = &XmlElementRef::from_raw_branch(xml) as *const XmlElementRef;
     let txn = txn.as_ref().unwrap();
-    Box::into_raw(Box::new(Attributes(xml.as_ref().unwrap().attributes(txn))))
+    Box::into_raw(Box::new(Attributes(
+        xml.as_ref().unwrap().attributes(txn),
+        txn.live(),
+    )))
 }
 
 /// Returns an iterator over the `YXmlText` attributes.
@@ -2270,7 +2329,10 @@ pub unsafe extern "C" fn yxmltext_attr_iter(
 
     let xml = &XmlTextRef::from_raw_branch(xml) as *const XmlTextRef;
     let txn = txn.as_ref().unwrap();
-    Box::into_raw(Box::new(Attributes(xml.as_ref().unwrap().attributes(txn))))
+    Box::into_raw(Box::new(Attributes(
+        xml.as_ref().unwrap().attributes(txn),
+        txn.live(),
+    )))
 }
 
 /// Releases all of attributes iterator resources created by calling [yxmlelem_attr_iter]
@@ -2292,6 +2354,10 @@ pub unsafe extern "C" fn yxmlattr_iter_next(iterator: *mut Attributes) -> *mut Y
     assert!(!iterator.is_null());
 
     let iter = iterator.as_mut().unwrap();
+
+    if !iter.1.check() {
+        return std::ptr::null_mut();
+    }
 
     if let Some((name, value)) = iter.0.next() {
         Box::into_raw(Box::new(YXmlAttr {
@@ -2426,7 +2492,10 @@ pub unsafe extern "C" fn yxmlelem_tree_walker(
 
     let txn = txn.as_ref().unwrap();
     let xml = &XmlElementRef::from_raw_branch(xml) as *const XmlElementRef;
-    Box::into_raw(Box::new(TreeWalker(xml.as_ref().unwrap().successors(txn))))
+    Box::into_raw(Box::new(TreeWalker(
+        xml.as_ref().unwrap().successors(txn),
+        txn.live(),
+    )))
 }
 
 /// Releases resources associated with a current XML tree walker iterator.
@@ -2446,6 +2515,10 @@ pub unsafe extern "C" fn yxmlelem_tree_walker_next(iterator: *mut TreeWalker) ->
     assert!(!iterator.is_null());
 
     let iter = iterator.as_mut().unwrap();
+
+    if !iter.1.check() {
+        return std::ptr::null_mut();
+    }
 
     if let Some(next) = iter.0.next() {
         match next {
@@ -5901,7 +5974,7 @@ pub unsafe extern "C" fn yweak_iter(
     let weak: WeakRef<ArrayRef> = WeakRef::from_raw_branch(array_link);
     let iter: NativeUnquote<'static, Transaction> = std::mem::transmute(weak.unquote(txn));
 
-    Box::into_raw(Box::new(WeakIter(iter)))
+    Box::into_raw(Box::new(WeakIter(iter, txn.live())))
 }
 
 #[no_mangle]
@@ -5915,6 +5988,9 @@ pub unsafe extern "C" fn yweak_iter_destroy(iter: *mut WeakIter) {
 pub unsafe extern "C" fn yweak_iter_next(iter: *mut WeakIter) -> *mut YOutput {
     assert!(!iter.is_null());
     let iter = iter.as_mut().unwrap();
+    if !iter.1.check() {
+        return std::ptr::null_mut();
+    }
 
     if let Some(value) = iter.0.next() {
         Box::into_raw(Box::new(YOutput::from(value)))
