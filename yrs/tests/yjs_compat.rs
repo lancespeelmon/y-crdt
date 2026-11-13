@@ -601,3 +601,89 @@ fn unusual_json_numbers_in_formats_decode_like_yjs() {
         );
     }
 }
+
+/// Wraps an encoded awareness update the way y-protocols frames it: the awareness tag, then the
+/// update as a length-prefixed buffer.
+fn awareness_message(update: &[u8]) -> Vec<u8> {
+    use yrs::encoding::write::Write;
+    use yrs::updates::encoder::{Encoder, EncoderV1};
+    let mut encoder = EncoderV1::new();
+    encoder.write_var(yrs::sync::protocol::MSG_AWARENESS);
+    encoder.write_buf(update);
+    encoder.to_vec()
+}
+
+#[test]
+fn sync_messages_are_byte_identical_to_y_protocols() {
+    use yrs::sync::{Message, SyncMessage};
+    let f = fixture("protocol");
+
+    // The same document Yjs framed: client 15 with the text "hi".
+    let doc = Doc::with_client_id(15);
+    doc.get_or_insert_text("t")
+        .insert(&mut doc.transact_mut(), 0, "hi");
+    let txn = doc.transact();
+    let update = txn.encode_state_as_update_v1(&StateVector::default());
+
+    let step1 = Message::Sync(SyncMessage::SyncStep1(txn.state_vector()));
+    let step2 = Message::Sync(SyncMessage::SyncStep2(update.clone()));
+    let sync_update = Message::Sync(SyncMessage::Update(update));
+    for (field, message) in [
+        ("sync_step1", step1),
+        ("sync_step2", step2),
+        ("sync_update", sync_update),
+    ] {
+        let yjs = bytes(f, field);
+        assert_eq!(to_hex(&message.encode_v1()), to_hex(&yjs), "{}", field);
+        let decoded = Message::decode_v1(&yjs).unwrap_or_else(|e| panic!("{}: {}", field, e));
+        assert_eq!(decoded, message, "{}", field);
+    }
+}
+
+#[test]
+fn awareness_updates_decode_and_frame_like_y_protocols() {
+    use yrs::sync::{AwarenessUpdate, Message};
+    let f = fixture("protocol");
+
+    let update = AwarenessUpdate::decode_v1(&bytes(f, "awareness")).unwrap();
+    let entry = &update.clients[&yrs::ClientID::new(15)];
+    assert_eq!(entry.clock, 1);
+    let state: Value = serde_json::from_str(&entry.json).unwrap();
+    assert_eq!(
+        state,
+        serde_json::json!({ "user": { "name": "a", "n": 1.5 } })
+    );
+    // One client, so the encoding is canonical.
+    assert_eq!(to_hex(&update.encode_v1()), str_field(f, "awareness"));
+
+    // Clearing the local state sends the JSON `null` with the next clock.
+    let cleared = AwarenessUpdate::decode_v1(&bytes(f, "awareness_null")).unwrap();
+    let entry = &cleared.clients[&yrs::ClientID::new(15)];
+    assert_eq!((entry.clock, &*entry.json), (2, "null"));
+    assert_eq!(to_hex(&cleared.encode_v1()), str_field(f, "awareness_null"));
+
+    // yrs' own Awareness writes the same bytes for the same state (given as the raw JSON, since
+    // serde_json sorts object keys and Yjs keeps insertion order).
+    let mut awareness = yrs::sync::Awareness::new(Doc::with_client_id(15));
+    awareness.set_local_state_raw(r#"{"user":{"name":"a","n":1.5}}"#);
+    assert_eq!(
+        to_hex(&awareness.update().unwrap().encode_v1()),
+        str_field(f, "awareness")
+    );
+    // Like the fixture (`encodeAwarenessUpdate(aw, [15])`), name the client: `update()` leaves
+    // out cleared states.
+    awareness.clean_local_state();
+    let client = yrs::ClientID::new(15);
+    assert_eq!(
+        to_hex(&awareness.update_with_clients([client]).unwrap().encode_v1()),
+        str_field(f, "awareness_null")
+    );
+
+    // Framed as a protocol message, both directions agree on the bytes.
+    let framed = awareness_message(&bytes(f, "awareness"));
+    assert_eq!(Message::Awareness(update.clone()).encode_v1(), framed);
+    assert_eq!(
+        Message::decode_v1(&framed).unwrap(),
+        Message::Awareness(update)
+    );
+}

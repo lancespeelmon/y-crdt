@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1f6564b754c7212b81939ea689d7013846799373acdbb93f51e716141fe3ab07 # shrinks to (peers, steps, order) = (2, [Edit(0, [ArrayInsert(3044134820, -112033016615738494), TextRemove(668047514, 3), ArrayInsert(3680969930, -39904869843385152)]), Sync(0, 1), Edit(1, [ArrayInsert(1429539236, -7046828222220577037), TextInsert(4244475177, "p")]), Edit(1, [ArrayInsert(985096308, 4342621045455186230)]), Sync(1, 0), Edit(0, [ArrayInsert(850968186, 6359799141531019659), ArrayInsert(3561700470, -6588156466881248163), MapRemove(3)]), Sync(1, 0), Sync(1, 0)], [2, 3, 1, 0])

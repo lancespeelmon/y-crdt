@@ -907,8 +907,9 @@ impl<'doc> TransactionMut<'doc> {
             let store = self.store_mut();
             store.pending = if let Some(mut pending) = store.pending.take() {
                 // check if we can apply something
+                // `missing` holds, per client, the lowest ID a pending block waits for.
                 for (client, &clock) in pending.missing.iter() {
-                    if clock < store.blocks.get_clock(client) {
+                    if !store.blocks.is_missing(&ID::new(*client, clock)) {
                         retry = true;
                         break;
                     }

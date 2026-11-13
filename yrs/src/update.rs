@@ -346,8 +346,7 @@ impl Update {
                     if let Some(missing) =
                         Self::missing_dependency(&mut stack_head, &mut txn.store)?
                     {
-                        next =
-                            picker.switch(stack_head, &missing, |c| txn.store.blocks.get_clock(c));
+                        next = picker.switch(stack_head, missing);
                         continue;
                     } else {
                         // block has no missing dependencies, therefore we can integrate it right away
@@ -381,20 +380,17 @@ impl Update {
         Ok((remaining_blocks, remaining_ds))
     }
 
-    fn missing_dependency(
-        block: &mut Block,
-        store: &mut Store,
-    ) -> Result<Option<ClientID>, UpdateError> {
+    fn missing_dependency(block: &mut Block, store: &mut Store) -> Result<Option<ID>, UpdateError> {
         if let Block::Item(item) = block {
             if let Some(origin_left) = &item.origin {
                 if store.blocks.is_missing(origin_left) {
-                    return Ok(Some(origin_left.client));
+                    return Ok(Some(*origin_left));
                 }
             }
 
             if let Some(origin_right) = &item.right_origin {
                 if store.blocks.is_missing(origin_right) {
-                    return Ok(Some(origin_right.client));
+                    return Ok(Some(*origin_right));
                 }
             }
 
@@ -403,13 +399,13 @@ impl Update {
                     if let Some(block) = &parent.item {
                         let parent_id = block.id();
                         if store.blocks.is_missing(parent_id) {
-                            return Ok(Some(parent_id.client));
+                            return Ok(Some(*parent_id));
                         }
                     }
                 }
                 TypePtr::ID(parent_id) => {
                     if store.blocks.is_missing(parent_id) {
-                        return Ok(Some(parent_id.client));
+                        return Ok(Some(*parent_id));
                     }
                 }
                 _ => {}
@@ -423,13 +419,13 @@ impl Update {
                         let end = source.quote_end.id();
                         if let Some(start) = start {
                             if store.blocks.is_missing(start) {
-                                return Ok(Some(start.client));
+                                return Ok(Some(*start));
                             }
                         }
                         if start != end {
                             if let Some(end) = &source.quote_end.id() {
                                 if store.blocks.is_missing(end) {
-                                    return Ok(Some(end.client));
+                                    return Ok(Some(**end));
                                 }
                             }
                         }
@@ -963,24 +959,28 @@ impl<'a> BlockPicker<'a> {
         }
     }
 
-    /// Switch iterator to blocks belonging to `missing` client.
-    fn switch(
-        &mut self,
-        stack_head: Block,
-        missing: &ClientID,
-        missing_clock: impl Fn(&ClientID) -> u32,
-    ) -> Option<Block> {
+    /// Switch iterator to the blocks of the client that `missing` (a dependency of `stack_head`
+    /// the store doesn't have) belongs to.
+    fn switch(&mut self, stack_head: Block, missing: ID) -> Option<Block> {
         self.stack.push(stack_head);
-        match self.store.clients.get_mut(missing) {
+        let client = &missing.client;
+        match self.store.clients.get_mut(client) {
+            // Only follow that client's next block if it can lead to `missing`: one that starts
+            // past it means this update doesn't have it.
             Some(struct_refs)
-                if !struct_refs.is_empty() && !self.stack.iter().any(|s| s.client() == missing) =>
+                if struct_refs
+                    .front()
+                    .is_some_and(|b| b.id().clock <= missing.clock)
+                    && !self.stack.iter().any(|s| s.client() == client) =>
             {
                 let stack_head = struct_refs.pop_front();
                 stack_head
             }
             _ => {
-                // This update message causally depends on another update message that doesn't exist yet
-                self.missing.set_min(*missing, missing_clock(missing));
+                // This update message causally depends on another update message that doesn't
+                // exist yet. Record the exact ID: blocks can be integrated past a hole (behind a
+                // Skip), so the client's clock alone can't tell when the hole is filled.
+                self.missing.set_min(missing.client, missing.clock);
                 for item in self.stack.drain(..) {
                     let client = *item.client();
                     let mut unapplicable_blocks = match self.store.clients.remove(&client) {
@@ -1060,8 +1060,10 @@ impl<T: Iterator> Memoizable for T {
 pub struct PendingUpdate {
     /// Collection of unapplied blocks.
     pub update: Update,
-    /// A state vector that informs about minimal client clock values that need to be satisfied
-    /// in order to successfully apply corresponding `update`.
+    /// For each client, the lowest clock of a block that `update` waits for (the ID
+    /// `(client, clock)` must arrive before it can be applied). This can be above the client's
+    /// current clock, and the doc may already be past it when the block sits in a hole that yrs
+    /// filled with a Skip, so it is not a state vector to request a diff from.
     pub missing: StateVector,
 }
 
