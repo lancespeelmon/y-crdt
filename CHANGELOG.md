@@ -14,6 +14,10 @@ repository and its release notes.
 - Transactions take the document lock with a try first and only set up a waiter when it's
   contended, saving an allocation per transaction and about a third of an empty write
   transaction's cost. Offset conversions skip the per-character walk for ASCII text.
+- `merge_updates_v1`/`_v2` (and `Update::merge_updates`) keep their inputs in a heap instead of
+  re-sorting all of them for every block written, so merging is linear in the number of updates
+  instead of quadratic: 16,000 one-character updates merge in 5 ms instead of 950 ms, 64,000 in
+  35 ms instead of 17 s. The output is byte-identical.
 - **Breaking:** text indexes count UTF-16 code units by default (`Options::offset_kind` is
   `OffsetKind::Utf16`), as in Yjs, so an index means the same position on every peer. Set
   `OffsetKind::Bytes` for the old behavior. ywasm already used UTF-16; yffi keeps UTF-8 bytes,
@@ -109,6 +113,10 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `UpdateAccumulator`: merges updates as they arrive and keeps the result decoded, for servers
+  that store a document as its update history. It decodes each update once instead of decoding
+  the whole history on every merge, and gives the same bytes as `merge_updates_v1` over all of
+  them, whatever its batch size.
 - yffi: `ylast_error()` and status codes (`Y_OK`, `Y_ERR_INVALID`, `Y_ERR_PANIC`), with
   `ytext_try_insert`, `ytext_try_remove_range`, `yarray_try_remove_range`,
   `yxmlelem_try_remove_range` and `yxmltext_try_remove_range`, which return a status instead of aborting on a bad index or a
