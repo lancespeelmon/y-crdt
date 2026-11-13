@@ -530,6 +530,47 @@ mod test {
     }
 
     #[test]
+    fn merging_duplicated_and_overlapping_updates_is_the_same_as_merging_each_once() {
+        // Ties in the merge order (two inputs at the same block) only happen when inputs
+        // overlap; whichever input wins a tie, the output must not change.
+        use crate::updates::decoder::Decode;
+        use crate::{GetString, ReadTxn, Text, Transact};
+        let doc = crate::Doc::with_client_id(1);
+        let peer = crate::Doc::with_client_id(2);
+        let mut steps = Vec::new();
+        for (d, s) in [(&doc, "ab"), (&peer, "cd"), (&doc, "ef"), (&peer, "gh")] {
+            let sv = d.transact().state_vector();
+            let t = d.get_or_insert_text("t");
+            let mut txn = d.transact_mut();
+            let len = t.len(&txn);
+            t.insert(&mut txn, len, s);
+            drop(txn);
+            steps.push(d.transact().encode_state_as_update_v1(&sv));
+        }
+        let full = doc
+            .transact()
+            .encode_state_as_update_v1(&Default::default());
+        let once = merge_updates_v1(&steps).unwrap();
+        let mut doubled = steps.clone();
+        doubled.extend(steps.iter().rev().cloned());
+        doubled.push(full.clone());
+        assert_eq!(merge_updates_v1(&doubled).unwrap(), once);
+        assert_eq!(
+            merge_updates_v1([&full, &full]).unwrap(),
+            merge_updates_v1([&full]).unwrap()
+        );
+
+        // And it holds every edit: the two peers never synced, so all 8 characters are there.
+        let check = crate::Doc::new();
+        check
+            .transact_mut()
+            .apply_update(crate::Update::decode_v1(&once).unwrap())
+            .unwrap();
+        let merged = check.get_or_insert_text("t").get_string(&check.transact());
+        assert_eq!(merged.len(), 8);
+    }
+
+    #[test]
     fn merge_updates_compatibility_v1() {
         let a = vec![
             1, 1, 220, 240, 237, 172, 15, 0, 4, 1, 4, 116, 101, 115, 116, 3, 97, 98, 99, 0,
