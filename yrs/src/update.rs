@@ -1060,8 +1060,10 @@ impl<T: Iterator> Memoizable for T {
 pub struct PendingUpdate {
     /// Collection of unapplied blocks.
     pub update: Update,
-    /// A state vector that informs about minimal client clock values that need to be satisfied
-    /// in order to successfully apply corresponding `update`.
+    /// For each client, the lowest clock of a block that `update` waits for (the ID
+    /// `(client, clock)` must arrive before it can be applied). This can be above the client's
+    /// current clock, and the doc may already be past it when the block sits in a hole that yrs
+    /// filled with a Skip, so it is not a state vector to request a diff from.
     pub missing: StateVector,
 }
 

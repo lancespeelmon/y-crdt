@@ -646,7 +646,7 @@ fn awareness_updates_decode_and_frame_like_y_protocols() {
     let f = fixture("protocol");
 
     let update = AwarenessUpdate::decode_v1(&bytes(f, "awareness")).unwrap();
-    let entry = &update.clients[&yrs::block::ClientID::new(15)];
+    let entry = &update.clients[&yrs::ClientID::new(15)];
     assert_eq!(entry.clock, 1);
     let state: Value = serde_json::from_str(&entry.json).unwrap();
     assert_eq!(
@@ -658,7 +658,7 @@ fn awareness_updates_decode_and_frame_like_y_protocols() {
 
     // Clearing the local state sends the JSON `null` with the next clock.
     let cleared = AwarenessUpdate::decode_v1(&bytes(f, "awareness_null")).unwrap();
-    let entry = &cleared.clients[&yrs::block::ClientID::new(15)];
+    let entry = &cleared.clients[&yrs::ClientID::new(15)];
     assert_eq!((entry.clock, &*entry.json), (2, "null"));
     assert_eq!(to_hex(&cleared.encode_v1()), str_field(f, "awareness_null"));
 
@@ -673,7 +673,7 @@ fn awareness_updates_decode_and_frame_like_y_protocols() {
     // Like the fixture (`encodeAwarenessUpdate(aw, [15])`), name the client: `update()` leaves
     // out cleared states.
     awareness.clean_local_state();
-    let client = yrs::block::ClientID::new(15);
+    let client = yrs::ClientID::new(15);
     assert_eq!(
         to_hex(&awareness.update_with_clients([client]).unwrap().encode_v1()),
         str_field(f, "awareness_null")

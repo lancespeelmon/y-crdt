@@ -364,6 +364,7 @@ fn assert_out_of_order_delivery_converges(steps: &[Step], order: &[usize]) {
         txn.store().pending_update().is_none(),
         "updates left pending"
     );
+    assert!(txn.store().pending_ds().is_none(), "deletes left pending");
 }
 
 #[test]
