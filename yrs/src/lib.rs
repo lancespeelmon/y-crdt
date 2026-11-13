@@ -651,8 +651,11 @@ mod transact;
 pub mod undo;
 
 pub use crate::alt::{
-    diff_updates_v1, diff_updates_v2, encode_state_vector_from_update_v1,
-    encode_state_vector_from_update_v2, merge_updates_v1, merge_updates_v2,
+    convert_update_v1_to_v2, convert_update_v2_to_v1, diff_updates_v1, diff_updates_v2,
+    encode_state_vector_from_update_v1, encode_state_vector_from_update_v2, merge_updates_v1,
+    merge_updates_v2, obfuscate_update_v1, obfuscate_update_v2, parse_update_meta_v1,
+    parse_update_meta_v2, snapshot_contains_update_v1, snapshot_contains_update_v2,
+    ObfuscateOptions, UpdateMeta,
 };
 pub use crate::any::{Any, Number};
 pub use crate::block::ClientID;

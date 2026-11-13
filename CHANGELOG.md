@@ -31,6 +31,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Byte-level update utilities from Yjs, which need no `Doc`: `parse_update_meta_v1/_v2`
+  (`parseUpdateMeta`), `convert_update_v1_to_v2` and `convert_update_v2_to_v1`
+  (`convertUpdateFormat*`, byte-identical to Yjs), `snapshot_contains_update_v1/_v2`
+  (`snapshotContainsUpdate`) and `obfuscate_update_v1/_v2` with `ObfuscateOptions`
+  (`obfuscateUpdate`, for sharing an update that reproduces a bug without its content).
 - Awareness parity with Yjs for servers (yrs has no timers, so these are methods to call
   periodically): `Awareness::check_timeouts` renews the local state every 15 s and removes
   remote states not updated for `OUTDATED_TIMEOUT` (30 s) with origin `"timeout"`, and
