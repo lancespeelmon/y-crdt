@@ -1199,9 +1199,12 @@ pub trait XmlFragment: AsRef<Branch> {
         len: u32,
     ) -> Result<(), OutOfRange> {
         OutOfRange::check(self.len(txn), index, len)?;
-        let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
-        if walker.try_forward(txn, index) {
-            walker.delete(txn, len)
+        let mut branch = BranchPtr::from(self.as_ref());
+        let mut walker = BlockIter::new(branch);
+        if walker.seek(txn, index) {
+            walker.delete(txn, len);
+            // Everything removed was after the marker `seek` left.
+            branch.restamp_search_marker();
         }
         Ok(())
     }

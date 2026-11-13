@@ -137,6 +137,7 @@ impl YXmlElement {
         txn: ImplicitTransaction,
     ) -> crate::Result<()> {
         Js::assert_xml_prelim(&xml_node)?;
+        crate::js::validate(&xml_node)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.children.insert(index as usize, xml_node);
@@ -153,6 +154,7 @@ impl YXmlElement {
     #[wasm_bindgen(js_name = push)]
     pub fn push(&mut self, xml_node: JsValue, txn: ImplicitTransaction) -> crate::Result<()> {
         Js::assert_xml_prelim(&xml_node)?;
+        crate::js::validate(&xml_node)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.children.push(xml_node);

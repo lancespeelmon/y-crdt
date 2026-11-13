@@ -123,6 +123,7 @@ impl YMap {
         value: JsValue,
         txn: ImplicitTransaction,
     ) -> crate::Result<()> {
+        crate::js::validate(&value)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.insert(key.to_string(), value);

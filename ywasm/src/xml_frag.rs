@@ -23,6 +23,7 @@ impl YXmlFragment {
         let mut nodes = Vec::with_capacity(children.len());
         for xml_node in children {
             Js::assert_xml_prelim(&xml_node)?;
+            crate::js::validate(&xml_node)?;
             nodes.push(xml_node);
         }
         Ok(YXmlFragment(SharedCollection::prelim(nodes)))
@@ -87,6 +88,7 @@ impl YXmlFragment {
         txn: ImplicitTransaction,
     ) -> crate::Result<()> {
         Js::assert_xml_prelim(&xml_node)?;
+        crate::js::validate(&xml_node)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.insert(index as usize, xml_node);
@@ -103,6 +105,7 @@ impl YXmlFragment {
     #[wasm_bindgen(js_name = push)]
     pub fn push(&mut self, xml_node: JsValue, txn: ImplicitTransaction) -> crate::Result<()> {
         Js::assert_xml_prelim(&xml_node)?;
+        crate::js::validate(&xml_node)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.push(xml_node);
