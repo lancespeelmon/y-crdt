@@ -2832,6 +2832,8 @@ TEST_CASE("a weak link stays valid after the caller destroys the one it inserted
     REQUIRE_EQ(ymap_remove(map, txn, "link"), 1);
     ytransaction_commit(txn);
     ydoc_destroy(doc);
+}
+
 TEST_CASE("a transaction keeps its document alive until it's committed") {
     YDoc *doc = ydoc_new_with_id(1);
     Branch *txt = ytext(doc, "text");
