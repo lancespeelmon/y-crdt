@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
+  instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
+  pointers to them, which is all the API allows, is unaffected.
 - Array inserts and removals, and removing XML children, find their index from the search
   marker too: inserting at random positions in an array (B1.11) takes 20 ms instead of 34 ms.
 - Text edits find their index from a search marker, as in Yjs: the position of the last local
@@ -130,6 +133,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
+  can check at startup that it loaded the library its header describes. CI checks that the
+  header compiles as strict C99.
 - yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
   `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
   `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return
@@ -196,6 +202,8 @@ repository and its release notes.
 - yffi: a transaction keeps its document alive, so destroying the document while a transaction
   on it is open no longer frees the store under it (a use-after-free); the document is freed when
   the transaction is committed.
+- Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
+  the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type
   that's already in a document (directly or inside a preliminary array, map or XML node), or
   a value with no CRDT representation. The check runs before anything changes, so the
