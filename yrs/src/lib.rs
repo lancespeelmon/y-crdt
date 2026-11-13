@@ -652,6 +652,7 @@ mod input;
 pub mod iter;
 /// JSONPath queries over shared types.
 pub mod json_path;
+pub mod memory;
 pub mod metrics;
 /// [Observer], used to manage subscriptions to events.
 pub mod observer;

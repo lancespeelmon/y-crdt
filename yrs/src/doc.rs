@@ -212,6 +212,34 @@ impl Doc {
         self.store.options().meta.clone()
     }
 
+    /// Encodes this document's state and loads it into a new document with the same options,
+    /// GUID and client ID included: Yjs' "encode, drop, reload", for a server that keeps a
+    /// document loaded for a long time. The new document has the same content, allocated to
+    /// fit: text typed one character at a time grows each item's string in steps, so it holds
+    /// spare capacity that a reload drops (20,000 characters typed at the end: 33 KB of string
+    /// content before, 20 KB after). See [crate::ReadTxn::memory_usage] to decide when it pays.
+    ///
+    /// Only the document's content carries over. Its observers, undo managers and shared type
+    /// references stay with this document, so take new references from the returned one and
+    /// subscribe again. Pending updates (waiting for missing dependencies) do carry over.
+    ///
+    /// # Panics
+    ///
+    /// If a transaction on this document is open on the calling thread.
+    pub fn compact(&self) -> Doc {
+        let state = self
+            .transact()
+            .encode_state_as_update_v1(&crate::StateVector::default());
+        let compacted = Doc::with_options((**self.store.options()).clone());
+        let update =
+            crate::Update::decode_v1(&state).expect("a document's own state always decodes");
+        compacted
+            .transact_mut()
+            .apply_update(update)
+            .expect("a document's own state always applies");
+        compacted
+    }
+
     /// Returns encoding used to count offsets and lengths in text operations.
     pub fn offset_kind(&self) -> OffsetKind {
         self.store.options().offset_kind
@@ -778,7 +806,7 @@ mod test {
         doc.get_or_insert_map("local");
         let update = source
             .transact()
-            .encode_state_as_update_v1(&StateVector::default());
+            .encode_state_as_update_v1(&crate::StateVector::default());
         doc.transact_mut()
             .apply_update(Update::decode_v1(&update).unwrap())
             .unwrap();
@@ -890,7 +918,7 @@ mod test {
             let before = source.transact().state_vector();
             let create = source
                 .transact()
-                .encode_state_as_update_v1(&StateVector::default());
+                .encode_state_as_update_v1(&crate::StateVector::default());
             root.remove(&mut source.transact_mut(), "k");
             let delete = source.transact().encode_diff_v1(&before);
 
@@ -916,7 +944,7 @@ mod test {
             let before = source.transact().state_vector();
             let create = source
                 .transact()
-                .encode_state_as_update_v1(&StateVector::default());
+                .encode_state_as_update_v1(&crate::StateVector::default());
             root.remove(&mut source.transact_mut(), "k");
             let delete = source.transact().encode_diff_v1(&before);
 
@@ -947,7 +975,7 @@ mod test {
             doc.transact_mut().gc(None);
             let update = doc
                 .transact()
-                .encode_state_as_update_v1(&StateVector::default());
+                .encode_state_as_update_v1(&crate::StateVector::default());
             assert!(
                 update.len() < 64,
                 "nesting collected: {} bytes",
@@ -1386,7 +1414,7 @@ mod test {
         txt1.insert(&mut d1.transact_mut(), 0, "hello");
         let u = d1
             .transact()
-            .encode_state_as_update_v1(&StateVector::default());
+            .encode_state_as_update_v1(&crate::StateVector::default());
 
         let d2 = Doc::with_client_id(2);
         let txt2 = d2.get_or_insert_text("text");
@@ -1397,7 +1425,7 @@ mod test {
         txt1.insert(&mut d1.transact_mut(), 5, "world");
         let u = d1
             .transact()
-            .encode_state_as_update_v1(&StateVector::default());
+            .encode_state_as_update_v1(&crate::StateVector::default());
         d2.transact_mut()
             .apply_update(Update::decode_v1(&u).unwrap())
             .unwrap();
@@ -1971,7 +1999,7 @@ mod test {
 
         let data = doc
             .transact()
-            .encode_state_as_update_v1(&StateVector::default());
+            .encode_state_as_update_v1(&crate::StateVector::default());
 
         let doc2 = Doc::new();
         let event = Arc::new(ArcSwapOption::default());
