@@ -1146,7 +1146,9 @@ typedef struct YBranchId {
 } YBranchId;
 
 /**
- * Returns default ceonfiguration for `YOptions`.
+ * Returns the default configuration for `YOptions`. Its `guid` and `collection_id` are NULL:
+ * a document created with a NULL `guid` gets a random one (read it back with [ydoc_guid]).
+ * Nothing in the returned value needs freeing, and strings you set in it stay yours.
  */
 struct YOptions yoptions(void);
 
@@ -1371,9 +1373,16 @@ struct YTransaction *ydoc_read_transaction(YDoc *doc);
 struct YTransaction *ydoc_write_transaction(YDoc *doc, uint32_t origin_len, const char *origin);
 
 /**
- * Returns a list of subdocs existing within current document.
+ * Returns a list of subdocs existing within current document. Release the array (not the
+ * documents) with [ysubdocs_destroy].
  */
 YDoc **ytransaction_subdocs(struct YTransaction *txn, uint32_t *len);
+
+/**
+ * Releases an array returned by [ytransaction_subdocs]. `len` is the length it reported. The
+ * documents themselves belong to their parent and aren't freed.
+ */
+void ysubdocs_destroy(YDoc **docs, uint32_t len);
 
 /**
  * Returns an array of all root-level shared types defined in a current document, including the

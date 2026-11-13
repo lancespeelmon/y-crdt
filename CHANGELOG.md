@@ -223,6 +223,10 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi no longer leaks: `yoptions()` returns NULL `guid` and `collection_id` (a document
+  created with a NULL guid gets a random one, as before) instead of allocating strings the
+  caller couldn't free, and the array from `ytransaction_subdocs` is released with the new
+  `ysubdocs_destroy`.
 - yffi: `yinput_weak` borrows its weak link instead of taking it over. Inserting the input took
   the caller's reference, so the documented `yweak_destroy` afterwards freed a source the
   inserted link still pointed to. Callers that didn't destroy it now leak one reference instead.

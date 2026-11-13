@@ -1700,6 +1700,7 @@ TEST_CASE("YDoc observe subdocs") {
     uint32_t subdoc_count = 0;
     YDoc **subdoc_refs = ytransaction_subdocs(txn, &subdoc_count);
     concat_guids(t.total, subdoc_count, subdoc_refs);
+    ysubdocs_destroy(subdoc_refs, subdoc_count);
     ytransaction_commit(txn);
 
     sort(t.total);
@@ -1743,6 +1744,7 @@ TEST_CASE("YDoc observe subdocs") {
     subdoc_count = 0;
     subdoc_refs = ytransaction_subdocs(txn, &subdoc_count);
     concat_guids(t.total, subdoc_count, subdoc_refs);
+    ysubdocs_destroy(subdoc_refs, subdoc_count);
     ytransaction_commit(txn);
 
     sort(t.total);
@@ -1760,6 +1762,7 @@ TEST_CASE("YDoc observe subdocs") {
     subdoc_count = 0;
     subdoc_refs = ytransaction_subdocs(txn, &subdoc_count);
     concat_guids(t.total, subdoc_count, subdoc_refs);
+    ysubdocs_destroy(subdoc_refs, subdoc_count);
     ytransaction_commit(txn);
 
     sort(t.total);
@@ -1933,6 +1936,9 @@ TEST_CASE("Weak links are refused unless the document allows them") {
     REQUIRE(yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_FALSE) == NULL);
     REQUIRE(ymap_link(map, txn, "key") == NULL);
     REQUIRE((yoptions().flags & Y_WEAK_LINKS) == 0);
+    // the defaults allocate nothing for the caller to free
+    REQUIRE(yoptions().guid == NULL);
+    REQUIRE(yoptions().collection_id == NULL);
 
     ytransaction_commit(txn);
     ydoc_destroy(doc);
