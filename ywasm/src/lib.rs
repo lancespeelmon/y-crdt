@@ -223,6 +223,40 @@ pub fn merge_updates_v1(updates: js_sys::Array) -> Result<js_sys::Uint8Array> {
     Ok(js_sys::Uint8Array::from(encoded.as_slice()))
 }
 
+/// Encodes the state vector an update (lib0 v1) would bring a document to, like Yjs'
+/// `encodeStateVectorFromUpdate`.
+#[wasm_bindgen(js_name = encodeStateVectorFromUpdateV1)]
+pub fn encode_state_vector_from_update_v1(update: &[u8]) -> Result<js_sys::Uint8Array> {
+    let sv = yrs::encode_state_vector_from_update_v1(update)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(js_sys::Uint8Array::from(sv.as_slice()))
+}
+
+/// Like `encodeStateVectorFromUpdateV1`, for an update encoded with lib0 v2.
+#[wasm_bindgen(js_name = encodeStateVectorFromUpdateV2)]
+pub fn encode_state_vector_from_update_v2(update: &[u8]) -> Result<js_sys::Uint8Array> {
+    let sv = yrs::encode_state_vector_from_update_v2(update)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(js_sys::Uint8Array::from(sv.as_slice()))
+}
+
+/// The part of an update (lib0 v1) that a peer with state vector `stateVector` (lib0 v1) is
+/// missing, like Yjs' `diffUpdate`.
+#[wasm_bindgen(js_name = diffUpdateV1)]
+pub fn diff_update_v1(update: &[u8], state_vector: &[u8]) -> Result<js_sys::Uint8Array> {
+    let diff =
+        yrs::diff_updates_v1(update, state_vector).map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(js_sys::Uint8Array::from(diff.as_slice()))
+}
+
+/// Like `diffUpdateV1`, with the update and the state vector both encoded with lib0 v2.
+#[wasm_bindgen(js_name = diffUpdateV2)]
+pub fn diff_update_v2(update: &[u8], state_vector: &[u8]) -> Result<js_sys::Uint8Array> {
+    let diff =
+        yrs::diff_updates_v2(update, state_vector).map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(js_sys::Uint8Array::from(diff.as_slice()))
+}
+
 /// Merges a sequence of updates (encoded using lib0 v2 encoding) together, producing another
 /// update (also lib0 v2 encoded) in the result. Returned binary is a combination of all input
 /// `updates`, compressed.

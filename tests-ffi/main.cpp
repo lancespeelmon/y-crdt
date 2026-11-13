@@ -1960,8 +1960,10 @@ TEST_CASE("Weak link references") {
     // create a text quotation and put it into map
     uint32_t start = 2;
     uint32_t end = 10;
-    YInput value = yinput_weak(ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE));
+    const Weak *quote = ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE);
+    YInput value = yinput_weak(quote);
     ymap_insert(map, txn, "text-txt_link", &value);
+    yweak_destroy(quote); // the input only borrowed it
     Branch *txt_link = youtput_read_yweak(ymap_get(map, txn, "text-txt_link"));
 
     char *actual = yweak_string(txt_link, txn);
@@ -1975,8 +1977,10 @@ TEST_CASE("Weak link references") {
     ystring_destroy(actual);
 
     // create transitive txt_link to another element
-    value = yinput_weak(ymap_link(map, txn, "text-txt_link"));
+    const Weak *link = ymap_link(map, txn, "text-txt_link");
+    value = yinput_weak(link);
     ymap_insert(map, txn, "transitive-txt_link", &value);
+    yweak_destroy(link);
     Branch *map_link = youtput_read_yweak(ymap_get(map, txn, "transitive-txt_link"));
 
     // deref txt_link in "key2" leads to value stored under "key" which was our first txt_link
@@ -1993,8 +1997,10 @@ TEST_CASE("Weak link references") {
     yarray_insert_range(arr, txn, 0, items, 4);
     start = 1;
     end = 3;
-    value = yinput_weak(yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_TRUE));
+    const Weak *arr_quote = yarray_quote(arr, txn, &start, &end, Y_FALSE, Y_TRUE);
+    value = yinput_weak(arr_quote);
     ymap_insert(map, txn, "array-txt_link", &value);
+    yweak_destroy(arr_quote);
     Branch *array_link = youtput_read_yweak(ymap_get(map, txn, "array-txt_link"));
 
     YWeakIter *iter = yweak_iter(array_link, txn);
@@ -2803,6 +2809,142 @@ TEST_CASE("try functions for inserts and formats refuse bad indexes and attribut
 
     ytransaction_commit(txn);
     ydoc_destroy(doc);
+}
+
+TEST_CASE("a weak link stays valid after the caller destroys the one it inserted") {
+    YOptions o = yoptions();
+    o.flags = Y_WEAK_LINKS;
+    o.id = 1;
+    YDoc *doc = ydoc_new_with_options(o);
+    Branch *txt = ytext(doc, "text");
+    Branch *map = ymap(doc, "map");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    ytext_insert(txt, txn, 0, "hello world", NULL);
+    uint32_t start = 0, end = 4;
+    const Weak *quote = ytext_quote(txt, txn, &start, &end, Y_FALSE, Y_FALSE);
+    YInput value = yinput_weak(quote);
+    ymap_insert(map, txn, "link", &value);
+    yweak_destroy(quote);
+    // editing inside the quoted range updates the link, which still holds its own source
+    ytext_insert(txt, txn, 2, "y", NULL);
+    YOutput *out = ymap_get(map, txn, "link");
+    char *str = yweak_string(youtput_read_yweak(out), txn);
+    REQUIRE(!strcmp(str, "heyllo"));
+    ystring_destroy(str);
+    youtput_destroy(out);
+    ytransaction_commit(txn);
+    // removing the link unlinks its source, which must still be alive
+    txn = ydoc_write_transaction(doc, 0, NULL);
+    REQUIRE_EQ(ymap_remove(map, txn, "link"), 1);
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}
+
+TEST_CASE("updates can be merged, diffed and summarized without a document") {
+    // Two separate edits, each as its own update.
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    uint32_t len1 = 0, len2 = 0;
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    ytext_insert(txt, txn, 0, "hello", NULL);
+    char *u1 = ytransaction_state_diff_v1(txn, NULL, 0, &len1);
+    ytransaction_commit(txn);
+    txn = ydoc_write_transaction(doc, 0, NULL);
+    uint32_t sv_len = 0;
+    char *sv = ytransaction_state_vector_v1(txn, &sv_len);
+    ytext_insert(txt, txn, 5, " world", NULL);
+    char *u2 = ytransaction_state_diff_v1(txn, sv, sv_len, &len2);
+    ytransaction_commit(txn);
+
+    // Merged, they bring a fresh document to the same text.
+    const char *updates[] = {u1, u2};
+    uint32_t lens[] = {len1, len2};
+    char *merged = NULL;
+    uint32_t merged_len = 0;
+    REQUIRE_EQ(ymerge_updates_v1(updates, lens, 2, &merged, &merged_len), Y_OK);
+    YDoc *peer = ydoc_new_with_id(2);
+    Branch *peer_txt = ytext(peer, "text");
+    txn = ydoc_write_transaction(peer, 0, NULL);
+    REQUIRE_EQ(ytransaction_apply(txn, merged, merged_len), 0);
+    char *str = ytext_string(peer_txt, txn);
+    REQUIRE(!strcmp(str, "hello world"));
+    ystring_destroy(str);
+    ytransaction_commit(txn);
+
+    // The state vector of the first update says what a peer holding it has, and diffing the
+    // merged update against it leaves just the second edit.
+    char *sv1 = NULL;
+    uint32_t sv1_len = 0;
+    REQUIRE_EQ(yencode_state_vector_from_update_v1(u1, len1, &sv1, &sv1_len), Y_OK);
+    char *rest = NULL;
+    uint32_t rest_len = 0;
+    REQUIRE_EQ(ydiff_updates_v1(merged, merged_len, sv1, sv1_len, &rest, &rest_len), Y_OK);
+    YDoc *third = ydoc_new_with_id(3);
+    Branch *third_txt = ytext(third, "text");
+    txn = ydoc_write_transaction(third, 0, NULL);
+    REQUIRE_EQ(ytransaction_apply(txn, u1, len1), 0);
+    REQUIRE_EQ(ytransaction_apply(txn, rest, rest_len), 0);
+    str = ytext_string(third_txt, txn);
+    REQUIRE(!strcmp(str, "hello world"));
+    ystring_destroy(str);
+    ytransaction_commit(txn);
+
+    // Garbage is refused, with nothing written.
+    const char *bad[] = {"\xff\xff\xff"};
+    uint32_t bad_len[] = {3};
+    char *none = NULL;
+    uint32_t none_len = 0;
+    REQUIRE_EQ(ymerge_updates_v1(bad, bad_len, 1, &none, &none_len), Y_ERR_INVALID);
+    REQUIRE(none == NULL);
+    REQUIRE_EQ(ymerge_updates_v1(updates, lens, 2, NULL, &none_len), Y_ERR_INVALID);
+
+    ybinary_destroy(rest, rest_len);
+    ybinary_destroy(sv1, sv1_len);
+    ybinary_destroy(merged, merged_len);
+    ybinary_destroy(sv, sv_len);
+    ybinary_destroy(u1, len1);
+    ybinary_destroy(u2, len2);
+    ydoc_destroy(third);
+    ydoc_destroy(peer);
+    ydoc_destroy(doc);
+}
+
+TEST_CASE("yundo_manager_with_flags can keep remote map changes on redo") {
+    for (int ignore = 0; ignore <= 1; ignore++) {
+        YDoc *local = ydoc_new_with_id(1);
+        YDoc *remote = ydoc_new_with_id(2);
+        Branch *map = ymap(local, "map");
+        YUndoManager *mgr =
+            yundo_manager_with_flags(-1, ignore ? Y_UNDO_IGNORE_REMOTE_MAP_CHANGES : 0);
+        yundo_manager_add_scope(mgr, local, map);
+
+        YInput value = yinput_string("local");
+        YTransaction *txn = ydoc_write_transaction(local, 0, NULL);
+        ymap_insert(map, txn, "a", &value);
+        ytransaction_commit(txn);
+        REQUIRE(yundo_manager_undo(mgr));
+        exchange_updates(2, local, remote);
+
+        Branch *remote_map = ymap(remote, "map");
+        YInput other = yinput_string("remote");
+        txn = ydoc_write_transaction(remote, 0, NULL);
+        ymap_insert(remote_map, txn, "a", &other);
+        ytransaction_commit(txn);
+        exchange_updates(2, local, remote);
+
+        yundo_manager_redo(mgr);
+        txn = ydoc_read_transaction(local);
+        YOutput *out = ymap_get(map, txn, "a");
+        REQUIRE(out != NULL);
+        char *str = youtput_read_string(out);
+        REQUIRE(!strcmp(str, ignore ? "local" : "remote"));
+        youtput_destroy(out);
+        ytransaction_commit(txn);
+
+        yundo_manager_destroy(mgr);
+        ydoc_destroy(remote);
+        ydoc_destroy(local);
+    }
 }
 
 TEST_CASE("a transaction keeps its document alive until it's committed") {
