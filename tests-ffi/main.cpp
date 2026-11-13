@@ -2904,6 +2904,8 @@ TEST_CASE("yundo_manager_with_flags can keep remote map changes on redo") {
         ydoc_destroy(remote);
         ydoc_destroy(local);
     }
+}
+
 TEST_CASE("a transaction keeps its document alive until it's committed") {
     YDoc *doc = ydoc_new_with_id(1);
     Branch *txt = ytext(doc, "text");
