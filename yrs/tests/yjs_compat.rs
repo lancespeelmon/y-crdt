@@ -602,20 +602,22 @@ fn unusual_json_numbers_in_formats_decode_like_yjs() {
     }
 }
 
+#[cfg(feature = "protocol")]
 /// Wraps an encoded awareness update the way y-protocols frames it: the awareness tag, then the
 /// update as a length-prefixed buffer.
 fn awareness_message(update: &[u8]) -> Vec<u8> {
     use yrs::encoding::write::Write;
     use yrs::updates::encoder::{Encoder, EncoderV1};
     let mut encoder = EncoderV1::new();
-    encoder.write_var(yrs::sync::protocol::MSG_AWARENESS);
+    encoder.write_var(yrs::protocol::protocol::MSG_AWARENESS);
     encoder.write_buf(update);
     encoder.to_vec()
 }
 
+#[cfg(feature = "protocol")]
 #[test]
 fn sync_messages_are_byte_identical_to_y_protocols() {
-    use yrs::sync::{Message, SyncMessage};
+    use yrs::protocol::{Message, SyncMessage};
     let f = fixture("protocol");
 
     // The same document Yjs framed: client 15 with the text "hi".
@@ -640,9 +642,10 @@ fn sync_messages_are_byte_identical_to_y_protocols() {
     }
 }
 
+#[cfg(feature = "protocol")]
 #[test]
 fn awareness_updates_decode_and_frame_like_y_protocols() {
-    use yrs::sync::{AwarenessUpdate, Message};
+    use yrs::protocol::{AwarenessUpdate, Message};
     let f = fixture("protocol");
 
     let update = AwarenessUpdate::decode_v1(&bytes(f, "awareness")).unwrap();
@@ -664,7 +667,7 @@ fn awareness_updates_decode_and_frame_like_y_protocols() {
 
     // yrs' own Awareness writes the same bytes for the same state (given as the raw JSON, since
     // serde_json sorts object keys and Yjs keeps insertion order).
-    let mut awareness = yrs::sync::Awareness::new(Doc::with_client_id(15));
+    let mut awareness = yrs::protocol::Awareness::new(Doc::with_client_id(15));
     awareness.set_local_state_raw(r#"{"user":{"name":"a","n":1.5}}"#);
     assert_eq!(
         to_hex(&awareness.update().unwrap().encode_v1()),

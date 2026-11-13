@@ -11,6 +11,18 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the `sync` module is now `protocol`, behind a new `protocol` feature (on by
+  default) that brings in `dashmap` and `async-trait`. `yrs::sync` stays as a deprecated alias.
+  `Clock` and `Timestamp` moved to a new core module, `yrs::time`, since the UndoManager uses
+  them without the protocol; `yrs::protocol::time` re-exports it.
+- **Breaking:** the `small-client` feature is gone. It changed `ClientID` for the whole build,
+  so one crate enabling it changed every other crate's IDs. Use the new `SmallClientID` type
+  instead: `Options { client_id: SmallClientID::random().into(), .. }` gives a 32-bit ID for
+  peers on yrs 0.26 and older or Yjs before v14.
+- **Breaking:** inserting into `Text` past its end panics, like `Array` and `XmlFragment`. It
+  used to append silently (an empty chunk was accepted at any index). `remove_range` and
+  `format` check their whole range first, so they no longer delete part of a range and then
+  panic. ywasm throws for all of these instead of trapping.
 - **Breaking:** the `sync` feature is on by default, so documents, awareness and observers are
   `Send + Sync` and callbacks must be too. Use `default-features = false` for single-threaded
   hosts whose callbacks can't be `Send`, as ywasm now does.
@@ -83,6 +95,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `try_insert`, `try_remove_range` and `try_format` on `Text`, and `try_insert` and
+  `try_remove_range` on `Array` and `XmlFragment`. They return the new `error::OutOfRange`
+  instead of panicking, and change nothing when they fail. The panicking methods call them.
 - Observability: an optional `tracing` feature with `yrs::decode`, `yrs::apply_update`,
   `yrs::commit` and `yrs::encode` spans that record block counts, and a `metrics::MetricsHook`
   trait (no metrics crate dependency) installed per document with the new `Options::metrics`.

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::block::ClientID;
-use crate::sync::{Clock, Timestamp};
+use crate::protocol::{Clock, Timestamp};
 use crate::updates::decoder::{Decode, Decoder};
 use crate::updates::encoder::{Encode, Encoder};
 use crate::{Doc, Observer, Origin};
@@ -47,7 +47,7 @@ impl Awareness {
     /// using either [Awareness::doc] or [Awareness::doc_mut] methods.
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn new(doc: Doc) -> Self {
-        Self::with_clock(doc, crate::sync::time::SystemClock)
+        Self::with_clock(doc, crate::time::SystemClock)
     }
 
     /// Creates a new instance of [Awareness] struct, which operates over a given document.
@@ -579,7 +579,7 @@ impl AwarenessUpdateSummary {
 
 /// How long a remote client's state lasts without an update before
 /// [Awareness::check_timeouts] removes it, in the [Clock]'s units (milliseconds for
-/// [crate::sync::time::SystemClock]). The same 30 seconds as Yjs' `outdatedTimeout`.
+/// [crate::time::SystemClock]). The same 30 seconds as Yjs' `outdatedTimeout`.
 pub const OUTDATED_TIMEOUT: Timestamp = 30_000;
 
 /// What [Awareness::check_timeouts] did.
@@ -727,8 +727,8 @@ mod test {
     use std::sync::Arc;
 
     use crate::block::ClientID;
-    use crate::sync::awareness::{AwarenessUpdate, AwarenessUpdateSummary, Event};
-    use crate::sync::Awareness;
+    use crate::protocol::awareness::{AwarenessUpdate, AwarenessUpdateSummary, Event};
+    use crate::protocol::Awareness;
     use crate::updates::decoder::Decode;
     use crate::Doc;
 
@@ -891,7 +891,7 @@ mod test {
     }
 
     /// A clock the test moves by hand.
-    fn manual_clock() -> (Arc<std::sync::atomic::AtomicU64>, impl crate::sync::Clock) {
+    fn manual_clock() -> (Arc<std::sync::atomic::AtomicU64>, impl crate::time::Clock) {
         let now = Arc::new(std::sync::atomic::AtomicU64::new(1_000));
         let clock = now.clone();
         (now, move || clock.load(std::sync::atomic::Ordering::SeqCst))
@@ -903,7 +903,7 @@ mod test {
 
     #[test]
     fn check_timeouts_renews_the_local_state_and_drops_silent_peers_like_yjs() {
-        use crate::sync::awareness::{TimeoutCheck, OUTDATED_TIMEOUT};
+        use crate::protocol::awareness::{TimeoutCheck, OUTDATED_TIMEOUT};
         let (now, clock) = manual_clock();
         let mut local = Awareness::with_clock(Doc::with_client_id(1), clock);
         let mut remote = Awareness::new(Doc::with_client_id(2));

@@ -1,3 +1,4 @@
+use crate::error::OutOfRange;
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
@@ -1097,9 +1098,31 @@ pub trait XmlFragment: AsRef<Branch> {
     where
         V: XmlPrelim,
     {
+        match self.try_insert(txn, index, xml_node) {
+            Ok(integrated) => integrated,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Inserts an XML node at the given `index`, like [XmlFragment::insert], but returns an error
+    /// instead of panicking when `index` is past the last child. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index` is greater than the number of children.
+    fn try_insert<V>(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        xml_node: V,
+    ) -> Result<V::Return, OutOfRange>
+    where
+        V: XmlPrelim,
+    {
+        OutOfRange::check(self.len(txn), index, 0)?;
         let ptr = self.as_ref().insert_at(txn, index, xml_node).unwrap(); // XML node is never empty
         if let Ok(integrated) = V::Return::try_from(ptr) {
-            integrated
+            Ok(integrated)
         } else {
             panic!("Defect: inserted XML element returned primitive value block")
         }
@@ -1127,17 +1150,36 @@ pub trait XmlFragment: AsRef<Branch> {
         self.remove_range(txn, index, 1)
     }
 
-    /// Removes a range of elements from current array, starting at given `index` up until
-    /// a particular number described by `len` has been deleted. This method panics in case when
-    /// not all expected elements were removed (due to insufficient number of elements in an array)
-    /// or `index` is outside the bounds of an array.
+    /// Removes `len` children, starting at given `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the last child. See [XmlFragment::try_remove_range].
     fn remove_range(&self, txn: &mut TransactionMut, index: u32, len: u32) {
+        if let Err(e) = self.try_remove_range(txn, index, len) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Removes `len` children starting at `index`, like [XmlFragment::remove_range], but returns
+    /// an error instead of panicking when the range runs past the last child. Nothing is removed
+    /// then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the number of children.
+    fn try_remove_range(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
         if walker.try_forward(txn, index) {
             walker.delete(txn, len)
-        } else {
-            panic!("Index {} is outside of the range of an array", index);
         }
+        Ok(())
     }
 
     /// Retrieves a value stored at a given `index`. Returns `None` when provided index was out

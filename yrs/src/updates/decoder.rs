@@ -117,12 +117,9 @@ impl<'a> DecoderV1<'a> {
     }
 
     fn read_id(&mut self) -> Result<ID, Error> {
-        #[cfg(not(feature = "small-client"))]
         let client: u64 = self.read_var()?;
-        #[cfg(feature = "small-client")]
-        let client: u32 = self.read_var()?;
         let clock = self.read_var()?;
-        Ok(ID::new(ClientID::new(client as u64), clock))
+        Ok(ID::new(ClientID::new(client), clock))
     }
 }
 
@@ -183,11 +180,8 @@ impl<'a> Decoder for DecoderV1<'a> {
 
     #[inline]
     fn read_client(&mut self) -> Result<ClientID, Error> {
-        #[cfg(not(feature = "small-client"))]
         let client: u64 = self.cursor.read_var()?;
-        #[cfg(feature = "small-client")]
-        let client: u32 = self.cursor.read_var()?;
-        Ok(ClientID::new(client as u64))
+        Ok(ClientID::new(client))
     }
 
     #[inline]

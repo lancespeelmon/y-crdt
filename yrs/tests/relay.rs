@@ -13,7 +13,7 @@
 //!   and the next connection loads it again.
 //!
 //! It needs the `sync` feature (on by default), which makes documents `Send`.
-#![cfg(feature = "sync")]
+#![cfg(all(feature = "sync", feature = "protocol"))]
 
 mod relay {
     use std::collections::{HashMap, HashSet};
@@ -22,7 +22,7 @@ mod relay {
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
     use yrs::encoding::read::Cursor;
-    use yrs::sync::{Awareness, Message, MessageReader, SyncMessage};
+    use yrs::protocol::{Awareness, Message, MessageReader, SyncMessage};
     use yrs::updates::decoder::{Decode, DecoderV1};
     use yrs::updates::encoder::Encode;
     use yrs::{ClientID, Doc, ReadTxn, StateVector, Transact, Update};
@@ -371,7 +371,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use yrs::sync::{Awareness, DefaultProtocol, Protocol};
+use yrs::protocol::{Awareness, DefaultProtocol, Protocol};
 use yrs::updates::encoder::{Encode, Encoder};
 use yrs::{GetString, ReadTxn, Text, Transact};
 
@@ -429,15 +429,16 @@ impl Client {
         let before = doc.transact().state_vector();
         shared.insert(&mut doc.transact_mut(), at, text);
         let update = doc.transact().encode_state_as_update_v1(&before);
-        self.conn
-            .send(yrs::sync::Message::Sync(yrs::sync::SyncMessage::Update(update)).encode_v1());
+        self.conn.send(
+            yrs::protocol::Message::Sync(yrs::protocol::SyncMessage::Update(update)).encode_v1(),
+        );
     }
 
     fn set_presence(&mut self, state: serde_json::Value) {
         self.awareness.set_local_state(state).unwrap();
         let update = self.awareness.update().unwrap();
         self.conn
-            .send(yrs::sync::Message::Awareness(update).encode_v1());
+            .send(yrs::protocol::Message::Awareness(update).encode_v1());
     }
 
     fn text(&self) -> String {
@@ -523,7 +524,7 @@ fn oversized_messages_close_the_connection_without_touching_the_document() {
     let update = fragmented_update();
     assert!(update.len() < 4096);
     eve.conn
-        .send(yrs::sync::Message::Sync(yrs::sync::SyncMessage::Update(update)).encode_v1());
+        .send(yrs::protocol::Message::Sync(yrs::protocol::SyncMessage::Update(update)).encode_v1());
     settle(&relay, &mut [&mut bob, &mut eve]);
     assert!(eve.closed.as_deref().unwrap().contains("block ranges"));
     assert_eq!(bob.text(), "");

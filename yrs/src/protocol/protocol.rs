@@ -1,7 +1,7 @@
 use crate::encoding::read;
 use crate::encoding::read::Cursor;
 use crate::error::UpdateError;
-use crate::sync::{awareness, Awareness, AwarenessUpdate};
+use crate::protocol::{awareness, Awareness, AwarenessUpdate};
 use crate::updates::decoder::{Decode, Decoder, DecoderV1};
 use crate::updates::encoder::{Encode, Encoder};
 use crate::{ReadTxn, StateVector, Update};
@@ -539,8 +539,8 @@ impl<'a, D: Decoder> Iterator for MessageReader<'a, D> {
 mod test {
     use crate::block::ClientID;
     use crate::encoding::read::Cursor;
-    use crate::sync::protocol::MessageReader;
-    use crate::sync::{Awareness, Protocol};
+    use crate::protocol::protocol::MessageReader;
+    use crate::protocol::{Awareness, Protocol};
     use crate::updates::decoder::{Decode, DecoderV1};
     use crate::updates::encoder::{Encode, Encoder, EncoderV1};
     use crate::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
@@ -564,27 +564,27 @@ mod test {
             .unwrap();
 
         let messages = [
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep1(
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep1(
                 awareness.doc().transact().state_vector(),
             )),
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep2(
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep2(
                 awareness
                     .doc()
                     .transact()
                     .encode_state_as_update_v1(&StateVector::default()),
             )),
-            crate::sync::Message::Awareness(awareness.update().unwrap()),
-            crate::sync::Message::Auth(Some(
+            crate::protocol::Message::Awareness(awareness.update().unwrap()),
+            crate::protocol::Message::Auth(Some(
                 "reason
             }"
                 .to_string(),
             )),
-            crate::sync::Message::AwarenessQuery,
+            crate::protocol::Message::AwarenessQuery,
         ];
 
         for msg in messages {
             let encoded = msg.encode_v1();
-            let decoded = crate::sync::Message::decode_v1(&encoded)
+            let decoded = crate::protocol::Message::decode_v1(&encoded)
                 .expect(&format!("failed to decode {:?}", msg));
             assert_eq!(decoded, msg);
         }
@@ -593,7 +593,7 @@ mod test {
     #[test]
     fn protocol_init() {
         let awareness = Awareness::default();
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
         let mut encoder = EncoderV1::new();
         protocol.start(&awareness, &mut encoder).unwrap();
         let data = encoder.to_vec();
@@ -602,12 +602,14 @@ mod test {
 
         assert_eq!(
             reader.next().unwrap().unwrap(),
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep1(StateVector::default()))
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep1(
+                StateVector::default()
+            ))
         );
 
         assert_eq!(
             reader.next().unwrap().unwrap(),
-            crate::sync::Message::Awareness(awareness.update().unwrap())
+            crate::protocol::Message::Awareness(awareness.update().unwrap())
         );
 
         assert!(reader.next().is_none());
@@ -615,7 +617,7 @@ mod test {
 
     #[test]
     fn protocol_sync_steps() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -633,12 +635,14 @@ mod test {
 
         assert_eq!(
             result,
-            Some(crate::sync::Message::Sync(
-                crate::sync::SyncMessage::SyncStep2(expected)
+            Some(crate::protocol::Message::Sync(
+                crate::protocol::SyncMessage::SyncStep2(expected)
             ))
         );
 
-        if let Some(crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep2(u))) = result {
+        if let Some(crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep2(u))) =
+            result
+        {
             let result2 = protocol
                 .handle_sync_step2(&mut a2, Update::decode_v1(&u).unwrap())
                 .unwrap();
@@ -652,7 +656,7 @@ mod test {
 
     #[test]
     fn protocol_sync_step_update() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -676,7 +680,7 @@ mod test {
 
     #[test]
     fn protocol_awareness_sync() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -686,10 +690,10 @@ mod test {
 
         assert_eq!(
             result,
-            Some(crate::sync::Message::Awareness(a1.update().unwrap()))
+            Some(crate::protocol::Message::Awareness(a1.update().unwrap()))
         );
 
-        if let Some(crate::sync::Message::Awareness(u)) = result {
+        if let Some(crate::protocol::Message::Awareness(u)) = result {
             let result = protocol.handle_awareness_update(&mut a2, u).unwrap();
             assert!(result.is_none());
         }

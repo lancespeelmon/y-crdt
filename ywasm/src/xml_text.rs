@@ -124,9 +124,11 @@ impl YXmlText {
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
                 if attributes.is_undefined() || attributes.is_null() {
+                    crate::check_range(c.len(txn), index, 0)?;
                     c.insert(txn, index, chunk);
                     Ok(())
                 } else if let Some(attrs) = YText::parse_fmt(attributes) {
+                    crate::check_range(c.len(txn), index, 0)?;
                     c.insert_with_attributes(txn, index, chunk, attrs);
                     Ok(())
                 } else {
@@ -155,6 +157,7 @@ impl YXmlText {
                 Err(JsValue::from_str(crate::js::errors::INVALID_PRELIM_OP))
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
+                crate::check_range(c.len(txn), index, length)?;
                 c.format(txn, index, length, attrs);
                 Ok(())
             }),
@@ -235,9 +238,11 @@ impl YXmlText {
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
                 if attributes.is_undefined() || attributes.is_null() {
+                    crate::check_range(c.len(txn), index, 0)?;
                     c.insert_embed(txn, index, Js::new(embed));
                     Ok(())
                 } else if let Some(attrs) = YText::parse_fmt(attributes) {
+                    crate::check_range(c.len(txn), index, 0)?;
                     c.insert_embed_with_attributes(txn, index, Js::new(embed), attrs);
                     Ok(())
                 } else {
@@ -315,6 +320,7 @@ impl YXmlText {
                 Ok(())
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
+                crate::check_range(c.len(txn), index, length)?;
                 c.remove_range(txn, index, length);
                 Ok(())
             }),

@@ -3,7 +3,7 @@ use crate::branch::{Branch, BranchPtr};
 use crate::id_set::DeleteSet;
 use crate::iter::TxnIterator;
 use crate::slice::BlockSlice;
-use crate::sync::Clock;
+use crate::time::Clock;
 use crate::transaction::Origin;
 use crate::{Doc, IdSet, Observer, ReadTxn, Transact, TransactionMut, Uuid, ID};
 use serde::{Deserialize, Serialize};
@@ -923,7 +923,7 @@ impl<M> Default for Options<M> {
             capture_timeout_millis: 500,
             tracked_origins: HashSet::new(),
             capture_transaction: None,
-            timestamp: Arc::new(crate::sync::time::SystemClock),
+            timestamp: Arc::new(crate::time::SystemClock),
             init_undo_stack: Vec::new(),
             init_redo_stack: Vec::new(),
             delete_filter: None,

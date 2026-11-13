@@ -27,6 +27,13 @@ mod xml_text;
 
 type Result<T> = std::result::Result<T, JsValue>;
 
+/// Throws, instead of trapping, when `index..index + len` runs past the end of a sequence of
+/// `available` elements.
+fn check_range(available: u32, index: u32, len: u32) -> Result<()> {
+    yrs::error::OutOfRange::check(available, index, len)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
 pub use crate::array::YArray as Array;
 pub use crate::array::YArrayEvent as ArrayEvent;
 pub use crate::doc::YDoc as Doc;

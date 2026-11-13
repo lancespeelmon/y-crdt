@@ -1199,7 +1199,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "small-client")]
     fn pending_update_integration() {
         let doc = Doc::new();
         let txt = doc.get_or_insert_text("source");

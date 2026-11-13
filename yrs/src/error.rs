@@ -20,3 +20,36 @@ pub enum UpdateError {
     #[error("block parent {0} must be deleted or shared ref type. Type: {1}")]
     InvalidParent(ID, u8),
 }
+
+/// A position or range that doesn't fit in a sequence: an insert past its end, or a removal or
+/// formatting range that runs past it. Returned by the `try_*` methods of
+/// [crate::Text], [crate::Array] and [crate::XmlFragment], before anything is changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[non_exhaustive]
+#[error("range {index}..{end} is out of bounds for length {available}", end = *.index as u64 + *.len as u64)]
+pub struct OutOfRange {
+    /// Where the operation starts.
+    pub index: u32,
+    /// How many elements it covers (0 for an insert).
+    pub len: u32,
+    /// The length of the sequence, in the units `index` and `len` count.
+    pub available: u32,
+}
+
+impl OutOfRange {
+    /// Checks that `index..index + len` fits in a sequence of `available` elements.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] describing the range, if it doesn't fit.
+    pub fn check(available: u32, index: u32, len: u32) -> Result<(), OutOfRange> {
+        match index.checked_add(len) {
+            Some(end) if end <= available => Ok(()),
+            _ => Err(OutOfRange {
+                index,
+                len,
+                available,
+            }),
+        }
+    }
+}

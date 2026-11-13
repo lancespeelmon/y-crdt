@@ -1,4 +1,5 @@
 use crate::block::{Block, EmbedPrelim, Item, ItemContent, ItemPosition, ItemPtr, Prelim, Unused};
+use crate::error::OutOfRange;
 use crate::transaction::TransactionMut;
 use crate::types::{
     AsPrelim, Attrs, Branch, BranchPtr, DefaultPrelim, Delta, Out, Path, RootRef, SharedRef,
@@ -210,8 +211,26 @@ pub trait Text: AsRef<Branch> + Sized {
     /// ```
     ///
     fn insert(&self, txn: &mut TransactionMut, index: u32, chunk: &str) {
+        if let Err(e) = self.try_insert(txn, index, chunk) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Inserts a `chunk` of text at a given `index`, like [Text::insert], but returns an error
+    /// instead of panicking when `index` is past the end of the text. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index` is greater than the length of the text.
+    fn try_insert(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        chunk: &str,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, 0)?;
         if chunk.is_empty() {
-            return;
+            return Ok(());
         }
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
@@ -225,9 +244,8 @@ pub trait Text: AsRef<Branch> + Sized {
                 }
             }
             txn.create_item(&pos, value, None);
-        } else {
-            panic!("The type or the position doesn't exist!");
         }
+        Ok(())
     }
 
     fn apply_delta<D, P>(&self, txn: &mut TransactionMut, delta: D)
@@ -279,6 +297,9 @@ pub trait Text: AsRef<Branch> + Sized {
         chunk: &str,
         attributes: Attrs,
     ) {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         if chunk.is_empty() {
             return;
         }
@@ -302,6 +323,9 @@ pub trait Text: AsRef<Branch> + Sized {
     where
         V: Into<EmbedPrelim<V>> + Prelim,
     {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         let this = BranchPtr::from(self.as_ref());
         if let Some(pos) = find_position(this, txn, index) {
             let ptr = txn
@@ -335,6 +359,9 @@ pub trait Text: AsRef<Branch> + Sized {
     where
         V: Into<EmbedPrelim<V>> + Prelim,
     {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             let item = insert(this, txn, &mut pos, embed.into(), attributes)
@@ -355,27 +382,69 @@ pub trait Text: AsRef<Branch> + Sized {
         self.insert(txn, idx, chunk)
     }
 
-    /// Removes up to a `len` characters from a current text structure, starting at given `index`.
-    /// This method panics in case when not all expected characters were removed (due to
-    /// insufficient number of characters to remove) or `index` is outside of the bounds of text.
+    /// Removes `len` characters from a current text structure, starting at given `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the end of the text. See [Text::try_remove_range].
     fn remove_range(&self, txn: &mut TransactionMut, index: u32, len: u32) {
+        if let Err(e) = self.try_remove_range(txn, index, len) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Removes `len` characters starting at `index`, like [Text::remove_range], but returns an
+    /// error instead of panicking when the range runs past the end of the text. Nothing is
+    /// removed then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the length of the text.
+    fn try_remove_range(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             remove(txn, &mut pos, len)
-        } else {
-            panic!("The type or the position doesn't exist!");
         }
+        Ok(())
     }
 
     /// Wraps an existing piece of text within a range described by `index`-`len` parameters with
     /// formatting blocks containing provided `attributes` metadata.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the end of the text. See [Text::try_format].
     fn format(&self, txn: &mut TransactionMut, index: u32, len: u32, attributes: Attrs) {
+        if let Err(e) = self.try_format(txn, index, len, attributes) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Formats `len` characters starting at `index`, like [Text::format], but returns an error
+    /// instead of panicking when the range runs past the end of the text. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the length of the text.
+    fn try_format(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+        attributes: Attrs,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             insert_format(this, txn, &mut pos, len, attributes)
-        } else {
-            panic!("Index {} is outside of the range.", index);
         }
+        Ok(())
     }
 
     /// Returns an ordered sequence of formatted chunks, current [Text] corresponds of. These chunks

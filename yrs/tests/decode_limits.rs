@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use yrs::encoding::read::{Cursor, Error, Read};
 use yrs::encoding::varint::Signed;
 use yrs::encoding::write::Write;
-use yrs::sync::awareness::AwarenessUpdate;
+#[cfg(feature = "protocol")]
+use yrs::protocol::awareness::AwarenessUpdate;
 use yrs::types::ToJson;
 use yrs::updates::decoder::{Decode, DecoderV1, DecoderV2};
 use yrs::updates::encoder::Encode;
@@ -378,6 +379,7 @@ fn update_block_claim_of_a_later_client_is_bounded() {
     );
 }
 
+#[cfg(feature = "protocol")]
 #[test]
 fn awareness_claim_is_bounded() {
     let _serial = serial();
@@ -432,6 +434,7 @@ fn claim_above_u32_range_is_bounded() {
     let claim: &[u8] = &[0x80, 0x80, 0x80, 0x80, 0x80, 0x01];
     assert_input_is_bounded(&[&[117], claim].concat(), decode_any);
     assert_input_is_bounded(&[&[118], claim].concat(), decode_any);
+    #[cfg(feature = "protocol")]
     assert_input_is_bounded(claim, AwarenessUpdate::decode_v1);
     assert_input_is_bounded(claim, StateVector::decode_v1);
 }
