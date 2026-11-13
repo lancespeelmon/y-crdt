@@ -489,7 +489,7 @@ impl<'doc> ReadTxn for Transaction<'doc> {
 /// many updates as possible using the same transaction.
 ///
 /// In Yrs transactions are always auto-committing all of their changes when dropped. Rollbacks are
-/// not supported (if some operations needs to be undone, this can be achieved using [UndoManager])
+/// not supported (if some operations needs to be undone, this can be achieved using [UndoManager](crate::UndoManager))
 pub struct TransactionMut<'doc> {
     pub(crate) store: RwLockWriteGuard<'doc, Store>,
     /// Marks this thread as holding the document (see `DocStore::hold`) until the transaction
@@ -598,7 +598,7 @@ impl<'doc> TransactionMut<'doc> {
         })
     }
 
-    /// State vector of the transaction after [Transaction::commit] has been called.
+    /// State vector of the transaction after [TransactionMut::commit](crate::TransactionMut::commit) has been called.
     pub fn after_state(&self) -> &StateVector {
         self.after_state.get_or_init(|| {
             let mut sv = self.store.blocks.get_state_vector();
@@ -1471,7 +1471,7 @@ impl<'doc> TransactionMut<'doc> {
 
     define_doc_observer!(
         /// Subscribe callback function for any changes performed within transaction scope. These
-        /// changes are encoded using lib0 v1 encoding and can be decoded using [Update::decode_v1]
+        /// changes are encoded using lib0 v1 encoding and can be decoded using [Update::decode_v1](crate::updates::decoder::Decode::decode_v1)
         /// if necessary or passed to remote peers right away. This callback is triggered on
         /// function commit.
         observe_update_v1,
@@ -1482,7 +1482,7 @@ impl<'doc> TransactionMut<'doc> {
 
     define_doc_observer!(
         /// Subscribe callback function for any changes performed within transaction scope. These
-        /// changes are encoded using lib0 v2 encoding and can be decoded using [Update::decode_v2]
+        /// changes are encoded using lib0 v2 encoding and can be decoded using [Update::decode_v2](crate::updates::decoder::Decode::decode_v2)
         /// if necessary or passed to remote peers right away. This callback is triggered on
         /// function commit.
         observe_update_v2,

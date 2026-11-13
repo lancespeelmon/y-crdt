@@ -11,7 +11,7 @@ where
     where
         T: 'a;
 
-    /// Evaluate JSON path on the current transaction, starting from current transaction [Doc] as
+    /// Evaluate JSON path on the current transaction, starting from current transaction [Doc](crate::Doc) as
     /// its root.
     ///
     /// # Example

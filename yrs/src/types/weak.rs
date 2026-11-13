@@ -31,9 +31,9 @@ use crate::{
 ///
 /// - [Map::link] to pick a reference to key-value entry of map. As entry is being updated, so will
 /// be the referenced value.
-/// - [Array::quote] to take a reference to a consecutive range of array's elements. Any elements
+/// - [Quotable::quote] on an [ArrayRef](crate::ArrayRef) to take a reference to a consecutive range of array's elements. Any elements
 /// inserted in an originally quoted range will later on appear when [WeakRef::unquote] is called.
-/// - [Text::quote] to take a reference to a slice of text. When materialized, quoted slice will
+/// - [Quotable::quote] on a [TextRef] to take a reference to a slice of text. When materialized, quoted slice will
 /// contain any changes that happened within the quoted slice. It will also contain formatting
 /// information about the quotation.
 ///
@@ -477,7 +477,7 @@ impl WeakEvent {
         WeakRef(T::from(self.target))
     }
 
-    /// Returns a path from root type down to [Text] instance which emitted this event.
+    /// Returns a path from root type down to [TextRef] instance which emitted this event.
     pub fn path(&self) -> Path {
         Branch::path(self.current_target, self.target)
     }
@@ -671,7 +671,7 @@ pub trait Quotable: AsRef<Branch> + Sized {
     /// itself is not included in range it still has to exists as a point of reference.
     ///
     /// Currently this method doesn't support unbounded ranges (ie. `..n`, `n..`). Passing such
-    /// range will cause [QuoteError::UnboundedRange] error.
+    /// range will cause `QuoteError::UnboundedRange` error.
     ///
     /// # Example
     /// ```

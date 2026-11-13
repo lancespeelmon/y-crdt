@@ -63,6 +63,11 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
 
+      - name: rustdoc
+        run: cargo doc -p yrs --no-deps ${{ matrix.features }}
+        env:
+          RUSTDOCFLAGS: -D warnings
+
   deny:
     runs-on: ubuntu-latest
     steps:

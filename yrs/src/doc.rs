@@ -324,7 +324,7 @@ impl Doc {
 
     define_doc_observer!(
         /// Subscribe callback function for any changes performed within transaction scope. These
-        /// changes are encoded using lib0 v1 encoding and can be decoded using [Update::decode_v1]
+        /// changes are encoded using lib0 v1 encoding and can be decoded using [Update::decode_v1](crate::updates::decoder::Decode::decode_v1)
         /// if necessary or passed to remote peers right away. This callback is triggered on
         /// function commit.
         observe_update_v1,
@@ -335,7 +335,7 @@ impl Doc {
 
     define_doc_observer!(
         /// Subscribe callback function for any changes performed within transaction scope. These
-        /// changes are encoded using lib0 v2 encoding and can be decoded using [Update::decode_v2]
+        /// changes are encoded using lib0 v2 encoding and can be decoded using [Update::decode_v2](crate::updates::decoder::Decode::decode_v2)
         /// if necessary or passed to remote peers right away. This callback is triggered on
         /// function commit.
         observe_update_v2,
@@ -562,10 +562,10 @@ pub struct Options {
     /// Default value: `None`, which collects every deleted item.
     pub gc_filter: Option<GcFilter>,
 
-    /// Whether weak links (the `weak` feature's [crate::WeakRef]) may be created in this document.
+    /// Whether weak links (the `weak` feature's `crate::WeakRef`) may be created in this document.
     /// They are a yrs extension: Yjs can't decode them and rejects any update that contains one,
     /// so turn this off when Yjs peers share the document. While it is off, `link` returns
-    /// `None` and `quote` returns [crate::types::weak::QuoteError::Disabled]. Weak links that
+    /// `None` and `quote` returns `crate::types::weak::QuoteError::Disabled`. Weak links that
     /// arrive in updates are still read. Has no effect without the `weak` feature.
     ///
     /// Default value: `true`. yffi and ywasm documents default to `false`.
@@ -710,7 +710,7 @@ impl Decode for Options {
     }
 }
 
-/// Determines how string length and offsets of [Text]/[XmlText] are being determined.
+/// Determines how string length and offsets of [TextRef]/[XmlTextRef](crate::XmlTextRef) are being determined.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OffsetKind {

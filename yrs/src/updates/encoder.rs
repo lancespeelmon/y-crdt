@@ -33,33 +33,33 @@ pub trait Encoder: Write {
     /// Consume current encoder and return a binary with all data encoded so far.
     fn to_vec(self) -> Vec<u8>;
 
-    /// Reset the state of currently encoded [DeleteSet].
+    /// Reset the state of currently encoded `DeleteSet`.
     fn reset_ds_cur_val(&mut self);
 
-    /// Write a clock value of currently encoded [DeleteSet] client.
+    /// Write a clock value of currently encoded `DeleteSet` client.
     fn write_ds_clock(&mut self, clock: u32);
 
-    /// Write a number of client entries used by currently encoded [DeleteSet].
+    /// Write a number of client entries used by currently encoded `DeleteSet`.
     fn write_ds_len(&mut self, len: u32);
 
-    /// Write unique identifier of a currently encoded [Block]'s left origin.
+    /// Write unique identifier of a currently encoded `Block`'s left origin.
     fn write_left_id(&mut self, id: &block::ID);
 
-    /// Write unique identifier of a currently encoded [Block]'s right origin.
+    /// Write unique identifier of a currently encoded `Block`'s right origin.
     fn write_right_id(&mut self, id: &block::ID);
 
     /// Write currently encoded client identifier.
     fn write_client(&mut self, client: ClientID);
 
-    /// Write currently encoded [Block]'s info flags. These contain information about which fields
+    /// Write currently encoded `Block`'s info flags. These contain information about which fields
     /// have been provided and which should be skipped during decoding process as well as a type of
     /// block currently encoded.
     fn write_info(&mut self, info: u8);
 
-    /// Write info flag about currently encoded [Block]'s parent. Is is another block or root type.
+    /// Write info flag about currently encoded `Block`'s parent. Is is another block or root type.
     fn write_parent_info(&mut self, is_y_key: bool);
 
-    /// Writes type ref data of currently encoded [Block]'s parent.
+    /// Writes type ref data of currently encoded `Block`'s parent.
     fn write_type_ref(&mut self, info: u8);
 
     /// Write length parameter.

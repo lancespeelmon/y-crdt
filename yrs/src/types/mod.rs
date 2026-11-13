@@ -48,16 +48,16 @@ pub const TYPE_REFS_XML_ELEMENT: u8 = 3;
 /// Type ref identifier for a [XmlFragmentRef] type. Used for compatibility.
 pub const TYPE_REFS_XML_FRAGMENT: u8 = 4;
 
-/// Type ref identifier for a [XmlHookRef] type. Used for compatibility.
+/// Type ref identifier for a [XmlHookRef](crate::types::xml::XmlHookRef) type. Used for compatibility.
 pub const TYPE_REFS_XML_HOOK: u8 = 5;
 
 /// Type ref identifier for a [XmlTextRef] type.
 pub const TYPE_REFS_XML_TEXT: u8 = 6;
 
-/// Type ref identifier for a [WeakRef] type.
+/// Type ref identifier for a `WeakRef` type.
 pub const TYPE_REFS_WEAK: u8 = 7;
 
-/// Type ref identifier for a [DocRef] type.
+/// Type ref identifier for a `DocRef` type.
 pub const TYPE_REFS_DOC: u8 = 9;
 
 /// Placeholder type ref identifier for non-specialized AbstractType. Used only for root-level types
@@ -295,8 +295,8 @@ pub trait Observable: AsRef<Branch> {
     /// A callback is triggered whenever a transaction gets committed. This function does not
     /// trigger if changes have been observed by nested shared collections.
     ///
-    /// All array-like event changes can be tracked by using [Event::delta] method.
-    /// All map-like event changes can be tracked by using [Event::keys] method.
+    /// All array-like event changes can be tracked by using `Event::delta` method.
+    /// All map-like event changes can be tracked by using `Event::keys` method.
     /// All text-like event changes can be tracked by using [TextEvent::delta] method.
     ///
     /// The callback is registered under `key` and can be removed via [Observable::unobserve].
@@ -355,7 +355,7 @@ pub trait GetString {
 /// Some types like [XmlTextRef] and [XmlElementRef] are not bound to be used as root-level types
 /// since they have limited capabilities (i.e. cannot propagate XML node name).
 ///
-/// Other types like [WeakRef] are not supposed to be used at root-level since they refer to
+/// Other types like `WeakRef` are not supposed to be used at root-level since they refer to
 /// elements created prior to them, while root-level types are virtually immortal and technically
 /// exist for the whole lifespan of their document.
 pub trait RootRef: SharedRef {
@@ -628,7 +628,7 @@ impl std::fmt::Display for TypePtr {
 }
 
 /// A path describing nesting structure between shared collections containing each other. It's a
-/// collection of segments which refer to either index (in case of [Array] or [XmlElement]) or
+/// collection of segments which refer to either index (in case of [Array] or [XmlElementRef]) or
 /// string key (in case of [Map]) where successor shared collection can be found within subsequent
 /// parent types.
 pub type Path = VecDeque<PathSegment>;
@@ -640,7 +640,7 @@ pub enum PathSegment {
     Key(Arc<str>),
 
     /// Index segments are used to inform how to access child shared collections within an [Array]
-    /// or [XmlElement] types.
+    /// or [XmlElementRef] types.
     Index(u32),
 }
 
@@ -677,11 +677,11 @@ impl<D> ChangeSet<D> {
 pub enum Change {
     /// Determines a change that resulted in adding a consecutive number of new elements:
     /// - For [Array] it's a range of inserted elements.
-    /// - For [XmlElement] it's a range of inserted child XML nodes.
+    /// - For [XmlElementRef] it's a range of inserted child XML nodes.
     Added(Vec<Out>),
 
     /// Determines a change that resulted in removing a consecutive range of existing elements,
-    /// either XML child nodes for [XmlElement] or various elements stored in an [Array].
+    /// either XML child nodes for [XmlElementRef] or various elements stored in an [Array].
     Removed(u32),
 
     /// Determines a number of consecutive unchanged elements. Used to recognize non-edited spaces
@@ -730,7 +730,7 @@ impl std::fmt::Debug for EntryChange {
     }
 }
 
-/// A single change done over a text-like types: [Text] or [XmlText].
+/// A single change done over a text-like types: [Text] or [XmlTextRef].
 #[derive(Debug, Clone, PartialEq)]
 pub enum Delta<T = Out> {
     /// Determines a change that resulted in insertion of a piece of text, which optionally could
@@ -777,7 +777,7 @@ impl Delta<In> {
     }
 }
 
-/// An alias for map of attributes used as formatting parameters by [Text] and [XmlText] types.
+/// An alias for map of attributes used as formatting parameters by [Text] and [XmlTextRef] types.
 pub type Attrs = HashMap<Arc<str>, Any>;
 
 pub(crate) fn event_keys(

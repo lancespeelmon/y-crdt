@@ -179,6 +179,7 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- rustdoc builds with no warnings (about 95 broken links fixed), and CI keeps it that way.
 - CI runs on `next` as well as `main`, with actions pinned by SHA.
 - New CI gates: `cargo fmt --check`, `cargo clippy -D warnings` (pre-existing lints listed in
   `[workspace.lints]`), `cargo deny check`, a check that the C header is up to date, the C tests

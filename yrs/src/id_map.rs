@@ -19,7 +19,7 @@ pub trait Diff<D> {
 }
 
 /// A set of [`ContentAttribute<A>`] values attached to a range.
-/// Implements [`Merge`] by unioning attributes.
+/// Implements `Merge` by unioning attributes.
 #[derive(Eq, Default, Debug)]
 pub struct ContentAttributes<A>(pub SmallVec<[ContentAttribute<A>; 2]>);
 

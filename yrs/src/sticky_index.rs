@@ -465,7 +465,7 @@ impl std::fmt::Display for StickyIndex {
 }
 
 /// Struct describing context in which [StickyIndex] is placed. For items pointing inside of
-/// the shared typed sequence it's always [StickyIndex::Relative] which refers to a block [ID]
+/// the shared typed sequence it's always `StickyIndex::Relative` which refers to a block [ID]
 /// found under corresponding position.
 ///
 /// In case when a containing collection is empty, there's a no block [ID] that can be used as point
