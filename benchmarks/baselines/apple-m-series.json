@@ -195,6 +195,16 @@
       "low_ns": 39.2,
       "median_ns": 40.6
     },
+    "merge_updates/v1/1000": {
+      "high_ns": 158798.6,
+      "low_ns": 157676.4,
+      "median_ns": 158288.4
+    },
+    "merge_updates/v1/16000": {
+      "high_ns": 3726236.1,
+      "low_ns": 3634442.2,
+      "median_ns": 3685092.6
+    },
     "serde/Any deserialize": {
       "high_ns": 1408.6,
       "low_ns": 1403.5,
@@ -231,7 +241,7 @@
       "median_ns": 276.2
     }
   },
-  "commit": "0b37908",
+  "commit": "0ddc533",
   "machine": "Darwin arm64",
   "rustc": "rustc 1.102.0-nightly (5b7b37aef 2026-11-08)"
 }
