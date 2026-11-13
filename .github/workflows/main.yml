@@ -325,6 +325,13 @@ jobs:
             exit 1
           }
 
+      - name: check C header is ISO C
+        # C programs include this header too, not just the C++ tests: it must compile as strict
+        # C99 with no extensions.
+        run: |
+          printf '#include "libyrs.h"\nint main(void) { return 0; }\n' > header_check.c
+          cc -std=c99 -Wall -Wextra -Wpedantic -Werror -fsyntax-only -I tests-ffi/include header_check.c
+
       - name: install cmake
         uses: lukka/get-cmake@f86dd60acae0d132056913e248bdabf0e0580b7a # v4.4.5
 

@@ -36,7 +36,7 @@
  * Document manages so-called root types, which are top-level shared types definitions (as opposed
  * to recursively nested types).
  */
-typedef struct YDoc {} YDoc;
+typedef struct YDoc YDoc;
 
 /**
  * A common shared data type. All Yrs instances can be refered to using this data type (use
@@ -47,38 +47,38 @@ typedef struct YDoc {} YDoc;
  * Using write methods of different shared types (eg. `ytext_insert` and `yarray_insert`) over
  * the same branch may result in undefined behavior.
  */
-typedef struct Branch {} Branch;
+typedef struct Branch Branch;
 
-typedef struct Transaction {} Transaction;
-typedef struct TransactionMut {} TransactionMut;
+typedef struct Transaction Transaction;
+typedef struct TransactionMut TransactionMut;
 
 /**
  * Iterator structure used by weak link unquote.
  */
-typedef struct YWeakIter {} YWeakIter;
+typedef struct YWeakIter YWeakIter;
 
 /**
  * Iterator structure used by shared array data type.
  */
-typedef struct YArrayIter {} YArrayIter;
+typedef struct YArrayIter YArrayIter;
 
 /**
  * Iterator structure used by shared map data type. Map iterators are unordered - there's no
  * specific order in which map entries will be returned during consecutive iterator calls.
  */
-typedef struct YMapIter {} YMapIter;
+typedef struct YMapIter YMapIter;
 
 /**
  * Iterator structure used by shared JSON Path expressions over document content.
  */
-typedef struct YJsonPathIter {} YJsonPathIter;
+typedef struct YJsonPathIter YJsonPathIter;
 
 /**
  * Iterator structure used by XML nodes (elements and text) to iterate over node's attributes.
  * Attribute iterators are unordered - there's no specific order in which map entries will be
  * returned during consecutive iterator calls.
  */
-typedef struct YXmlAttrIter {} YXmlAttrIter;
+typedef struct YXmlAttrIter YXmlAttrIter;
 
 /**
  * Iterator used to traverse over the complex nested tree structure of a XML node. XML node
@@ -86,12 +86,12 @@ typedef struct YXmlAttrIter {} YXmlAttrIter;
  * the order in which children are ordered within their parent nodes) and using **depth-first**
  * traverse.
  */
-typedef struct YXmlTreeWalker {} YXmlTreeWalker;
+typedef struct YXmlTreeWalker YXmlTreeWalker;
 
-typedef struct YUndoManager {} YUndoManager;
-typedef struct LinkSource {} LinkSource;
-typedef struct Unquote {} Unquote;
-typedef struct StickyIndex {} StickyIndex;
+typedef struct YUndoManager YUndoManager;
+typedef struct LinkSource LinkSource;
+typedef struct Unquote Unquote;
+typedef struct StickyIndex StickyIndex;
 
 
 #include <stdarg.h>
@@ -370,6 +370,14 @@ typedef struct StickyIndex {} StickyIndex;
  * entry has been overridden with a new value within a map component of shared collection.
  */
 #define Y_EVENT_KEY_CHANGE_UPDATE 6
+
+/**
+ * The version of the C interface this header describes. It goes up whenever a change would
+ * break a program built against the previous header: a function's signature, a struct's
+ * layout or a constant's meaning. Compare it with [yffi_abi_version] at startup to catch a
+ * program loading a library it wasn't built for.
+ */
+#define Y_ABI_VERSION 1
 
 /**
  * Status of a call that succeeded.
@@ -2963,6 +2971,11 @@ uint8_t ybranch_alive(Branch *branch);
  * initialized locally) or doesn't have JSON representation a NULL pointer can be returned.
  */
 char *ybranch_json(Branch *branch, YTransaction *txn);
+
+/**
+ * The [Y_ABI_VERSION] the loaded library was built with.
+ */
+uint32_t yffi_abi_version(void);
 
 /**
  * Returns the message of the last call on this thread that returned a status other than
