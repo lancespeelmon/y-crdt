@@ -26,7 +26,7 @@ use std::panic;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-/// Bit flag used to identify [Item::GC].
+/// Bit flag used to identify `Item::GC`.
 pub const BLOCK_GC_REF_NUMBER: u8 = 0;
 
 /// Bit flag used to identify items with content of type [ItemContent::Deleted].
@@ -47,7 +47,7 @@ pub const BLOCK_ITEM_EMBED_REF_NUMBER: u8 = 5;
 /// Bit flag used to identify items with content of type [ItemContent::Format].
 pub const BLOCK_ITEM_FORMAT_REF_NUMBER: u8 = 6;
 
-/// Bit flag used to identify items with content of type [ItemContent::Number].
+/// Bit flag used to identify items with content of type `ItemContent::Number`.
 pub const BLOCK_ITEM_TYPE_REF_NUMBER: u8 = 7;
 
 /// Bit flag used to identify items with content of type [ItemContent::Any].
@@ -56,7 +56,7 @@ pub const BLOCK_ITEM_ANY_REF_NUMBER: u8 = 8;
 /// Bit flag used to identify items with content of type [ItemContent::Doc].
 pub const BLOCK_ITEM_DOC_REF_NUMBER: u8 = 9;
 
-/// Bit flag used to identify [Item::Skip].
+/// Bit flag used to identify `Item::Skip`.
 pub const BLOCK_SKIP_REF_NUMBER: u8 = 10;
 
 /// Bit flag used to tell if encoded item has right origin defined.
@@ -1037,20 +1037,20 @@ impl<'doc> TransactionMut<'doc> {
         }
         .or(item.parent_sub);
 
-        let mut parent = match &item.parent {
-            TypePtr::Branch(branch) => *branch,
+        let resolved = match &item.parent {
+            TypePtr::Branch(branch) => Some(*branch),
             TypePtr::Named(name) => {
-                let branch = store.get_or_create_type(name.clone(), TypeRef::Undefined);
+                Some(store.get_or_create_type(name.clone(), TypeRef::Undefined))
+            }
+            TypePtr::ID(id) => store.blocks.get_item(id).and_then(|i| i.as_branch()),
+            TypePtr::Unknown => None,
+        };
+        let mut parent = match resolved {
+            Some(branch) => {
                 item.parent = TypePtr::Branch(branch);
                 branch
             }
-            TypePtr::ID(id)
-                if let Some(branch) = store.blocks.get_item(id).and_then(|i| i.as_branch()) =>
-            {
-                item.parent = TypePtr::Branch(branch);
-                branch
-            }
-            _ => {
+            None => {
                 self.integrate_gc(item.range(), offset);
                 return None;
             }
@@ -1227,7 +1227,7 @@ const ITEM_FLAG_KEEP: u16 = 0b0000_0001;
 ///
 /// - Has item been deleted?
 /// - Is item countable (should its content add to the length/offset calculation of containing collection)?
-/// - Should item be kept untouched eg. because it's being tracked by [UndoManager].
+/// - Should item be kept untouched eg. because it's being tracked by [UndoManager](crate::UndoManager).
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ItemFlags(u16);
@@ -1579,9 +1579,9 @@ impl Item {
     }
 
     /// Returns a length of a block. For most situation it works like [Item::content_len] with a
-    /// difference to a [Text]/[XmlText] contents - in order to achieve compatibility with
+    /// difference to a [TextRef](crate::TextRef)/[XmlTextRef](crate::XmlTextRef) contents - in order to achieve compatibility with
     /// Yjs we need to calculate string length in terms of UTF-16 character encoding.
-    /// However depending on used [Encoding] scheme we may calculate string length/offsets
+    /// However depending on used `Encoding` scheme we may calculate string length/offsets
     /// differently.
     pub fn len(&self) -> u32 {
         self.len
@@ -2444,7 +2444,7 @@ impl TryFrom<ItemPtr> for Unused {
     }
 }
 
-/// Prelim container for types passed over to [Text::insert_embed] and [Text::insert_embed_with_attributes] methods.
+/// Prelim container for types passed over to [TextRef::insert_embed](crate::Text::insert_embed) and [TextRef::insert_embed_with_attributes](crate::Text::insert_embed_with_attributes) methods.
 #[derive(Debug)]
 pub enum EmbedPrelim<T> {
     Primitive(Any),

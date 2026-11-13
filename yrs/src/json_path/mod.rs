@@ -81,6 +81,7 @@ impl<'a> Display for JsonPathToken<'a> {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ParseError {
     #[error("{0}")]
     InvalidJsonPath(String),

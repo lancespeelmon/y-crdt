@@ -15,7 +15,7 @@
 //! - `small-client` this feature is used for compatibility with older versions of
 //!    yrs (v0.26 and below) and yjs (pre v14). It uses 32bit [crate::ClientID]. The current default
 //!    uses 53-bit (max safe integer number in JavaScript/Yjs).
-//! - `weak` this feature enables weak references and quotations (see: [crate::WeakRef]).
+//! - `weak` this feature enables weak references and quotations (see: `crate::WeakRef`).
 //! - `sync` this feature modifies observers callback constraints to use `Send` and `Sync` traits.
 //!   These are required when using yrs features in multithreaded environments.
 //!
@@ -92,7 +92,7 @@
 //!    so far. This [StateVector] can be later serialized and passed to the remote collaborator. This
 //!    collaborator can then deserialize it back and [generate an update](ReadTxn::encode_diff) which
 //!    will contain all new changes performed since provided state vector. Finally this update can
-//!    be passed back to the requester, [deserialized](Update::decode) and integrated into a document
+//!    be passed back to the requester, deserialized and integrated into a document
 //!    store via [TransactionMut::apply_update].
 //! 2. Another propagation mechanism relies on subscribing to [Doc::observe_update_v1] or
 //!    [Doc::observe_update_v2] events, which will be fired whenever an referenced document will
@@ -241,12 +241,12 @@
 //! usage of weak links - they offer you a way to reference to values existing in other parts of
 //! the document (also other collections):
 //!
-//! - [Map] elements can be references via [Map::link] method.
-//! - Other collections like text and arrays, can quote entire ranges of values via [Quotable::quote]
+//! - [Map] elements can be references via `Map::link` method.
+//! - Other collections like text and arrays, can quote entire ranges of values via `Quotable::quote`
 //!   method.
 //!
-//! Both of these methods return a [WeakPrelim] struct can be integrated as an input value in other
-//! collections and convert into [WeakRef] shared type.
+//! Both of these methods return a `WeakPrelim` struct can be integrated as an input value in other
+//! collections and convert into `WeakRef` shared type.
 //!
 //! ```rust
 //! #[cfg(feature = "weak")]
@@ -444,7 +444,7 @@
 //!   to make conflict resolution algorithm deterministic.
 //! - Yrs also provides support fo XML nodes in form of [XmlElementRef], [XmlTextRef] and [XmlFragmentRef].
 //!
-//! Underneath all of these types are represented by the same abstract [types::Branch] type. Each
+//! Underneath all of these types are represented by the same abstract `types::Branch` type. Each
 //! branch is always capable of working as both indexed sequence of elements and a map. In practice
 //! specialized shared types are actually projections over branch type and can be used interchangeably
 //! if needed, i.e.: [XmlElementRef] can be also interpreted as [MapRef], in which case the collection
@@ -662,13 +662,14 @@ pub use crate::alt::{
     parse_update_meta_v2, snapshot_contains_update_v1, snapshot_contains_update_v2,
     ObfuscateOptions, UpdateMeta,
 };
-pub use crate::any::{Any, Number};
+pub use crate::any::{Any, AnyMap, Number};
 pub use crate::block::ClientID;
 pub use crate::block::ID;
 pub use crate::branch::BranchID;
 pub use crate::branch::Hook;
 pub use crate::branch::Nested;
 pub use crate::branch::Root;
+pub use crate::branch::RootTypeMismatch;
 pub use crate::doc::Doc;
 pub use crate::doc::GcFilter;
 pub use crate::doc::OffsetKind;
@@ -732,14 +733,14 @@ pub type UndoManager = crate::undo::UndoManager<()>;
 pub type Uuid = std::sync::Arc<str>;
 
 /// Generate random v4 UUID.
-/// (See: https://www.rfc-editor.org/rfc/rfc4122#section-4.4)
+/// (See: <https://www.rfc-editor.org/rfc/rfc4122#section-4.4>)
 pub fn uuid_v4() -> Uuid {
     let mut rand = fastrand::Rng::new();
     uuid_v4_from(rand.u128(..))
 }
 
 /// Generate random v4 UUID.
-/// (See: https://www.rfc-editor.org/rfc/rfc4122#section-4.4)
+/// (See: <https://www.rfc-editor.org/rfc/rfc4122#section-4.4>)
 pub fn uuid_v4_from(value: u128) -> Uuid {
     let uuid = value & 0xFFFFFFFFFFFF4FFFBFFFFFFFFFFFFFFF | 0x40008000000000000000;
     let src = uuid.to_be_bytes();

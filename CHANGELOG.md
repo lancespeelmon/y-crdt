@@ -11,6 +11,18 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the error enums are `#[non_exhaustive]`: `error::Error`, `UpdateError`,
+  `encoding::read::Error` (now named `DecodeError`), `MalformedKind`, `sync::awareness::Error`
+  (now `AwarenessError`), `sync::protocol::Error` (now `ProtocolError`), `json_path::ParseError`
+  and `QuoteError`. The old names stay as aliases. Data enums (`Any`, `Out`, `Number`,
+  `ItemContent`, `TypeRef`, `Delta`) stay exhaustive, so matches on them keep checking every
+  case.
+- **Breaking (ywasm):** `getText`, `getArray`, `getMap` and `getXmlFragment` throw when the root
+  exists with another type, like Yjs, instead of reinterpreting it.
+- **Breaking:** `Any::Map` holds an `AnyMap` (`indexmap::IndexMap<String, Any>`) instead of a
+  `HashMap`, so entries keep their insertion order as JS object keys do. Decoding and
+  re-encoding a map gives the same bytes, and JSON output is deterministic. `Any` can be built
+  from a `HashMap` or `IndexMap`, or `collect`ed from `(key, value)` pairs.
 - **Breaking (yffi, ywasm):** weak links are off by default in documents created through the
   bindings, because Yjs peers reject every update that contains one. Opt in with yffi's new
   `Y_WEAK_LINKS` option flag or ywasm's `weakLinks: true`. While off, `ymap_link`,
@@ -68,6 +80,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `Doc::try_get_or_insert::<T>(name)`, `WriteTxn::try_get_or_insert` and `Root::try_get_or_create`, which fail with the new
+  `RootTypeMismatch` when the root exists with another type, as Yjs' `doc.get` throws.
+  `get_or_insert_*` still reinterpret it.
 - `PermanentUserData` (Yjs' class of the same name): maps client IDs to users and records who
   deleted what, in the same document layout as Yjs, so both read each other's data.
   Recording is explicit (`record_deletions`, `record_local_deletions`), since yrs has no timers.
@@ -164,6 +179,9 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- The crates use edition 2021 and declare `rust-version = "1.85"` (what the dependencies
+  require); a CI job checks the libraries on 1.85.
+- rustdoc builds with no warnings (about 95 broken links fixed), and CI keeps it that way.
 - CI runs on `next` as well as `main`, with actions pinned by SHA.
 - New CI gates: `cargo fmt --check`, `cargo clippy -D warnings` (pre-existing lints listed in
   `[workspace.lints]`), `cargo deny check`, a check that the C header is up to date, the C tests

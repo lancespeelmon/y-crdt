@@ -261,11 +261,7 @@ impl Serializer for AnySerializer {
 
     #[inline]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        let map = if let Some(len) = len {
-            HashMap::with_capacity(len)
-        } else {
-            HashMap::new()
-        };
+        let map = crate::any::AnyMap::with_capacity(len.unwrap_or(0));
 
         Ok(AnyMapSerializer {
             map,
@@ -351,7 +347,7 @@ impl SerializeTupleStruct for AnyArraySerializer {
 }
 
 struct AnyMapSerializer {
-    map: HashMap<String, Any>,
+    map: crate::any::AnyMap,
     next_key: Option<String>,
 }
 

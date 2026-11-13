@@ -4,8 +4,10 @@ use std::collections::TryReserveError;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
+/// An error from decoding lib0-encoded data.
 #[derive(Error, Debug)]
-pub enum Error {
+#[non_exhaustive]
+pub enum DecodeError {
     #[error("failed to decode variable length integer")]
     InvalidVarInt,
 
@@ -31,13 +33,18 @@ pub enum Error {
     Custom(String),
 }
 
-impl Error {
+/// The name this module's error had before [DecodeError].
+pub type Error = DecodeError;
+
+impl DecodeError {
     pub fn type_mismatch<T>() -> Self {
-        Error::TypeMismatch(type_name::<T>())
+        DecodeError::TypeMismatch(type_name::<T>())
     }
 }
 
+/// What was wrong with a [DecodeError::Malformed] update.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum MalformedKind {
     Utf8,
     EmptyBlock,

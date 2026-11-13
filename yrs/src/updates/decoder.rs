@@ -30,28 +30,28 @@ pub trait Decoder: Read {
     /// Reset the value of current delete set state.
     fn reset_ds_cur_val(&mut self);
 
-    /// Read next [DeleteSet] clock value.
+    /// Read next `DeleteSet` clock value.
     fn read_ds_clock(&mut self) -> Result<u32, Error>;
 
-    /// Read the number of clients stored in encoded [DeleteSet].
+    /// Read the number of clients stored in encoded `DeleteSet`.
     fn read_ds_len(&mut self) -> Result<u32, Error>;
 
-    /// Read left origin of a currently decoded [Block].
+    /// Read left origin of a currently decoded `Block`.
     fn read_left_id(&mut self) -> Result<ID, Error>;
 
-    /// Read right origin of a currently decoded [Block].
+    /// Read right origin of a currently decoded `Block`.
     fn read_right_id(&mut self) -> Result<ID, Error>;
 
     /// Read currently decoded client identifier.
     fn read_client(&mut self) -> Result<ClientID, Error>;
 
-    /// Read info bit flags of a currently decoded [Block].
+    /// Read info bit flags of a currently decoded `Block`.
     fn read_info(&mut self) -> Result<u8, Error>;
 
-    /// Read bit flags determining type of parent of a currently decoded [Block].
+    /// Read bit flags determining type of parent of a currently decoded `Block`.
     fn read_parent_info(&mut self) -> Result<bool, Error>;
 
-    /// Read type ref info of a currently decoded [Block] parent.
+    /// Read type ref info of a currently decoded `Block` parent.
     fn read_type_ref(&mut self) -> Result<u8, Error>;
 
     /// Read length parameter.

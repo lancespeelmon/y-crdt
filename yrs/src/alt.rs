@@ -270,12 +270,8 @@ fn obfuscate(update: &mut Update, options: ObfuscateOptions) {
                                 // Debug tells \"1\" from 1, unlike Display.
                                 .entry(format!("{:?}", value))
                                 .or_insert_with(|| {
-                                    let mut map = HashMap::new();
-                                    map.insert(
-                                        "i".to_string(),
-                                        Any::Number(Number::Int(i64::from(i))),
-                                    );
-                                    Any::Map(Arc::new(map))
+                                    let i = Any::Number(Number::Int(i64::from(i)));
+                                    std::iter::once(("i", i)).collect()
                                 })
                                 .clone();
                             **value = replacement;

@@ -557,7 +557,7 @@ where
     /// no other transaction on that same document can be active while calling this method.
     /// Otherwise, it may cause a deadlock.
     ///
-    /// See also: [UndoManager::try_undo] and [UndoManager::undo_blocking].
+    /// See also: `UndoManager::try_undo` and [UndoManager::undo_blocking].
     pub async fn undo(&mut self) -> bool {
         let inner = self.inner_mut();
         Self::pop(inner, true).await
@@ -575,7 +575,7 @@ where
     /// no other transaction on that same document can be active while calling this method.
     /// Otherwise, it may cause a deadlock.
     ///
-    /// See also: [UndoManager::try_undo] and [UndoManager::undo].
+    /// See also: `UndoManager::try_undo` and [UndoManager::undo].
     pub fn undo_blocking(&mut self) -> bool {
         let inner = self.inner_mut();
         Self::pop_blocking(inner, true)
@@ -598,7 +598,7 @@ where
     /// no other transaction on that same document can be active while calling this method.
     /// Otherwise, it may cause a deadlock.
     ///
-    /// See also: [UndoManager::try_redo] and [UndoManager::redo_blocking].
+    /// See also: `UndoManager::try_redo` and [UndoManager::redo_blocking].
     pub async fn redo(&mut self) -> bool {
         let inner = self.inner_mut();
         Self::pop(inner, false).await
@@ -616,7 +616,7 @@ where
     /// no other transaction on that same document can be active while calling this method.
     /// Otherwise, it may cause a deadlock.
     ///
-    /// See also: [UndoManager::try_redo] and [UndoManager::redo_blocking].
+    /// See also: `UndoManager::try_redo` and [UndoManager::redo_blocking].
     pub fn redo_blocking(&mut self) -> bool {
         let inner = self.inner_mut();
         Self::pop_blocking(inner, false)
@@ -874,7 +874,7 @@ pub struct Options<M> {
     /// If not provided, it will track only updates made within transaction with no origin defined.
     pub tracked_origins: HashSet<Origin>,
 
-    /// Custom logic decider, that along with [tracked_origins] can be used to determine if
+    /// Custom logic decider, that along with [Options::tracked_origins] can be used to determine if
     /// transaction changes should be captured or not.
     pub capture_transaction: Option<CaptureTransactionFn>,
 
@@ -935,7 +935,7 @@ impl<M> Default for Options<M> {
 }
 
 /// A unit of work for the [UndoManager]. It contains a compressed information about all updates and
-/// deletions tracked by a corresponding undo manager. Whenever an [UndoManger::undo] or
+/// deletions tracked by a corresponding undo manager. Whenever an [UndoManager::undo](crate::UndoManager::undo) or
 /// [UndoManager::redo] methods are called a last [StackItem] is being used to modify a state of
 /// the document.
 ///

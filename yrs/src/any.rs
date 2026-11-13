@@ -22,8 +22,13 @@ pub enum Any {
     String(Arc<str>),
     Buffer(Arc<[u8]>),
     Array(Arc<[Any]>),
-    Map(Arc<HashMap<String, Any>>),
+    /// A JS object. Entries keep the order they were inserted (decoded) in, as JS object keys
+    /// do, so a decoded map re-encodes to the same bytes.
+    Map(Arc<AnyMap>),
 }
+
+/// The entries of an [Any::Map], in insertion order.
+pub type AnyMap = indexmap::IndexMap<String, Any>;
 
 impl Any {
     /// The deepest nesting of arrays and maps that [Any::decode] accepts. Deeper input fails with
@@ -86,8 +91,9 @@ impl Any {
             // CASE 118: Map<string,Any>
             118 => {
                 let len: usize = decoder.read_var()?;
-                let mut map = HashMap::new();
-                map.try_reserve(Self::reservation(decoder, len, depth))?;
+                let mut map = AnyMap::new();
+                map.try_reserve(Self::reservation(decoder, len, depth))
+                    .map_err(|_| Error::UnexpectedValue)?;
                 for _ in 0..len {
                     let key = decoder.read_string()?;
                     map.insert(key.to_owned(), Self::decode_nested(decoder, depth + 1)?);
@@ -506,7 +512,7 @@ impl std::fmt::Display for Number {
 
 pub enum AnyIter<'a> {
     Array(std::slice::Iter<'a, Any>),
-    Map(std::collections::hash_map::Iter<'a, String, Any>),
+    Map(indexmap::map::Iter<'a, String, Any>),
 }
 
 impl<'a> Iterator for AnyIter<'a> {
@@ -555,7 +561,7 @@ pub enum AnyIntoIter {
     Array(AnyArrayIter),
     //TODO: we need to clone the map, because we need to consume its iterator
     // try to figure out something better
-    Map(std::collections::hash_map::IntoIter<String, Any>),
+    Map(indexmap::map::IntoIter<String, Any>),
 }
 
 impl From<Arc<[Any]>> for AnyIntoIter {
@@ -564,8 +570,8 @@ impl From<Arc<[Any]>> for AnyIntoIter {
     }
 }
 
-impl From<Arc<HashMap<String, Any>>> for AnyIntoIter {
-    fn from(value: Arc<HashMap<String, Any>>) -> Self {
+impl From<Arc<AnyMap>> for AnyIntoIter {
+    fn from(value: Arc<AnyMap>) -> Self {
         Self::Map((&*value).clone().into_iter())
     }
 }
@@ -835,11 +841,33 @@ impl<T> From<HashMap<String, T>> for Any
 where
     T: Into<Any>,
 {
+    /// The entries come in the `HashMap`'s order. Build from an [AnyMap] (or any ordered
+    /// iterator, with `collect`) to choose it.
     fn from(v: HashMap<String, T>) -> Any {
-        let mut map = HashMap::with_capacity(v.len());
-        for (key, value) in v {
-            map.insert(key, value.into());
-        }
+        v.into_iter().collect()
+    }
+}
+
+impl<T> From<indexmap::IndexMap<String, T>> for Any
+where
+    T: Into<Any>,
+{
+    fn from(v: indexmap::IndexMap<String, T>) -> Any {
+        v.into_iter().collect()
+    }
+}
+
+impl<K, T> std::iter::FromIterator<(K, T)> for Any
+where
+    K: Into<String>,
+    T: Into<Any>,
+{
+    /// An [Any::Map] with the entries in iteration order.
+    fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
+        let map: AnyMap = iter
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
         Any::Map(Arc::new(map))
     }
 }
@@ -1052,12 +1080,12 @@ macro_rules! any_internal {
     };
 
     ({}) => {
-        $crate::any::Any::Map(std::sync::Arc::new(std::collections::HashMap::new()))
+        $crate::any::Any::Map(std::sync::Arc::new($crate::any::AnyMap::new()))
     };
 
     ({ $($tt:tt)+ }) => {
         $crate::any::Any::Map({
-            let mut object = std::collections::HashMap::new();
+            let mut object = $crate::any::AnyMap::new();
             any_internal!(@object object () ($($tt)+) ($($tt)+));
             std::sync::Arc::new(object)
         })
@@ -1178,6 +1206,28 @@ mod test {
         // Int and BigInt of the same value are equal, as in JS' `5n == 5`.
         assert_eq!(Number::BigInt(5), Number::Int(5));
         assert_ne!(Number::BigInt((1 << 62) + 1), Number::Int(1 << 62));
+    }
+
+    #[test]
+    fn maps_keep_insertion_order_so_decoding_and_encoding_is_stable() {
+        // Yjs' encoding of `{z: 1, a: 2, m: 3}`: lib0 writes keys in insertion order.
+        let yjs = "7603017a7d0101617d02016d7d03";
+        let map = decode_hex(yjs);
+        let keys: Vec<_> = match &map {
+            Any::Map(m) => m.keys().cloned().collect(),
+            other => panic!("{:?}", other),
+        };
+        assert_eq!(keys, ["z", "a", "m"]);
+        let mut buf = Vec::new();
+        map.encode(&mut buf);
+        let hex: String = buf.iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(hex, yjs);
+        let mut json = String::new();
+        map.to_json(&mut json);
+        assert_eq!(json, r#"{"z":1,"a":2,"m":3}"#);
+        // Equality ignores order, as for JS objects compared by content.
+        let reordered: Any = vec![("a", 2), ("m", 3), ("z", 1)].into_iter().collect();
+        assert_eq!(map, reordered);
     }
 
     #[test]

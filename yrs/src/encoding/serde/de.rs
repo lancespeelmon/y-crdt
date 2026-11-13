@@ -197,7 +197,7 @@ impl<'de> Deserialize<'de> for Any {
             where
                 A: MapAccess<'de>,
             {
-                let mut any_map = HashMap::new();
+                let mut any_map = crate::any::AnyMap::new();
                 while let Some((key, value)) = map.next_entry()? {
                     any_map.insert(key, value);
                 }

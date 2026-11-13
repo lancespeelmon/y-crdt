@@ -498,3 +498,15 @@ export const testApplyUpdates = tc => {
     result = txt([B, C, A])
     t.compare(result, "xyz")
 }
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRootOfAnotherTypeThrows = tc => {
+    // Like Yjs' `doc.get(name, Type)` with a different type.
+    const doc = new Y.YDoc({clientID: 1})
+    doc.getMap('shared')
+    t.fails(() => doc.getText('shared'))
+    t.fails(() => doc.getArray('shared'))
+    doc.getMap('shared')
+}

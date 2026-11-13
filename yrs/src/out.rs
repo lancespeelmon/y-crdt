@@ -29,11 +29,11 @@ pub enum Out {
     YXmlText(XmlTextRef),
     /// Subdocument.
     YDoc(Doc),
-    /// Instance of a [WeakRef] or unspecified type (requires manual casting).
+    /// Instance of a [WeakRef](crate::types::weak::WeakRef) or unspecified type (requires manual casting).
     #[cfg(feature = "weak")]
     YWeakLink(crate::WeakRef<BranchPtr>),
     /// Instance of a shared collection of undefined type. Usually happens when it refers to a root
-    /// type that has not been defined locally. Can also refer to a [WeakRef] if "weak" feature flag
+    /// type that has not been defined locally. Can also refer to a `WeakRef` if "weak" feature flag
     /// was not set.
     UndefinedRef(BranchPtr),
 }

@@ -561,6 +561,7 @@ pub unsafe extern "C" fn ytransaction_observe_updates_v1(
     let state = CallbackState::new(state);
     let key = origin(key_len, key);
     txn_mut(txn).observe_update_v1(key, move |_, e| {
+        let _ = &state;
         let bytes = &e.update;
         let len = bytes.len() as u32;
         cb(state.0, len, bytes.as_ptr() as *const c_char)
@@ -592,6 +593,7 @@ pub unsafe extern "C" fn ytransaction_observe_updates_v2(
     let state = CallbackState::new(state);
     let key = origin(key_len, key);
     txn_mut(txn).observe_update_v2(key, move |_, e| {
+        let _ = &state;
         let bytes = &e.update;
         let len = bytes.len() as u32;
         cb(state.0, len, bytes.as_ptr() as *const c_char)
@@ -623,6 +625,7 @@ pub unsafe extern "C" fn ytransaction_observe_after_transaction(
     let state = CallbackState::new(state);
     let key = origin(key_len, key);
     txn_mut(txn).observe_transaction_cleanup(key, move |_, e| {
+        let _ = &state;
         let mut event = YAfterTransactionEvent::new(e);
         cb(state.0, (&mut event) as *mut _);
     });
@@ -653,6 +656,7 @@ pub unsafe extern "C" fn ytransaction_observe_subdocs(
     let state = CallbackState::new(state);
     let key = origin(key_len, key);
     txn_mut(txn).observe_subdocs(key, move |_, e| {
+        let _ = &state;
         let mut event = YSubdocsEvent::new(e);
         cb(state.0, (&mut event) as *mut _);
     });
@@ -682,7 +686,10 @@ pub unsafe extern "C" fn ytransaction_observe_clear(
 ) {
     let state = CallbackState::new(state);
     let key = origin(key_len, key);
-    txn_mut(txn).observe_destroy(key, move |_, e| cb(state.0, e as *const Doc as *mut _));
+    txn_mut(txn).observe_destroy(key, move |_, e| {
+        let _ = &state;
+        cb(state.0, e as *const Doc as *mut _)
+    });
 }
 
 /// Unsubscribes a callback registered under a given `key` via `ytransaction_observe_clear`.
@@ -1456,11 +1463,13 @@ fn err_code(e: Error) -> u8 {
         Error::TypeMismatch(_) => ERR_TYPE_MISMATCH,
         Error::Custom(_) => ERR_CUSTOM,
         Error::Malformed(_) => ERR_MALFORMED,
+        _ => ERR_CUSTOM,
     }
 }
 fn update_err_code(e: UpdateError) -> u8 {
     match e {
         UpdateError::InvalidParent(_, _) => ERR_INVALID_PARENT,
+        _ => ERR_CUSTOM,
     }
 }
 
@@ -3304,8 +3313,8 @@ impl<'a> From<&'a [Any]> for YOutput {
     }
 }
 
-impl<'a> From<&'a HashMap<String, Any>> for YOutput {
-    fn from(value: &'a HashMap<String, Any>) -> Self {
+impl<'a> From<&'a yrs::AnyMap> for YOutput {
+    fn from(value: &'a yrs::AnyMap) -> Self {
         let len = value.len() as u32;
         let mut array = Vec::with_capacity(len as usize);
         for (k, v) in value.iter() {
@@ -3966,6 +3975,7 @@ pub unsafe extern "C" fn ytext_observe(
 
     let txt = TextRef::from_raw_branch(txt);
     txt.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YTextEvent::new(e, txn);
         cb(state.0, &e as *const YTextEvent);
     });
@@ -3987,6 +3997,7 @@ pub unsafe extern "C" fn ymap_observe(
 
     let map = MapRef::from_raw_branch(map);
     map.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YMapEvent::new(e, txn);
         cb(state.0, &e as *const YMapEvent);
     });
@@ -4008,6 +4019,7 @@ pub unsafe extern "C" fn yarray_observe(
 
     let array = ArrayRef::from_raw_branch(array);
     array.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YArrayEvent::new(e, txn);
         cb(state.0, &e as *const YArrayEvent);
     });
@@ -4029,6 +4041,7 @@ pub unsafe extern "C" fn yxmlelem_observe(
 
     let xml = XmlElementRef::from_raw_branch(xml);
     xml.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YXmlEvent::new(e, txn);
         cb(state.0, &e as *const YXmlEvent);
     });
@@ -4050,6 +4063,7 @@ pub unsafe extern "C" fn yxmltext_observe(
     let state = CallbackState::new(state);
     let xml = XmlTextRef::from_raw_branch(xml);
     xml.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YXmlTextEvent::new(e, txn);
         cb(state.0, &e as *const YXmlTextEvent);
     });
@@ -4072,6 +4086,7 @@ pub unsafe extern "C" fn yobserve_deep(
     let key = origin(key_len, key);
     let branch = ytype.as_mut().unwrap();
     branch.observe_deep(key, move |txn, events| {
+        let _ = &state;
         let events: Vec<_> = events.iter().map(|e| YEvent::new(txn, e)).collect();
         let len = events.len() as u32;
         cb(state.0, len, events.as_ptr());
@@ -5019,6 +5034,7 @@ pub unsafe extern "C" fn yundo_manager_observe_added(
     let state = CallbackState::new(state);
     let mgr = mgr.as_mut().unwrap();
     mgr.observe_item_added(origin(key_len, key), move |_, e| {
+        let _ = &state;
         let meta_ptr = {
             let event = YUndoEvent::new(e);
             callback(state.0, &event as *const YUndoEvent);
@@ -5054,6 +5070,7 @@ pub unsafe extern "C" fn yundo_manager_observe_popped(
     let mgr = mgr.as_mut().unwrap();
     let state = CallbackState::new(state);
     mgr.observe_item_popped(origin(key_len, key), move |_, e| {
+        let _ = &state;
         let meta_ptr = {
             let event = YUndoEvent::new(e);
             callback(state.0, &event as *const YUndoEvent);
@@ -5922,6 +5939,7 @@ pub unsafe extern "C" fn yweak_observe(
     let state = CallbackState::new(state);
     let txt: WeakRef<BranchPtr> = WeakRef::from_raw_branch(weak);
     txt.observe(origin(key_len, key), move |txn, e| {
+        let _ = &state;
         let e = YWeakLinkEvent::new(e, txn);
         cb(state.0, &e as *const YWeakLinkEvent);
     });

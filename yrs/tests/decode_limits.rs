@@ -243,7 +243,7 @@ fn deep_value(levels: usize) -> Any {
         value = if level % 2 == 0 {
             Any::Array(Arc::from(vec![value]))
         } else {
-            Any::Map(Arc::new(HashMap::from([("k".to_string(), value)])))
+            std::iter::once(("k", value)).collect::<Any>()
         };
     }
     value
