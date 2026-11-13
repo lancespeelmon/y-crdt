@@ -64,17 +64,31 @@ impl YTransaction {
         }
     }
 
+    /// Reads the wasm pointer of a JS object that must be a live `YTransaction`. Any other ywasm
+    /// object also has a `__wbg_ptr`, and casting it to a transaction is type confusion; a freed
+    /// one has a pointer of 0. (A forged plain object could still pass, but JS can already write
+    /// to the module's memory directly, so that gains a caller nothing.)
+    fn checked_ptr(value: &JsValue) -> Result<usize> {
+        let brand = js_sys::Reflect::get(value, &JsValue::from_str(TRANSACTION_BRAND))?;
+        if brand.as_bool() != Some(true) {
+            return Err(JsValue::from_str(crate::js::errors::NON_TRANSACTION));
+        }
+        let ptr = js_sys::Reflect::get(value, &JsValue::from_str(crate::js::JS_PTR))?
+            .as_f64()
+            .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))? as usize;
+        if ptr == 0 {
+            return Err(JsValue::from_str(crate::js::errors::FREED_WASM_OBJ));
+        }
+        Ok(ptr)
+    }
+
     pub fn try_ref_from_js_value(value: &JsValue) -> Result<RcRef<Self>> {
         let abi = value.into_abi();
 
         if abi == 0 {
             Err(JsValue::from_str(crate::js::errors::NON_TRANSACTION))
         } else {
-            let ptr = js_sys::Reflect::get(&value, &JsValue::from_str(crate::js::JS_PTR))?;
-            let ptr = ptr
-                .as_f64()
-                .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))?
-                as usize;
+            let ptr = Self::checked_ptr(value)?;
             let target = unsafe { YTransaction::ref_from_abi(WasmPtr::from_usize(ptr)) };
             Ok(target)
         }
@@ -85,11 +99,7 @@ impl YTransaction {
         if abi == 0 {
             Err(JsValue::from_str(crate::js::errors::NON_TRANSACTION))
         } else {
-            let ptr = js_sys::Reflect::get(&value, &JsValue::from_str(crate::js::JS_PTR))?;
-            let ptr = ptr
-                .as_f64()
-                .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))?
-                as usize;
+            let ptr = Self::checked_ptr(value)?;
             let target = unsafe { YTransaction::ref_mut_from_abi(WasmPtr::from_usize(ptr)) };
             Ok(target)
         }
@@ -119,8 +129,17 @@ impl YTransaction {
     }
 }
 
+/// Name of the getter that marks a JS object as a `YTransaction`; see [YTransaction::checked_ptr].
+const TRANSACTION_BRAND: &str = "__ytransaction";
+
 #[wasm_bindgen]
 impl YTransaction {
+    /// Always true: tells a transaction apart from other ywasm objects.
+    #[wasm_bindgen(getter, js_name = __ytransaction)]
+    pub fn is_transaction(&self) -> bool {
+        true
+    }
+
     /// Returns state vector describing the state of the document
     /// at the moment when the transaction began.
     #[wasm_bindgen(getter, js_name = beforeState)]

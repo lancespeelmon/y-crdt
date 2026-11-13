@@ -75,6 +75,17 @@ repository and its release notes.
 - yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
   as UTF-8 unchecked (undefined behaviour).
 
+- ywasm: transaction origins that aren't strings (objects, numbers, `null`) were stored as raw
+  wasm-bindgen heap slot indices: a second read got a freed slot, some transactions threw, and
+  `trackedOrigins` never matched an object. They are now kept in a registry and compared with
+  `===`, as in Yjs. An origin set from Rust reads as a `Uint8Array` of its bytes.
+- ywasm: passing a ywasm object other than a transaction (or a freed one) where a transaction
+  is expected is now an error instead of a cast of its pointer. Using a freed shared type is
+  also an error.
+- ywasm: a `BigInt` value panicked (and trapped the instance); it is now stored as an integer,
+  or rejected if it doesn't fit 64 bits. A `Uint8Array` is now stored as binary, as in Yjs,
+  instead of as an object with numbered keys.
+
 ### Removed
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 

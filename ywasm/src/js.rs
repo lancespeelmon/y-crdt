@@ -24,7 +24,7 @@ use std::ops::{Deref, RangeBounds};
 use std::sync::Arc;
 use wasm_bindgen::__rt::RcRefMut;
 use wasm_bindgen::convert::{FromWasmAbi, IntoWasmAbi};
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use yrs::block::{EmbedPrelim, ItemContent, Prelim, Unused};
 use yrs::branch::{Branch, BranchPtr};
 use yrs::types::xml::XmlPrelim;
@@ -144,8 +144,17 @@ impl Js {
         } else if let Some(b) = self.0.as_bool() {
             Ok(ValueRef::Any(Any::Bool(b)))
         } else if self.0.is_bigint() {
-            let i = js_sys::BigInt::from(self.0.clone()).as_f64().unwrap();
-            Ok(ValueRef::Any(Any::Number(Number::Int(i as i64))))
+            // `BigInt::as_f64` only accepts a JS number, so it can't read a BigInt
+            let big = js_sys::BigInt::from(self.0.clone());
+            let digits: String = big.to_string(10)?.into();
+            let i: i64 = digits
+                .parse()
+                .map_err(|_| JsValue::from_str(errors::BIGINT_OUT_OF_RANGE))?;
+            Ok(ValueRef::Any(Any::Number(Number::Int(i))))
+        } else if self.0.is_instance_of::<Uint8Array>() {
+            // like Yjs, a Uint8Array is binary content, not an object with numbered keys
+            let bytes = Uint8Array::new(&self.0).to_vec();
+            Ok(ValueRef::Any(Any::Buffer(bytes.into())))
         } else if js_sys::Array::is_array(&self.0) {
             let array = js_sys::Array::from(&self.0);
             let mut result = Vec::with_capacity(array.length() as usize);
@@ -218,13 +227,49 @@ impl Into<JsValue> for Js {
     }
 }
 
+/// Origins are bytes, but a JS origin can be any value, compared by identity (`===`), as Yjs
+/// does. A string is stored as its UTF-8 bytes. Any other value is kept alive in this registry,
+/// and the origin holds [JS_ORIGIN_TAG] plus its index: 0xFF never occurs in UTF-8, so such an
+/// origin can't be mistaken for a string. Entries live as long as the module, one per distinct
+/// origin value.
+mod origins {
+    use std::cell::RefCell;
+    use wasm_bindgen::JsValue;
+
+    pub const JS_ORIGIN_TAG: [u8; 3] = [0xff, b'j', b's'];
+
+    thread_local! {
+        static REGISTRY: RefCell<Vec<JsValue>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Returns the registry index of `value`, registering it first if needed.
+    pub fn register(value: JsValue) -> u32 {
+        REGISTRY.with(|registry| {
+            let mut registry = registry.borrow_mut();
+            match registry.iter().position(|known| known == &value) {
+                Some(index) => index as u32,
+                None => {
+                    registry.push(value);
+                    (registry.len() - 1) as u32
+                }
+            }
+        })
+    }
+
+    pub fn get(index: u32) -> Option<JsValue> {
+        REGISTRY.with(|registry| registry.borrow().get(index as usize).cloned())
+    }
+}
+
 impl Into<Origin> for Js {
     fn into(self) -> Origin {
         if let Some(js_str) = self.0.as_string() {
             Origin::from(js_str)
         } else {
-            let abi = self.0.into_abi();
-            Origin::from(abi)
+            let index = origins::register(self.0);
+            let mut bytes = origins::JS_ORIGIN_TAG.to_vec();
+            bytes.extend_from_slice(&index.to_be_bytes());
+            Origin::from(bytes.as_slice())
         }
     }
 }
@@ -232,15 +277,21 @@ impl Into<Origin> for Js {
 impl<'a> From<&'a Origin> for Js {
     fn from(value: &'a Origin) -> Self {
         let bytes = value.as_ref();
-        match bytes.len() {
-            0 => Js(JsValue::UNDEFINED),
-            4 => {
-                let abi = u32::from_be_bytes(bytes.try_into().unwrap());
-                Js(unsafe { JsValue::from_abi(abi) })
+        if bytes.is_empty() {
+            return Js(JsValue::UNDEFINED);
+        }
+        if let Some(index) = bytes.strip_prefix(&origins::JS_ORIGIN_TAG[..]) {
+            let index: std::result::Result<[u8; 4], _> = index.try_into();
+            if let Ok(index) = index {
+                if let Some(value) = origins::get(u32::from_be_bytes(index)) {
+                    return Js(value);
+                }
             }
-            _ => Js(JsValue::from_str(unsafe {
-                std::str::from_utf8_unchecked(bytes)
-            })),
+        }
+        match std::str::from_utf8(bytes) {
+            Ok(str) => Js(JsValue::from_str(str)),
+            // an origin set from Rust (an UndoManager's, say) has no JS value: expose its bytes
+            Err(_) => Js(Uint8Array::from(bytes).into()),
         }
     }
 }
@@ -609,6 +660,10 @@ pub(crate) mod convert {
         let ptr = ptr
             .as_f64()
             .ok_or(JsValue::from_str(crate::js::errors::NOT_WASM_OBJ))? as usize;
+        // `free()` sets the pointer of a JS wrapper to 0
+        if ptr == 0 {
+            return Err(JsValue::from_str(crate::js::errors::FREED_WASM_OBJ));
+        }
         let target = unsafe { T::ref_mut_from_abi(WasmPtr::from_usize(ptr)) };
         Ok(target)
     }
@@ -814,5 +869,7 @@ pub(crate) mod errors {
     pub const NOT_XML_TYPE: &'static str = "provided object is not a valid XML shared type";
     pub const NOT_PRELIM: &'static str = "this operation only works on preliminary types";
     pub const NOT_WASM_OBJ: &'static str = "provided reference is not a WebAssembly object";
+    pub const FREED_WASM_OBJ: &'static str = "provided WebAssembly object has already been freed";
+    pub const BIGINT_OUT_OF_RANGE: &'static str = "BigInt value doesn't fit a 64-bit integer";
     pub const INVALID_DELTA: &'static str = "invalid delta format";
 }
