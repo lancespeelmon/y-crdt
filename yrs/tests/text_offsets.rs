@@ -124,7 +124,7 @@ fn edits_at_typed_offsets() {
     // Reversed and bad ranges change nothing.
     assert_eq!(
         text.try_remove_range_at(&mut txn, CharOffset(2), CharOffset(1)),
-        Err(OffsetError::Reversed(5, 1))
+        Err(OffsetError::Reversed(2, 1))
     );
     assert!(text.try_insert_at(&mut txn, CharOffset(9), "x").is_err());
     assert_eq!(text.get_string(&txn), "a!é");
