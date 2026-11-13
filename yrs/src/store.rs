@@ -493,7 +493,11 @@ impl DocStore {
 
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn read_blocking(&self) -> RwLockReadGuard<Store> {
-        self.0.store.read_blocking()
+        // Uncontended is the common case: skip setting up a waiter for it.
+        match self.0.store.try_read() {
+            Some(guard) => guard,
+            None => self.0.store.read_blocking(),
+        }
     }
 
     #[cfg(target_family = "wasm")]
@@ -511,7 +515,11 @@ impl DocStore {
 
     #[cfg(not(target_family = "wasm"))]
     pub(crate) fn write_blocking(&self) -> RwLockWriteGuard<Store> {
-        self.0.store.write_blocking()
+        // Uncontended is the common case: skip setting up a waiter for it.
+        match self.0.store.try_write() {
+            Some(guard) => guard,
+            None => self.0.store.write_blocking(),
+        }
     }
 
     #[cfg(target_family = "wasm")]

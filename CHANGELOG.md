@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Transactions take the document lock with a try first and only set up a waiter when it's
+  contended, saving an allocation per transaction and about a third of an empty write
+  transaction's cost. Offset conversions skip the per-character walk for ASCII text.
 - `merge_updates_v1`/`_v2` (and `Update::merge_updates`) keep their inputs in a heap instead of
   re-sorting all of them for every block written, so merging is linear in the number of updates
   instead of quadratic: 16,000 one-character updates merge in 5 ms instead of 950 ms, 64,000 in
