@@ -181,6 +181,8 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
+  the same edits and undo calls now give the same document every time.
 - `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
   decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
   2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a
