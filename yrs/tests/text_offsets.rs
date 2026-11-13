@@ -129,3 +129,21 @@ fn edits_at_typed_offsets() {
     assert!(text.try_insert_at(&mut txn, CharOffset(9), "x").is_err());
     assert_eq!(text.get_string(&txn), "a!é");
 }
+
+#[test]
+fn edits_right_at_the_end_of_an_ascii_prefix() {
+    // "ab" is ASCII, then a 4-byte, 2-unit emoji: offsets 2 sit on the boundary where the ASCII
+    // fast path stops applying.
+    for (kind, before, after) in [(OffsetKind::Utf16, 2, 4), (OffsetKind::Bytes, 2, 6)] {
+        let doc = doc(kind);
+        let text = doc.get_or_insert_text("t");
+        let mut txn = doc.transact_mut();
+        text.push(&mut txn, "ab😀cd");
+        text.insert(&mut txn, after, "!");
+        text.insert(&mut txn, before, "?");
+        assert_eq!(text.get_string(&txn), "ab?😀!cd", "{kind:?}");
+        text.remove_range(&mut txn, before, 1);
+        text.remove_range(&mut txn, after, 1);
+        assert_eq!(text.get_string(&txn), "ab😀cd", "{kind:?}");
+    }
+}
