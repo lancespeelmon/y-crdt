@@ -123,6 +123,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
+  `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
+  `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return
+  `Y_ERR_INVALID` (see `ylast_error`) instead of aborting on an index past the end, attributes
+  that aren't a map, or text that isn't UTF-8, and change nothing then.
 - `UpdateAccumulator`: merges updates as they arrive and keeps the result decoded, for servers
   that store a document as its update history. It decodes each update once instead of decoding
   the whole history on every merge, and gives the same bytes as `merge_updates_v1` over all of
