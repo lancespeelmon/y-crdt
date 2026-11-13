@@ -104,6 +104,7 @@ impl Out {
         }
     }
 
+    /// Returns the shared collection that this value holds, or `None` if it's not one.
     pub fn try_branch(&self) -> Option<&Branch> {
         match self {
             Out::YText(b) => Some(b.as_ref()),

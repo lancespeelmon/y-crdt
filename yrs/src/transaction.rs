@@ -30,6 +30,7 @@ use std::sync::Arc;
 /// Trait defining read capabilities present in a transaction. Implemented by both lightweight
 /// [read-only](Transaction) and [read-write](TransactionMut) transactions.
 pub trait ReadTxn: Sized {
+    /// Returns the store of the document this transaction operates on.
     fn store(&self) -> &Store;
 
     /// Returns state vector describing current state of the updates.
@@ -250,6 +251,7 @@ pub trait ReadTxn: Sized {
         XmlFragmentRef::root(name).get(self)
     }
 
+    /// Returns the root-level collection stored under the given `name`, whatever its type, or `None` if there is none.
     fn get<S: AsRef<str>>(&self, name: S) -> Option<Out> {
         let value = self.store().types.get(name.as_ref())?;
         let ptr = BranchPtr::from(&*value);
@@ -297,8 +299,11 @@ pub trait ReadTxn: Sized {
     }
 }
 
+/// Trait defining the write capabilities of a transaction. Implemented by [TransactionMut].
 pub trait WriteTxn: Sized {
+    /// Returns the store of the document this transaction operates on, to modify.
     fn store_mut(&mut self) -> &mut Store;
+    /// Returns the sub-documents of this transaction's document, to modify.
     fn subdocs_mut(&mut self) -> &mut Subdocs;
 
     /// Returns a [TextRef] data structure stored under a given `name`. Text structures are used for
@@ -458,6 +463,7 @@ macro_rules! define_doc_observer {
             events.$field.subscribe(key.into(), Box::new(f));
         }
 
+        #[doc = concat!("Removes a callback that was subscribed under the given `key` via [`", stringify!($observe), "`](Self::", stringify!($observe), "). Returns `true` if there was one.")]
         pub fn $unobserve<K>(&self, key: K) -> bool
         where
             K: Into<Origin>,
@@ -594,14 +600,17 @@ impl<'doc> TransactionMut<'doc> {
         !(self.insert_set.is_empty() && self.delete_set.is_empty())
     }
 
+    /// Returns the document this transaction operates on.
     pub fn doc(&self) -> &Doc {
         &self.doc
     }
 
+    /// Returns the subscriptions to the document's events, if there are any.
     pub fn events(&self) -> Option<&StoreEvents> {
         self.store.events.as_deref()
     }
 
+    /// Returns the subscriptions to the document's events. Creates them if there were none.
     pub fn events_mut(&mut self) -> &mut StoreEvents {
         self.store.events.get_or_init()
     }
@@ -1561,6 +1570,7 @@ impl<'doc> TransactionMut<'doc> {
     );
 
     define_doc_observer!(
+        /// Subscribe a callback that is called at the end of a transaction's commit, after the type-level observers have run and before garbage collection. The callback can modify the transaction.
         observe_after_transaction,
         unobserve_after_transaction,
         after_transaction_events,

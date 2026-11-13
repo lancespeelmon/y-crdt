@@ -26,12 +26,16 @@ impl UpdateEvent {
 /// Holds transaction update information from a commit after state vectors have been compressed.
 #[derive(Debug, Clone)]
 pub struct TransactionCleanupEvent {
+    /// The state vector of the document before the transaction.
     pub before_state: StateVector,
+    /// The state vector of the document after the transaction.
     pub after_state: StateVector,
+    /// The IDs of the blocks that were deleted by the transaction.
     pub delete_set: IdSet,
 }
 
 impl TransactionCleanupEvent {
+    /// Creates an event from the state of the given transaction.
     pub fn new(txn: &TransactionMut) -> Self {
         TransactionCleanupEvent {
             before_state: txn.before_state().clone(),
@@ -77,6 +81,7 @@ impl SubdocsEvent {
     }
 }
 
+/// Iterator over the sub-documents of a [SubdocsEvent], created by [SubdocsEvent::loaded].
 #[repr(transparent)]
 pub struct SubdocsEventIter<'a>(std::collections::hash_map::Values<'a, DocAddr, Doc>);
 

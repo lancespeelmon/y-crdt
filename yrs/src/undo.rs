@@ -40,6 +40,7 @@ macro_rules! define_undo_observer {
             self.inner_mut().$field.subscribe(key.into(), Box::new(f))
         }
 
+        #[doc = concat!("Removes a callback that was subscribed under the given `key` via [`", stringify!($observe), "`](Self::", stringify!($observe), "). Returns `true` if there was one.")]
         pub fn $unobserve<K>(&mut self, key: K) -> bool
         where
             K: Into<Origin>,
@@ -90,11 +91,13 @@ type ClearedFn = Box<dyn FnMut(&StackClearedEvent) + Send + Sync + 'static>;
 #[cfg(not(feature = "sync"))]
 type ClearedFn = Box<dyn FnMut(&StackClearedEvent) + 'static>;
 
+/// Marker trait for the metadata that [StackItem]s carry. It's implemented for every type that is `Default` (and `Send + Sync`, with the `sync` feature).
 #[cfg(feature = "sync")]
 pub trait Meta: Default + Send + Sync {}
 #[cfg(feature = "sync")]
 impl<M> Meta for M where M: Default + Send + Sync {}
 
+/// Marker trait for the metadata that [StackItem]s carry. It's implemented for every type that is `Default` (and `Send + Sync`, with the `sync` feature).
 #[cfg(not(feature = "sync"))]
 pub trait Meta: Default {}
 #[cfg(not(feature = "sync"))]
@@ -205,6 +208,7 @@ where
         inner.scope.insert(ptr);
     }
 
+    /// Returns the documents that this undo manager tracks.
     pub fn docs(&self) -> impl Iterator<Item = &Doc> {
         self.state.docs.values()
     }
@@ -490,6 +494,7 @@ where
         }
     }
 
+    /// Returns an [Origin] that identifies this undo manager, derived from the address of its shared state.
     pub fn as_origin(&self) -> Origin {
         let mgr_ptr: *const Inner<M> = &*self.state;
         Origin::from(mgr_ptr as usize)
@@ -911,6 +916,7 @@ pub struct Options<M> {
     pub max_stack_len: Option<usize>,
 }
 
+/// A predicate over a [TransactionMut] that decides whether its changes are captured by the undo manager. See [Options::capture_transaction].
 pub type CaptureTransactionFn = Arc<dyn Fn(&TransactionMut) -> bool + Send + Sync + 'static>;
 
 /// See [Options::delete_filter].
@@ -957,6 +963,7 @@ pub struct StackItem<T> {
 }
 
 impl<M> StackItem<M> {
+    /// Creates a stack item for the document with the given `doc` GUID, that carries `meta`.
     pub fn with_meta(doc: Uuid, deletions: IdSet, insertions: IdSet, meta: M) -> Self {
         StackItem {
             doc,
@@ -996,6 +1003,7 @@ impl<M> StackItem<M> {
 }
 
 impl<M: Default> StackItem<M> {
+    /// Creates a stack item for the document with the given `doc_id` GUID, that carries default metadata.
     pub fn new(doc_id: Uuid, deletions: IdSet, insertions: IdSet) -> Self {
         Self::with_meta(doc_id, deletions, insertions, M::default())
     }
@@ -1014,13 +1022,17 @@ impl<M> std::fmt::Display for StackItem<M> {
     }
 }
 
+/// Event passed to the callbacks that are subscribed via [UndoManager::observe_stack_cleared].
 #[derive(Debug, Clone, Serialize)]
 pub struct StackClearedEvent {
+    /// Whether the undo stack has been cleared.
     pub undo_stack_cleared: bool,
+    /// Whether the redo stack has been cleared.
     pub redo_stack_cleared: bool,
 }
 
 impl StackClearedEvent {
+    /// Creates an event with the given flags.
     pub fn new(undo_stack_cleared: bool, redo_stack_cleared: bool) -> Self {
         Self {
             undo_stack_cleared,
@@ -1029,6 +1041,7 @@ impl StackClearedEvent {
     }
 }
 
+/// Event passed to the callbacks that are subscribed via [UndoManager::observe_item_added], [UndoManager::observe_item_updated] and [UndoManager::observe_item_popped]. It carries the metadata of the affected [StackItem].
 #[derive(Debug)]
 pub struct Event<M> {
     meta: M,
@@ -1056,10 +1069,12 @@ impl<M> Event<M> {
         }
     }
 
+    /// Returns the metadata of the affected stack item.
     pub fn meta(&self) -> &M {
         &self.meta
     }
 
+    /// Returns the metadata of the affected stack item, to modify.
     pub fn meta_mut(&mut self) -> &mut M {
         &mut self.meta
     }

@@ -1,7 +1,9 @@
 //! The y-sync protocol and awareness: the messages peers exchange to sync documents and
 //! presence. Behind the `protocol` feature (on by default).
 
+/// Awareness: a record of the state of each client, such as the user's presence, that's synced between peers.
 pub mod awareness;
+/// The messages of the y-sync protocol and their handling.
 #[allow(clippy::module_inception)]
 pub mod protocol;
 pub use crate::time;

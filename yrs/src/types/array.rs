@@ -169,6 +169,7 @@ impl DefaultPrelim for ArrayRef {
     }
 }
 
+/// Trait implemented by collaborative array types, such as [ArrayRef].
 pub trait Array: AsRef<Branch> + Sized {
     /// Returns a number of elements stored in current array.
     fn len<T: ReadTxn>(&self, _txn: &T) -> u32 {
@@ -384,6 +385,7 @@ pub trait Array: AsRef<Branch> + Sized {
     }
 }
 
+/// Iterator over the values of an array.
 pub struct ArrayIter<B, T>
 where
     B: Borrow<T>,
@@ -398,6 +400,7 @@ impl<T> ArrayIter<T, T>
 where
     T: Borrow<T> + ReadTxn,
 {
+    /// Creates an iterator over the values of the given `array`, that takes the `txn`.
     pub fn from(array: &ArrayRef, txn: T) -> Self {
         ArrayIter {
             inner: BlockIter::new(array.0),
@@ -411,6 +414,7 @@ impl<'a, T> ArrayIter<&'a T, T>
 where
     T: Borrow<T> + ReadTxn,
 {
+    /// Creates an iterator over the values of the given `array`, that borrows the `txn`.
     pub fn from_ref(array: &Branch, txn: &'a T) -> Self {
         ArrayIter {
             inner: BlockIter::new(BranchPtr::from(array)),

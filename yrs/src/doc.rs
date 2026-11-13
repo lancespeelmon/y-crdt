@@ -100,6 +100,7 @@ macro_rules! define_doc_observer {
             Ok(())
         }
 
+        #[doc = concat!("Removes a callback that was subscribed under the given `key` via [`", stringify!($observe), "`](Self::", stringify!($observe), "). Returns `true` if there was one.")]
         pub fn $unobserve<K>(&self, key: K) -> Result<bool, TransactionAcqError>
         where
             K: Into<Origin>,
@@ -354,6 +355,7 @@ impl Doc {
     );
 
     define_doc_observer!(
+        /// Subscribe a callback that is called at the end of a transaction's commit, after the type-level observers have run and before garbage collection. The callback can modify the transaction.
         observe_after_transaction,
         unobserve_after_transaction,
         after_transaction_events,
@@ -451,11 +453,13 @@ impl Doc {
         txn.parent_doc()
     }
 
+    /// If this document has been inserted as a sub-document, returns the [BranchID] of its place in the parent document.
     pub fn branch_id(&self) -> Option<BranchID> {
         let txn = self.transact();
         txn.branch_id()
     }
 
+    /// Checks if `a` and `b` are handles to the same document.
     pub fn ptr_eq(a: &Doc, b: &Doc) -> bool {
         Arc::ptr_eq(&a.store.0, &b.store.0)
     }
@@ -609,6 +613,7 @@ impl PartialEq for GcFilter {
 }
 
 impl Options {
+    /// Creates options with the given `client_id`, a random GUID and default settings.
     pub fn with_client_id(client_id: ClientID) -> Self {
         Options {
             client_id,
@@ -626,6 +631,7 @@ impl Options {
         }
     }
 
+    /// Creates options with the given `guid` and `client_id` and default settings.
     pub fn with_guid_and_client_id(guid: Uuid, client_id: ClientID) -> Self {
         Options {
             client_id,

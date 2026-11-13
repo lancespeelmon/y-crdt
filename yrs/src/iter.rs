@@ -22,7 +22,9 @@ pub(crate) trait BlockSliceIterator: Iterator<Item = ItemSlice> + Sized {
 
 impl<T> BlockSliceIterator for T where T: Iterator<Item = ItemSlice> + Sized {}
 
+/// Trait for the types that can be converted into a [BlockIter].
 pub trait IntoBlockIter {
+    /// Converts this value into an iterator over blocks.
     fn to_iter(self) -> BlockIter;
 }
 
@@ -41,6 +43,7 @@ impl IntoBlockIter for Option<ItemPtr> {
 pub struct BlockIter(Option<ItemPtr>);
 
 impl BlockIter {
+    /// Creates an iterator that starts at the given item, if any.
     #[inline]
     pub fn new(ptr: Option<ItemPtr>) -> Self {
         BlockIter(ptr)
@@ -80,9 +83,12 @@ impl IntoIterator for ItemPtr {
 
 /// Iterator equivalent that can be supplied with transaction when iteration step may need it.
 pub trait TxnIterator {
+    /// The type of the items that this iterator yields.
     type Item;
+    /// Advances the iterator and returns its next item, or `None` if it's finished.
     fn next<T: ReadTxn>(&mut self, txn: &T) -> Option<Self::Item>;
 
+    /// Consumes the iterator and collects its items into `B`.
     fn collect<T, B>(&mut self, txn: &T) -> B
     where
         T: ReadTxn,
@@ -98,6 +104,7 @@ pub trait TxnIterator {
 
 /// DoubleEndedIterator equivalent that can be supplied with transaction when iteration step may need it.
 pub trait TxnDoubleEndedIterator: TxnIterator {
+    /// Returns the next item from the back of the iterator, or `None` if it's finished.
     fn next_back<T: ReadTxn>(&mut self, txn: &T) -> Option<Self::Item>;
 }
 
@@ -282,6 +289,7 @@ where
     }
 }
 
+/// Adapter that turns a [TxnIterator] into an [Iterator], by pairing it with a transaction.
 #[derive(Debug)]
 pub struct AsIter<'a, T, I> {
     txn: &'a T,
@@ -293,6 +301,7 @@ where
     T: ReadTxn,
     I: Iterator,
 {
+    /// Creates an adapter over the `iter` that uses the given `txn`.
     pub fn new(iter: I, txn: &'a T) -> Self {
         AsIter { txn, iter }
     }

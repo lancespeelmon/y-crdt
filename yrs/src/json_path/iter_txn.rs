@@ -197,6 +197,7 @@ fn index_union_iter<'a, T: ReadTxn>(
     }
 }
 
+/// Iterator over the values in a shared collection that match a [JsonPath].
 pub struct JsonPathIter<'a, T> {
     txn: &'a T,
     pattern: &'a [JsonPathToken<'a>],

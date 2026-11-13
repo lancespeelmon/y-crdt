@@ -1,3 +1,6 @@
+// Internals: re-exported only through the hidden `yrs::internals` module, exempt from the docs requirement.
+#![allow(missing_docs)]
+
 use crate::block::{Block, Item, ItemContent, ItemPosition, ItemPtr, Prelim};
 use crate::types::array::ArrayEvent;
 use crate::types::map::MapEvent;
@@ -719,11 +722,13 @@ impl<S> Into<BranchID> for Root<S> {
 #[repr(transparent)]
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Nested<S> {
+    /// The identifier of the block that contains the nested shared collection.
     pub id: ID,
     _tag: PhantomData<S>,
 }
 
 impl<S> Nested<S> {
+    /// Creates a logical reference to a nested shared collection, given the ID of the block that contains it.
     pub fn new(id: ID) -> Self {
         Nested {
             id,
@@ -889,16 +894,20 @@ impl<S> Into<BranchID> for Hook<S> {
 /// to reference to the same logical entity across different replicas of a document.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum BranchID {
+    /// A collection nested in another collection, identified by the ID of the block that contains it.
     Nested(ID),
+    /// A root-level collection, identified by its name.
     Root(Arc<str>),
 }
 
 impl BranchID {
+    /// Finds a root-level collection with a given `name`, if it exists in the document.
     #[inline]
     pub fn get_root<T: ReadTxn, K: Borrow<str>>(txn: &T, name: K) -> Option<BranchPtr> {
         txn.store().get_type(name)
     }
 
+    /// Finds a nested collection that is stored in a block with the given `id`, if it exists and has not been garbage collected.
     pub fn get_nested<T: ReadTxn>(txn: &T, id: &ID) -> Option<BranchPtr> {
         let block = txn.store().blocks.get_block(id)?;
         if let Block::Item(block) = block.as_ref() {
@@ -909,6 +918,7 @@ impl BranchID {
         None
     }
 
+    /// Resolves this identifier to the collection it points to. Returns `None` if there's no such collection in the document.
     pub fn get_branch<T: ReadTxn>(&self, txn: &T) -> Option<BranchPtr> {
         match self {
             BranchID::Root(name) => Self::get_root(txn, name.as_ref()),

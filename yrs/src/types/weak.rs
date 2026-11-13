@@ -230,6 +230,7 @@ impl GetString for WeakRef<XmlTextRef> {
 }
 
 impl<P: AsRef<Branch>> WeakRef<P> {
+    /// Converts this weak reference to one that isn't parametrized with a specific shared type.
     pub fn into_inner(self) -> WeakRef<BranchPtr> {
         WeakRef(BranchPtr::from(self.0.as_ref()))
     }
@@ -344,6 +345,7 @@ impl<P> WeakPrelim<P> {
         }
     }
 
+    /// Returns a copy of this weak prelim that isn't parametrized with a specific shared type.
     pub fn into_inner(&self) -> WeakPrelim<BranchPtr> {
         WeakPrelim {
             source: self.source.clone(),
@@ -351,6 +353,7 @@ impl<P> WeakPrelim<P> {
         }
     }
 
+    /// Returns the source of this link: the range of values that it quotes.
     pub fn source(&self) -> &Arc<LinkSource> {
         &self.source
     }
@@ -371,10 +374,12 @@ impl<P> WeakPrelim<P>
 where
     P: SharedRef + Map,
 {
+    /// Returns the value that this link quotes, if it exists.
     pub fn try_deref_raw<T: ReadTxn>(&self, txn: &T) -> Option<Out> {
         self.source.unquote(txn).next()
     }
 
+    /// Returns the value that this link quotes, converted into `V`. Fails with `None` if there's no such value, or with the error of the conversion.
     pub fn try_deref<T, V>(&self, txn: &T) -> Result<V, Option<V::Error>>
     where
         T: ReadTxn,
@@ -418,6 +423,7 @@ impl<P: AsRef<Branch>> From<WeakRef<P>> for WeakPrelim<P> {
 }
 
 impl<P: AsRef<Branch>> WeakPrelim<P> {
+    /// Converts this weak prelim to one that isn't parametrized with a specific shared type.
     pub fn upcast(self) -> WeakPrelim<BranchPtr> {
         WeakPrelim {
             source: self.source,
@@ -459,6 +465,7 @@ impl<T> From<WeakPrelim<T>> for In {
     }
 }
 
+/// Event generated for a [WeakRef], when the value that it quotes has been changed.
 pub struct WeakEvent {
     pub(crate) current_target: BranchPtr,
     target: BranchPtr,
@@ -473,6 +480,7 @@ impl WeakEvent {
         }
     }
 
+    /// Returns the weak reference that this event was emitted for.
     pub fn as_target<T: From<BranchPtr>>(&self) -> WeakRef<T> {
         WeakRef(T::from(self.target))
     }
@@ -483,6 +491,7 @@ impl WeakEvent {
     }
 }
 
+/// Describes what a weak link quotes: a range between two [StickyIndex]es.
 #[derive(Debug, Eq, PartialEq)]
 pub struct LinkSource {
     pub(crate) quote_start: StickyIndex,
@@ -490,6 +499,7 @@ pub struct LinkSource {
 }
 
 impl LinkSource {
+    /// Creates a link source that quotes the range from `start` to `end`.
     pub fn new(start: StickyIndex, end: StickyIndex) -> Self {
         LinkSource {
             quote_start: start,
@@ -497,6 +507,7 @@ impl LinkSource {
         }
     }
 
+    /// Checks if this link quotes a single element.
     #[inline]
     pub fn is_single(&self) -> bool {
         match (self.quote_start.scope(), self.quote_end.scope()) {
@@ -584,6 +595,7 @@ impl LinkSource {
         }
     }
 
+    /// Returns the quoted text as a string.
     pub fn to_string<T: ReadTxn>(&self, txn: &T) -> String {
         let mut result = String::new();
         let mut curr = self.quote_start.get_item(txn);
@@ -611,6 +623,7 @@ impl LinkSource {
         result
     }
 
+    /// Returns the quoted text as an XML string.
     pub fn to_xml_string<T: ReadTxn>(&self, txn: &T) -> String {
         let curr = self.quote_start.get_item(txn);
         if let Some(item) = curr.as_deref() {

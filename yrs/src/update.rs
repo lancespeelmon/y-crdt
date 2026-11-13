@@ -176,6 +176,7 @@ impl Update {
     /// Binary containing an empty update, serialized via lib0 version 2 encoder.
     pub const EMPTY_V2: &'static [u8] = &[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
 
+    /// Creates an empty update.
     pub fn new() -> Self {
         Self::default()
     }
@@ -652,6 +653,7 @@ impl Update {
         self.delete_set.encode(encoder)
     }
 
+    /// Merges the given updates into a single one.
     pub fn merge_updates<T>(block_stores: T) -> Update
     where
         T: IntoIterator<Item = Update>,

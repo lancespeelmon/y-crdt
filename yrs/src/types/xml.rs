@@ -21,14 +21,18 @@ use crate::{
     ReadTxn, StickyIndex, Text, TextRef, ID,
 };
 
+/// Trait shared by preliminary types that can be used as XML nodes: [XmlElementPrelim], [XmlFragmentPrelim] and [XmlTextPrelim].
 pub trait XmlPrelim: Prelim {}
 
-/// Trait shared by preliminary types that can be used as XML nodes: [XmlElementPrelim],
-/// [XmlFragmentPrelim] and [XmlTextPrelim].
+/// A preliminary XML node: an [XmlElementPrelim], an [XmlFragmentPrelim] or a text, which become
+/// an [XmlOut] when integrated.
 #[derive(Debug, Clone, PartialEq)]
 pub enum XmlIn {
+    /// A preliminary XML text node.
     Text(XmlDeltaPrelim),
+    /// A preliminary XML element.
     Element(XmlElementPrelim),
+    /// A preliminary XML fragment.
     Fragment(XmlFragmentPrelim),
 }
 
@@ -88,12 +92,16 @@ impl Prelim for XmlIn {
 /// or [XmlTextRef] values.
 #[derive(Debug, Clone)]
 pub enum XmlOut {
+    /// An XML element.
     Element(XmlElementRef),
+    /// An XML fragment.
     Fragment(XmlFragmentRef),
+    /// An XML text node.
     Text(XmlTextRef),
 }
 
 impl XmlOut {
+    /// Returns a pointer to the collection that this node wraps.
     pub fn as_ptr(&self) -> BranchPtr {
         match self {
             XmlOut::Element(n) => n.0,
@@ -102,6 +110,7 @@ impl XmlOut {
         }
     }
 
+    /// Returns the identifier of the collection that this node wraps.
     pub fn id(&self) -> BranchID {
         self.as_ptr().id()
     }
@@ -397,12 +406,16 @@ impl AsPrelim for XmlElementRef {
 /// into Yrs document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct XmlElementPrelim {
+    /// The name of the XML tag.
     pub tag: Arc<str>,
+    /// The attributes of the element.
     pub attributes: HashMap<Arc<str>, String>,
+    /// The child nodes of the element.
     pub children: Vec<XmlIn>,
 }
 
 impl XmlElementPrelim {
+    /// Creates an element with the given `tag` name and `iter` of children.
     pub fn new<S, I>(tag: S, iter: I) -> Self
     where
         S: Into<Arc<str>>,
@@ -415,6 +428,7 @@ impl XmlElementPrelim {
         }
     }
 
+    /// Creates an element with the given `tag` name, that has no children.
     pub fn empty<S>(tag: S) -> Self
     where
         S: Into<Arc<str>>,
@@ -705,6 +719,7 @@ impl DerefMut for XmlTextPrelim {
 }
 
 impl XmlTextPrelim {
+    /// Creates a preliminary XML text with the given initial `str`.
     #[inline]
     pub fn new<S: Into<String>>(str: S) -> Self {
         XmlTextPrelim(str.into())
@@ -743,9 +758,12 @@ impl From<XmlTextPrelim> for In {
     }
 }
 
+/// A preliminary type that will be materialized into an [XmlTextRef] once it will be integrated into Yrs document. It is created from a text and optional attributes, or from a sequence of [Delta] changes.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct XmlDeltaPrelim {
+    /// The attributes of the XML text node.
     pub attributes: HashMap<Arc<str>, String>,
+    /// The content of the XML text node, as a sequence of changes.
     pub delta: Vec<Delta<In>>,
 }
 
@@ -805,6 +823,7 @@ impl XmlFragment for XmlFragmentRef {}
 impl IndexedSequence for XmlFragmentRef {}
 
 impl XmlFragmentRef {
+    /// Returns the XML node that contains this fragment, if it's nested in one.
     pub fn parent(&self) -> Option<XmlOut> {
         let item = self.0.item?;
         let parent = item.parent.as_branch()?;
@@ -914,6 +933,7 @@ impl DefaultPrelim for XmlFragmentRef {
 pub struct XmlFragmentPrelim(Vec<XmlIn>);
 
 impl XmlFragmentPrelim {
+    /// Creates a preliminary XML fragment with the given `iter` of children.
     pub fn new<I, T>(iter: I) -> Self
     where
         I: IntoIterator<Item = XmlIn>,
@@ -1001,7 +1021,9 @@ impl AsRef<MapRef> for XmlHookRef {
     }
 }
 
+/// Trait implemented by the XML node types: [XmlElementRef], [XmlFragmentRef] and [XmlTextRef].
 pub trait Xml: AsRef<Branch> {
+    /// Returns the XML node that contains this node, if there is one.
     fn parent(&self) -> Option<XmlOut> {
         let item = self.as_ref().item?;
         let parent = item.parent.as_branch()?;
@@ -1058,13 +1080,16 @@ pub trait Xml: AsRef<Branch> {
         Attributes(Entries::new(&self.as_ref().map, txn))
     }
 
+    /// Returns an iterator over the siblings that follow this node.
     fn siblings<'a, T: ReadTxn>(&self, txn: &'a T) -> Siblings<'a, T> {
         let ptr = BranchPtr::from(self.as_ref());
         Siblings::new(ptr.item, txn)
     }
 }
 
+/// Trait implemented by the XML node types that can have children: [XmlElementRef] and [XmlFragmentRef].
 pub trait XmlFragment: AsRef<Branch> {
+    /// Returns the first child of this node, if there is one.
     fn first_child(&self) -> Option<XmlOut> {
         let first = self.as_ref().first()?;
         match &first.content {
@@ -1248,6 +1273,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates an iterator over the attributes of the node stored in `branch`.
     pub fn new(branch: &'a Branch, txn: B) -> Self {
         let entries = Entries::new(&branch.map, txn);
         Attributes(entries)
@@ -1270,6 +1296,7 @@ where
     }
 }
 
+/// Iterator over the child nodes of an XML element or fragment.
 pub struct XmlNodes<'a, T> {
     iter: BlockIter,
     txn: &'a T,
@@ -1304,6 +1331,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates a tree walker that traverses the nodes nested in `root`.
     pub fn new(root: &'a Branch, txn: B) -> Self {
         TreeWalker {
             current: root.start.as_deref(),
@@ -1442,6 +1470,7 @@ impl XmlTextEvent {
     }
 }
 
+/// Iterator over the siblings that follow an XML node. Created by [Xml::siblings].
 pub struct Siblings<'a, T> {
     current: Option<ItemPtr>,
     _txn: &'a T,
