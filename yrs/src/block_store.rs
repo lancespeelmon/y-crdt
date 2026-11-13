@@ -226,31 +226,16 @@ impl ClientBlockList {
     /// later on rewire left/right neighbor changes that may have occurred as a result of squashing
     /// and block removal.
     pub(crate) fn squash_left(&mut self, pos: usize) -> usize {
-        let mut right = unsafe { &mut *self.inner[pos].get() };
         let mut i = pos;
         while i > 0 {
-            let left = unsafe { &mut *self.inner[i - 1].get() };
-            if left.is_deleted() == right.is_deleted()
-                && left.same_type(right)
-                && left.try_squash(right)
-            {
-                // update parent's map entry if necessary
-                if let Block::Item(right) = right {
-                    if let Some(parent_sub) = &right.parent_sub {
-                        if let Some(mut parent) = right.parent.as_branch().copied() {
-                            let e = parent.map.get_mut(parent_sub).unwrap();
-                            if &**e == &**right {
-                                *e = left.as_item().unwrap(); // already confirmed they're the same_type
-                            }
-                        }
-                    }
-                }
-            } else {
+            let (l, r) = self.inner.split_at_mut(i);
+            let left = l[i - 1].get_mut();
+            let right = r[0].get_mut();
+            if !Self::absorb(left, right) {
                 break;
             }
-
+            // `left` now holds `right`'s content too: try squashing it into its own left.
             i -= 1;
-            right = left;
         }
 
         let merged = pos - i;
@@ -258,6 +243,57 @@ impl ClientBlockList {
             self.inner.drain(i + 1..=pos);
         }
         merged
+    }
+
+    /// Squashes every block from index `from` on into its left neighbour wherever they can
+    /// merge, in one pass. Blocks that stay move down over the absorbed ones and the list is
+    /// truncated once, instead of shifting the rest of the list for each squash.
+    pub(crate) fn squash_from(&mut self, from: usize) {
+        let from = from.max(1);
+        if from >= self.inner.len() {
+            return;
+        }
+        // Slots `kept + 1..r` hold blocks already absorbed into an earlier one.
+        let mut kept = from - 1;
+        let mut first_absorbed = false;
+        for r in from..self.inner.len() {
+            let (l, rest) = self.inner.split_at_mut(r);
+            if Self::absorb(l[kept].get_mut(), rest[0].get_mut()) {
+                first_absorbed |= r == from;
+            } else {
+                kept += 1;
+                self.inner.swap(kept, r);
+            }
+        }
+        self.inner.truncate(kept + 1);
+        // Like squashing right to left, a block that grew at `from - 1` may now merge further
+        // left, into blocks before `from`.
+        if first_absorbed {
+            self.squash_left(from - 1);
+        }
+    }
+
+    /// Squashes `right` into `left` if they can merge, and points the parent's map entry at
+    /// `left` if it pointed at `right`. Returns whether they merged; if they did, the caller
+    /// must remove `right` from the list.
+    fn absorb(left: &mut Block, right: &Block) -> bool {
+        if !(left.is_deleted() == right.is_deleted()
+            && left.same_type(right)
+            && left.try_squash(right))
+        {
+            return false;
+        }
+        if let Block::Item(right) = right {
+            if let Some(parent_sub) = &right.parent_sub {
+                if let Some(mut parent) = right.parent.as_branch().copied() {
+                    let e = parent.map.get_mut(parent_sub).unwrap();
+                    if &**e == &**right {
+                        *e = left.as_item().unwrap(); // already confirmed they're the same_type
+                    }
+                }
+            }
+        }
+        true
     }
 }
 
@@ -532,6 +568,55 @@ mod test {
             let (start, end) = b.as_ref().clock_range();
             start <= clock && clock <= end
         })
+    }
+
+    fn kinds(list: &ClientBlockList) -> Vec<(char, u32, u32)> {
+        list.iter()
+            .map(|b| {
+                let b = b.as_ref();
+                let kind = if matches!(b, Block::GC(_)) { 'g' } else { 's' };
+                (kind, b.clock_start(), b.len())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn squash_from_merges_like_squashing_each_block_right_to_left() {
+        // 'g' is a GC range, 's' a skip; neighbours of the same kind merge.
+        let shapes = [
+            "g",
+            "gg",
+            "gs",
+            "ggsgg",
+            "sggggs",
+            "gsgsgsgs",
+            "ggggsssgsssggg",
+        ];
+        for shape in shapes {
+            let build = || {
+                let mut list = ClientBlockList::default();
+                for (i, kind) in shape.chars().enumerate() {
+                    let range = BlockRange::new(ID::new(ClientID::new(1), i as u32 * 2), 2);
+                    list.push(if kind == 'g' {
+                        Block::GC(range)
+                    } else {
+                        Block::Skip(range)
+                    });
+                }
+                list
+            };
+            for from in 0..=shape.len() {
+                let mut one_pass = build();
+                one_pass.squash_from(from);
+
+                let mut each = build();
+                let mut i = each.len() - 1;
+                while i >= from.max(1) {
+                    i = i.saturating_sub(1 + each.squash_left(i));
+                }
+                assert_eq!(kinds(&one_pass), kinds(&each), "{shape} from {from}");
+            }
+        }
     }
 
     #[test]
