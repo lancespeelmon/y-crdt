@@ -1,3 +1,6 @@
+// Internals: re-exported only through the hidden `yrs::internals` module, exempt from the docs requirement.
+#![allow(missing_docs)]
+
 use crate::block::{Block, ClientID, ItemContent, ItemPtr};
 use crate::block_store::BlockStore;
 use crate::branch::{Branch, BranchPtr};

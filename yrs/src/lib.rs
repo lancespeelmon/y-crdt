@@ -2,6 +2,10 @@
     html_logo_url = "https://raw.githubusercontent.com/y-crdt/y-crdt/main/logo-yrs.svg",
     html_favicon_url = "https://raw.githubusercontent.com/y-crdt/y-crdt/main/logo-yrs.svg"
 )]
+#![deny(missing_docs)]
+// The crate docs link to the `protocol` module, which only exists with its feature.
+#![cfg_attr(not(feature = "protocol"), allow(rustdoc::broken_intra_doc_links))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! Yrs (read: "wires") is a high performance CRDT implementation based on the idea of **Shared Types**.
 //! It is a compatible port of the [Yjs](https://github.com/yjs/yjs) CRDT.
@@ -12,12 +16,11 @@
 //!
 //! # Features
 //!
-//! - `small-client` this feature is used for compatibility with older versions of
-//!    yrs (v0.26 and below) and yjs (pre v14). It uses 32bit [crate::ClientID]. The current default
-//!    uses 53-bit (max safe integer number in JavaScript/Yjs).
 //! - `weak` this feature enables weak references and quotations (see: `crate::WeakRef`).
-//! - `sync` this feature modifies observers callback constraints to use `Send` and `Sync` traits.
-//!   These are required when using yrs features in multithreaded environments.
+//! - `sync` (default) this feature modifies observers callback constraints to use `Send` and
+//!   `Sync` traits. These are required when using yrs features in multithreaded environments.
+//! - `protocol` (default) the y-sync protocol and awareness, in [protocol]. It brings in the
+//!   `dashmap` and `async-trait` dependencies.
 //!
 //! # Quick start
 //!
@@ -550,23 +553,23 @@
 //! Sometimes it's not always feasible to keep all state changes related to a document within a
 //! document update history - especially if they are notifications bound to a single user or session.
 //! For this reason most of the editor bindings using Yjs supplement the document state with
-//! [sync::Awareness] - it's a separate entity that keeps user related data such as username
+//! [protocol::Awareness] - it's a separate entity that keeps user related data such as username
 //! or cursor position, but without the overhead of keeping metadata necessary for conflict
 //! resolution.
 //!
-//! [sync::Awareness] together with [Doc] updates combined create basis of y-sync [sync::Protocol].
+//! [protocol::Awareness] together with [Doc] updates combined create basis of y-sync [protocol::Protocol].
 //! It's used by most of the network providers in Yjs/Yrs ecosystem and enables universal way of
 //! communicating between different systems.
 //!
 //! In its core y-sync protocol can operate as a simple state machine that serves exchanging and
-//! responding to different message types described by the protocol. The [sync::DefaultProtocol]
+//! responding to different message types described by the protocol. The [protocol::DefaultProtocol]
 //! provides all the message handlers necessary to make basic communication possible.
 //!
 //! y-sync protocol is extensible leaves a space for the users to define their own messages if
 //! necessary:
 //!
 //! ```rust
-//! use yrs::sync::{Awareness, Message, Protocol, Error};
+//! use yrs::protocol::{Awareness, Message, Protocol, Error};
 //!
 //! struct MyProtocol;
 //! impl Protocol for MyProtocol {
@@ -617,43 +620,62 @@
 //! - [Detailed explanation of conflict-free reordering algorithm](https://bartoszsypytkowski.com/yata-move/) used by Yrs.
 
 mod alt;
-pub mod block;
+mod block;
 mod block_store;
+/// The document, its options and its events.
 pub mod doc;
 mod event;
 mod id_map;
 mod id_set;
 mod store;
 mod transaction;
+/// Shared types: collections that sync between peers, their events and their prelim values.
 pub mod types;
 mod update;
+/// Encoders and decoders for the v1 and v2 update formats.
 pub mod updates;
 mod utils;
 
+/// [Any] values, a JSON-like data model with a compact binary encoding.
 pub mod any;
 pub mod atomic;
 mod block_iter;
-pub mod branch;
+mod branch;
+/// Binary encoding primitives, and the serde (de)serialization support built on them.
 pub mod encoding;
+/// Errors returned by this crate.
 pub mod error;
 mod gc;
 mod ids;
 mod input;
+/// Iterators over the contents of shared collections.
 pub mod iter;
+/// JSONPath queries over shared types.
 pub mod json_path;
 pub mod metrics;
+/// [Observer], used to manage subscriptions to events.
 pub mod observer;
 mod out;
 pub mod permanent_user_data;
+#[cfg(feature = "protocol")]
+pub mod protocol;
 mod slice;
 mod state_vector;
 mod sticky_index;
-pub mod sync;
+/// The old name of [protocol].
+#[cfg(feature = "protocol")]
+#[deprecated(since = "0.29.0", note = "renamed to `yrs::protocol`")]
+pub mod sync {
+    pub use crate::protocol::*;
+}
 #[cfg(test)]
 mod test_utils;
 #[cfg(test)]
 mod tests;
+/// Clocks and timestamps.
+pub mod time;
 mod transact;
+/// [UndoManager](crate::undo::UndoManager) and the types that configure and report on it.
 pub mod undo;
 
 pub use crate::alt::{
@@ -665,7 +687,9 @@ pub use crate::alt::{
 };
 pub use crate::any::{Any, AnyMap, Number};
 pub use crate::block::ClientID;
+pub use crate::block::SmallClientID;
 pub use crate::block::ID;
+pub use crate::block::{EmbedPrelim, Item, ItemContent, Prelim, Unused};
 pub use crate::branch::BranchID;
 pub use crate::branch::Hook;
 pub use crate::branch::Nested;
@@ -681,7 +705,7 @@ pub use crate::id_set::IdSet;
 pub use crate::input::In;
 pub use crate::json_path::{JsonPath, JsonPathEval};
 pub use crate::observer::Observer;
-pub use crate::out::Out;
+pub use crate::out::{Out, UndefinedRef};
 pub use crate::permanent_user_data::PermanentUserData;
 pub use crate::state_vector::Snapshot;
 pub use crate::state_vector::StateVector;
@@ -690,6 +714,7 @@ pub use crate::sticky_index::IndexScope;
 pub use crate::sticky_index::IndexedSequence;
 pub use crate::sticky_index::Offset;
 pub use crate::sticky_index::StickyIndex;
+#[doc(hidden)]
 pub use crate::store::Store;
 pub use crate::transact::{
     AcquireTransaction, AcquireTransactionMut, AsyncTransact, Transact, TransactionAcqError,
@@ -706,6 +731,7 @@ pub use crate::types::array::ArrayRef;
 pub use crate::types::map::Map;
 pub use crate::types::map::MapPrelim;
 pub use crate::types::map::MapRef;
+pub use crate::types::offset::{CharOffset, OffsetError, TextOffset, Utf16Offset, Utf8Offset};
 pub use crate::types::text::Text;
 pub use crate::types::text::TextPrelim;
 pub use crate::types::text::TextRef;
@@ -727,10 +753,23 @@ pub use crate::types::RootRef;
 pub use crate::types::SharedRef;
 pub use crate::update::Update;
 
+/// The block store's internals: items, branches and the raw pointers to them, plus the wire
+/// format's constants. Not part of the stable API: for yffi and ywasm, which hand these across
+/// the language boundary, only.
+#[doc(hidden)]
+pub mod internals {
+    pub use crate::block::*;
+    pub use crate::branch::*;
+    pub use crate::store::Store;
+}
+
+/// The old name of [Out].
 #[deprecated(since = "0.19.0", note = "Use `yrs::Out` instead")]
 pub type Value = Out;
 
+/// An [UndoManager](crate::undo::UndoManager) that attaches no metadata to its stack items.
 pub type UndoManager = crate::undo::UndoManager<()>;
+/// A UUID, as a string.
 pub type Uuid = std::sync::Arc<str>;
 
 /// Generate random v4 UUID.

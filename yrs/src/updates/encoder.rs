@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 /// A trait that can be implemented by any other type in order to support lib0 encoding capability.
 pub trait Encode {
+    /// Encodes this value with the given `encoder`.
     fn encode<E: Encoder>(&self, encoder: &mut E);
 
     /// Helper function for encoding 1st version of lib0 encoding.
@@ -77,11 +78,13 @@ pub trait Encoder: Write {
     fn write_key(&mut self, string: &str);
 }
 
+/// Version 1 of lib0 encoder.
 pub struct EncoderV1 {
     buf: Vec<u8>,
 }
 
 impl EncoderV1 {
+    /// Creates an encoder with an empty buffer.
     pub fn new() -> Self {
         EncoderV1 {
             buf: Vec::with_capacity(1024),
@@ -179,6 +182,7 @@ impl Encoder for EncoderV1 {
     }
 }
 
+/// Version 2 of lib0 encoder. It writes values of the same kind in columns, which are run-length encoded.
 pub struct EncoderV2 {
     key_table: HashMap<String, u32>,
     buf: Vec<u8>,
@@ -203,6 +207,7 @@ impl EncoderV2 {
         self.buf
     }
 
+    /// Creates an encoder with an empty buffer.
     pub fn new() -> Self {
         EncoderV2 {
             key_table: HashMap::new(),

@@ -1,8 +1,9 @@
-/// Timestamp used by [crate::sync::Awareness] to tag most recent updates.
+/// Timestamp used by [crate::protocol::Awareness] to tag most recent updates.
 pub type Timestamp = u64;
 
 /// A clock trait used to obtain the current time.
 pub trait Clock: Send + Sync {
+    /// Returns the current time.
     fn now(&self) -> Timestamp;
 }
 

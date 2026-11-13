@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 /// A trait that can be implemented by any other type in order to support lib0 decoding capability.
 pub trait Decode: Sized {
+    /// Decodes a value of this type from the `decoder`.
     fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, Error>;
 
     /// Helper function for decoding 1st version of lib0 encoding.
@@ -112,17 +113,15 @@ pub struct DecoderV1<'a> {
 }
 
 impl<'a> DecoderV1<'a> {
+    /// Creates a decoder that reads from the given `cursor`.
     pub fn new(cursor: Cursor<'a>) -> Self {
         DecoderV1 { cursor }
     }
 
     fn read_id(&mut self) -> Result<ID, Error> {
-        #[cfg(not(feature = "small-client"))]
         let client: u64 = self.read_var()?;
-        #[cfg(feature = "small-client")]
-        let client: u32 = self.read_var()?;
         let clock = self.read_var()?;
-        Ok(ID::new(ClientID::new(client as u64), clock))
+        Ok(ID::new(ClientID::new(client), clock))
     }
 }
 
@@ -183,11 +182,8 @@ impl<'a> Decoder for DecoderV1<'a> {
 
     #[inline]
     fn read_client(&mut self) -> Result<ClientID, Error> {
-        #[cfg(not(feature = "small-client"))]
         let client: u64 = self.cursor.read_var()?;
-        #[cfg(feature = "small-client")]
-        let client: u32 = self.cursor.read_var()?;
-        Ok(ClientID::new(client as u64))
+        Ok(ClientID::new(client))
     }
 
     #[inline]
@@ -271,6 +267,7 @@ impl<'a> DecoderV2<'a> {
         }
     }
 
+    /// Creates a decoder that reads from the given `cursor`. Fails if the data is malformed.
     pub fn new(mut cursor: Cursor<'a>) -> Result<Self, Error> {
         if cursor.has_content() {
             // read feature flag - currently unused

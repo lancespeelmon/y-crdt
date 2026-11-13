@@ -35,8 +35,37 @@ pub enum Out {
     /// Instance of a shared collection of undefined type. Usually happens when it refers to a root
     /// type that has not been defined locally. Can also refer to a `WeakRef` if "weak" feature flag
     /// was not set.
-    UndefinedRef(BranchPtr),
+    UndefinedRef(UndefinedRef),
 }
+
+/// A shared collection whose type isn't known yet: usually a root type that remote updates
+/// created before this peer asked for it by type. Get it with a specific type through
+/// [crate::Root::get_or_create] or the `get_or_insert_*` methods.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UndefinedRef(pub(crate) BranchPtr);
+
+impl UndefinedRef {
+    /// The branch pointer, for the bindings.
+    #[doc(hidden)]
+    pub fn branch_ptr(&self) -> BranchPtr {
+        self.0
+    }
+}
+
+impl From<BranchPtr> for UndefinedRef {
+    fn from(ptr: BranchPtr) -> Self {
+        UndefinedRef(ptr)
+    }
+}
+
+impl AsRef<Branch> for UndefinedRef {
+    fn as_ref(&self) -> &Branch {
+        self.0.as_ref()
+    }
+}
+
+impl crate::types::SharedRef for UndefinedRef {}
 
 impl Default for Out {
     fn default() -> Self {
@@ -75,6 +104,7 @@ impl Out {
         }
     }
 
+    /// Returns the shared collection that this value holds, or `None` if it's not one.
     pub fn try_branch(&self) -> Option<&Branch> {
         match self {
             Out::YText(b) => Some(b.as_ref()),
@@ -118,7 +148,7 @@ impl AsPrelim for Out {
             Out::YDoc(v) => In::Doc(v.clone()),
             #[cfg(feature = "weak")]
             Out::YWeakLink(v) => In::WeakLink(v.as_prelim(txn)),
-            Out::UndefinedRef(v) => infer_type_from_content(*v, txn),
+            Out::UndefinedRef(v) => infer_type_from_content(v.0, txn),
         }
     }
 }

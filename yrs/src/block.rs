@@ -1,3 +1,6 @@
+// Internals: re-exported only through the hidden `yrs::internals` module, exempt from the docs requirement.
+#![allow(missing_docs)]
+
 use crate::block_store::BlockStore;
 use crate::branch::{Branch, BranchID, BranchPtr};
 use crate::doc::{DocAddr, OffsetKind};
@@ -69,60 +72,73 @@ pub const HAS_ORIGIN: u8 = 0b10000000;
 /// for blocks which act as map-like types entries.
 pub const HAS_PARENT_SUB: u8 = 0b00100000;
 
-#[cfg(not(feature = "small-client"))]
-type CID = std::num::NonZeroU64;
-
-#[cfg(feature = "small-client")]
-type CID = u32;
-
 /// Globally unique 53-bit client identifier. No two active peers are allowed to share the same [ClientID].
 /// If that happens, following updates may cause document store to be corrupted and desync in a result.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct ClientID(CID);
+pub struct ClientID(std::num::NonZeroU64);
 
 impl ClientID {
     const MASK: u64 = u64::MAX << 53; // all 1 shifted by 53 bit
     /// Creates a [ClientID] from a yjs-compatible client identifier value.
     #[inline]
     pub const fn new(value: u64) -> Self {
-        // SAFETY: (value << 1) | 1 is always >= 1
-        #[cfg(not(feature = "small-client"))]
-        {
-            // client ID should be 53bit: assert that we don't run over it
-            debug_assert!(value & Self::MASK == 0);
-            return ClientID(unsafe { std::num::NonZeroU64::new_unchecked(value | Self::MASK) });
-        }
-
-        #[cfg(feature = "small-client")]
-        {
-            return ClientID(value as u32);
-        }
+        // client ID should be 53bit: assert that we don't run over it
+        debug_assert!(value & Self::MASK == 0);
+        // SAFETY: the mask sets the top bits, so the value is never zero
+        ClientID(unsafe { std::num::NonZeroU64::new_unchecked(value | Self::MASK) })
     }
 
     /// Returns the original yjs-compatible client identifier value.
     #[inline]
     pub const fn get(&self) -> u64 {
-        #[cfg(not(feature = "small-client"))]
-        {
-            return self.0.get() & !Self::MASK;
-        }
-
-        #[cfg(feature = "small-client")]
-        {
-            return self.0 as u64;
-        }
+        self.0.get() & !Self::MASK
     }
 
-    /// Generates a random 53bit [ClientID] (safe for JavaScript).
-    /// When `small-client` feature is used generates a 32-bit client ID (for old compatiblity).
+    /// Generates a random 53bit [ClientID] (safe for JavaScript). See [SmallClientID] for peers
+    /// that need 32-bit IDs.
     pub fn random() -> Self {
         let mut rng = fastrand::Rng::new();
-        #[cfg(not(feature = "small-client"))]
-        let value = rng.u64(0..(1u64 << 53));
-        #[cfg(feature = "small-client")]
-        let value = rng.u32(0..u32::MAX) as u64;
-        Self::new(value)
+        Self::new(rng.u64(0..(1u64 << 53)))
+    }
+}
+
+/// A 32-bit client identifier, for peers that share documents with yrs 0.26 and older or Yjs
+/// before v14, which use 32-bit IDs. Use it in place of [ClientID::random]:
+///
+/// ```
+/// use yrs::{Doc, Options, SmallClientID};
+///
+/// let doc = Doc::with_options(Options {
+///     client_id: SmallClientID::random().into(),
+///     ..Options::default()
+/// });
+/// assert!(doc.client_id().get() <= u32::MAX as u64);
+/// ```
+///
+/// This replaces the `small-client` feature, which changed [ClientID] for the whole build.
+#[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct SmallClientID(pub u32);
+
+impl SmallClientID {
+    /// Generates a random 32-bit client ID.
+    pub fn random() -> Self {
+        SmallClientID(fastrand::Rng::new().u32(..))
+    }
+}
+
+impl From<SmallClientID> for ClientID {
+    fn from(id: SmallClientID) -> Self {
+        ClientID::new(id.0 as u64)
+    }
+}
+
+impl TryFrom<ClientID> for SmallClientID {
+    type Error = ClientID;
+
+    /// Fails, returning the ID, if it doesn't fit in 32 bits.
+    fn try_from(id: ClientID) -> Result<Self, Self::Error> {
+        u32::try_from(id.get()).map(SmallClientID).map_err(|_| id)
     }
 }
 
@@ -170,6 +186,7 @@ pub struct ID {
 }
 
 impl ID {
+    /// Creates an identifier of the block that was inserted by `client` at the given `clock` value.
     pub fn new(client: ClientID, clock: u32) -> Self {
         ID { client, clock }
     }
@@ -806,6 +823,7 @@ impl Item {
         (start, end)
     }
 
+    /// Writes this item into an `encoder`: its info byte, origins, parent reference and content.
     pub fn encode<E: Encoder>(&self, encoder: &mut E) {
         let info = self.info();
         let cant_copy_parent_info = info & (HAS_ORIGIN | HAS_RIGHT_ORIGIN) == 0;
@@ -853,6 +871,7 @@ impl Item {
         &self.id
     }
 
+    /// Returns the range of clock values that this item occupies.
     #[inline]
     pub fn range(&self) -> BlockRange {
         BlockRange::new(self.id, self.len)
@@ -1426,7 +1445,7 @@ impl BlockRange {
     /// # Example:
     ///
     /// ```rust
-    /// use yrs::block::{BlockRange, ClientID};
+    /// use yrs::internals::{BlockRange, ClientID};
     /// use yrs::ID;
     /// let a = BlockRange::new(ID::new(ClientID::new(1), 2), 8); // range of clocks [2..10)
     /// let b = a.slice(3); // range of clocks [5..10)
@@ -1527,6 +1546,7 @@ impl Item {
         Some(item)
     }
 
+    /// Returns the range of clock values that this item occupies.
     #[inline]
     pub fn block_range(&self) -> BlockRange {
         BlockRange::new(self.id, self.len)
@@ -1587,6 +1607,7 @@ impl Item {
         self.len
     }
 
+    /// Returns the length of this item's content, measured in the units of the given offset `kind`.
     pub fn content_len(&self, kind: OffsetKind) -> u32 {
         match kind {
             // `len` is the content's length in UTF-16 code units: it's set from it when the item
@@ -1602,6 +1623,7 @@ impl Item {
         ID::new(self.id.client, self.id.clock + self.len() - 1)
     }
 
+    /// Returns the info byte of this item, as written to the update: origin/parent flags combined with the content's reference number.
     pub fn info(&self) -> u8 {
         let info = if self.origin.is_some() { HAS_ORIGIN } else { 0 } // is left null
             | if self.right_origin.is_some() { HAS_RIGHT_ORIGIN } else { 0 } // is right null
@@ -2064,6 +2086,7 @@ impl ItemContent {
         }
     }
 
+    /// Writes this content into an `encoder`, in the form expected by the update format.
     pub fn encode<E: Encoder>(&self, encoder: &mut E) {
         match self {
             ItemContent::Deleted(len) => encoder.write_len(*len),
@@ -2093,6 +2116,7 @@ impl ItemContent {
         }
     }
 
+    /// Reads the content identified by `ref_num` from a `decoder`. Fails if the data is malformed or the content type is unknown.
     pub fn decode<D: Decoder>(decoder: &mut D, ref_num: u8) -> Result<Self, Error> {
         match ref_num & 0b1111 {
             BLOCK_ITEM_DELETED_REF_NUMBER => Ok(ItemContent::Deleted(decoder.read_len()?)),
@@ -2447,7 +2471,9 @@ impl TryFrom<ItemPtr> for Unused {
 /// Prelim container for types passed over to [TextRef::insert_embed](crate::Text::insert_embed) and [TextRef::insert_embed_with_attributes](crate::Text::insert_embed_with_attributes) methods.
 #[derive(Debug)]
 pub enum EmbedPrelim<T> {
+    /// A primitive value that is embedded as-is.
     Primitive(Any),
+    /// A shared collection (a [Prelim] type) that is embedded.
     Shared(T),
 }
 

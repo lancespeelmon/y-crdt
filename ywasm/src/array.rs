@@ -170,9 +170,11 @@ impl YArray {
                 for _ in c.drain(start..end) { /* just drain */ }
                 Ok(())
             }
-            SharedCollection::Integrated(c) => {
-                c.mutably(txn, |c, txn| Ok(c.remove_range(txn, index, length)))
-            }
+            SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
+                crate::check_range(c.len(txn), index, length)?;
+                c.remove_range(txn, index, length);
+                Ok(())
+            }),
         }
     }
 
@@ -335,6 +337,7 @@ pub(crate) trait ArrayExt: Array + SharedRef {
     where
         I: IntoIterator<Item = JsValue>,
     {
+        crate::check_range(self.len(txn), index, 0)?;
         let mut primitive = Vec::default();
         let mut i = 0;
         let mut j = index;

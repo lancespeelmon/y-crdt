@@ -1,7 +1,7 @@
 use crate::encoding::read;
 use crate::encoding::read::Cursor;
 use crate::error::UpdateError;
-use crate::sync::{awareness, Awareness, AwarenessUpdate};
+use crate::protocol::{awareness, Awareness, AwarenessUpdate};
 use crate::updates::decoder::{Decode, Decoder, DecoderV1};
 use crate::updates::encoder::{Encode, Encoder};
 use crate::{ReadTxn, StateVector, Update};
@@ -349,15 +349,23 @@ pub const MSG_AUTH: u8 = 2;
 /// Tag id for [Message::AwarenessQuery].
 pub const MSG_QUERY_AWARENESS: u8 = 3;
 
+/// The permission value of a [Message::Auth] that denies access.
 pub const PERMISSION_DENIED: u8 = 0;
+/// The permission value of a [Message::Auth] that grants access.
 pub const PERMISSION_GRANTED: u8 = 1;
 
+/// A message of the y-sync protocol.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
+    /// A document synchronization message.
     Sync(SyncMessage),
+    /// An authorization reply: `None` grants permission, `Some` denies it with the given reason.
     Auth(Option<String>),
+    /// A request for the awareness state of all clients.
     AwarenessQuery,
+    /// An update of the awareness state.
     Awareness(AwarenessUpdate),
+    /// A message with a custom tag, which this crate doesn't interpret, and its payload.
     Custom(u8, Vec<u8>),
 }
 
@@ -429,10 +437,14 @@ pub const MSG_SYNC_STEP_2: u8 = 1;
 /// Tag id for [SyncMessage::Update].
 pub const MSG_SYNC_UPDATE: u8 = 2;
 
+/// A document synchronization message, sent as part of a [Message::Sync].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncMessage {
+    /// The first step of the sync: carries the sender's state vector, to ask for the updates that it's missing.
     SyncStep1(StateVector),
+    /// The second step of the sync: carries an update with the data that the other side was missing.
     SyncStep2(Vec<u8>),
+    /// An incremental update of the document.
     Update(Vec<u8>),
 }
 
@@ -494,7 +506,10 @@ pub enum ProtocolError {
 
     /// An incoming Y-protocol authorization request has been denied.
     #[error("permission denied to access: {reason}")]
-    PermissionDenied { reason: String },
+    PermissionDenied {
+        /// The reason of the denial.
+        reason: String,
+    },
 
     /// Thrown whenever an unknown message tag has been sent.
     #[error("unsupported message tag identifier: {0}")]
@@ -504,6 +519,7 @@ pub enum ProtocolError {
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
 
+    /// An update couldn't be applied.
     #[error("failed to apply update: {0}")]
     Update(#[from] UpdateError),
 
@@ -518,6 +534,7 @@ pub enum ProtocolError {
 pub struct MessageReader<'a, D: Decoder>(&'a mut D);
 
 impl<'a, D: Decoder> MessageReader<'a, D> {
+    /// Creates a reader over the messages in the `decoder`.
     pub fn new(decoder: &'a mut D) -> Self {
         MessageReader(decoder)
     }
@@ -539,8 +556,8 @@ impl<'a, D: Decoder> Iterator for MessageReader<'a, D> {
 mod test {
     use crate::block::ClientID;
     use crate::encoding::read::Cursor;
-    use crate::sync::protocol::MessageReader;
-    use crate::sync::{Awareness, Protocol};
+    use crate::protocol::protocol::MessageReader;
+    use crate::protocol::{Awareness, Protocol};
     use crate::updates::decoder::{Decode, DecoderV1};
     use crate::updates::encoder::{Encode, Encoder, EncoderV1};
     use crate::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
@@ -564,27 +581,27 @@ mod test {
             .unwrap();
 
         let messages = [
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep1(
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep1(
                 awareness.doc().transact().state_vector(),
             )),
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep2(
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep2(
                 awareness
                     .doc()
                     .transact()
                     .encode_state_as_update_v1(&StateVector::default()),
             )),
-            crate::sync::Message::Awareness(awareness.update().unwrap()),
-            crate::sync::Message::Auth(Some(
+            crate::protocol::Message::Awareness(awareness.update().unwrap()),
+            crate::protocol::Message::Auth(Some(
                 "reason
             }"
                 .to_string(),
             )),
-            crate::sync::Message::AwarenessQuery,
+            crate::protocol::Message::AwarenessQuery,
         ];
 
         for msg in messages {
             let encoded = msg.encode_v1();
-            let decoded = crate::sync::Message::decode_v1(&encoded)
+            let decoded = crate::protocol::Message::decode_v1(&encoded)
                 .expect(&format!("failed to decode {:?}", msg));
             assert_eq!(decoded, msg);
         }
@@ -593,7 +610,7 @@ mod test {
     #[test]
     fn protocol_init() {
         let awareness = Awareness::default();
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
         let mut encoder = EncoderV1::new();
         protocol.start(&awareness, &mut encoder).unwrap();
         let data = encoder.to_vec();
@@ -602,12 +619,14 @@ mod test {
 
         assert_eq!(
             reader.next().unwrap().unwrap(),
-            crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep1(StateVector::default()))
+            crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep1(
+                StateVector::default()
+            ))
         );
 
         assert_eq!(
             reader.next().unwrap().unwrap(),
-            crate::sync::Message::Awareness(awareness.update().unwrap())
+            crate::protocol::Message::Awareness(awareness.update().unwrap())
         );
 
         assert!(reader.next().is_none());
@@ -615,7 +634,7 @@ mod test {
 
     #[test]
     fn protocol_sync_steps() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -633,12 +652,14 @@ mod test {
 
         assert_eq!(
             result,
-            Some(crate::sync::Message::Sync(
-                crate::sync::SyncMessage::SyncStep2(expected)
+            Some(crate::protocol::Message::Sync(
+                crate::protocol::SyncMessage::SyncStep2(expected)
             ))
         );
 
-        if let Some(crate::sync::Message::Sync(crate::sync::SyncMessage::SyncStep2(u))) = result {
+        if let Some(crate::protocol::Message::Sync(crate::protocol::SyncMessage::SyncStep2(u))) =
+            result
+        {
             let result2 = protocol
                 .handle_sync_step2(&mut a2, Update::decode_v1(&u).unwrap())
                 .unwrap();
@@ -652,7 +673,7 @@ mod test {
 
     #[test]
     fn protocol_sync_step_update() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -676,7 +697,7 @@ mod test {
 
     #[test]
     fn protocol_awareness_sync() {
-        let protocol = crate::sync::DefaultProtocol;
+        let protocol = crate::protocol::DefaultProtocol;
 
         let mut a1 = Awareness::new(Doc::with_client_id(1));
         let mut a2 = Awareness::new(Doc::with_client_id(2));
@@ -686,10 +707,10 @@ mod test {
 
         assert_eq!(
             result,
-            Some(crate::sync::Message::Awareness(a1.update().unwrap()))
+            Some(crate::protocol::Message::Awareness(a1.update().unwrap()))
         );
 
-        if let Some(crate::sync::Message::Awareness(u)) = result {
+        if let Some(crate::protocol::Message::Awareness(u)) = result {
             let result = protocol.handle_awareness_update(&mut a2, u).unwrap();
             assert!(result.is_none());
         }

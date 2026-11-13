@@ -143,6 +143,7 @@ impl YXmlElement {
                 Ok(())
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
+                crate::check_range(c.len(txn), index, 0)?;
                 c.insert(txn, index, Js::new(xml_node));
                 Ok(())
             }),
@@ -179,6 +180,7 @@ impl YXmlElement {
                 Ok(())
             }
             SharedCollection::Integrated(c) => c.mutably(txn, |c, txn| {
+                crate::check_range(c.len(txn), index, length)?;
                 c.remove_range(txn, index, length);
                 Ok(())
             }),

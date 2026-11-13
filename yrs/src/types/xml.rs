@@ -1,3 +1,4 @@
+use crate::error::OutOfRange;
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
@@ -20,14 +21,18 @@ use crate::{
     ReadTxn, StickyIndex, Text, TextRef, ID,
 };
 
+/// Trait shared by preliminary types that can be used as XML nodes: [XmlElementPrelim], [XmlFragmentPrelim] and [XmlTextPrelim].
 pub trait XmlPrelim: Prelim {}
 
-/// Trait shared by preliminary types that can be used as XML nodes: [XmlElementPrelim],
-/// [XmlFragmentPrelim] and [XmlTextPrelim].
+/// A preliminary XML node: an [XmlElementPrelim], an [XmlFragmentPrelim] or a text, which become
+/// an [XmlOut] when integrated.
 #[derive(Debug, Clone, PartialEq)]
 pub enum XmlIn {
+    /// A preliminary XML text node.
     Text(XmlDeltaPrelim),
+    /// A preliminary XML element.
     Element(XmlElementPrelim),
+    /// A preliminary XML fragment.
     Fragment(XmlFragmentPrelim),
 }
 
@@ -87,12 +92,16 @@ impl Prelim for XmlIn {
 /// or [XmlTextRef] values.
 #[derive(Debug, Clone)]
 pub enum XmlOut {
+    /// An XML element.
     Element(XmlElementRef),
+    /// An XML fragment.
     Fragment(XmlFragmentRef),
+    /// An XML text node.
     Text(XmlTextRef),
 }
 
 impl XmlOut {
+    /// Returns a pointer to the collection that this node wraps.
     pub fn as_ptr(&self) -> BranchPtr {
         match self {
             XmlOut::Element(n) => n.0,
@@ -101,6 +110,7 @@ impl XmlOut {
         }
     }
 
+    /// Returns the identifier of the collection that this node wraps.
     pub fn id(&self) -> BranchID {
         self.as_ptr().id()
     }
@@ -396,12 +406,16 @@ impl AsPrelim for XmlElementRef {
 /// into Yrs document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct XmlElementPrelim {
+    /// The name of the XML tag.
     pub tag: Arc<str>,
+    /// The attributes of the element.
     pub attributes: HashMap<Arc<str>, String>,
+    /// The child nodes of the element.
     pub children: Vec<XmlIn>,
 }
 
 impl XmlElementPrelim {
+    /// Creates an element with the given `tag` name and `iter` of children.
     pub fn new<S, I>(tag: S, iter: I) -> Self
     where
         S: Into<Arc<str>>,
@@ -414,6 +428,7 @@ impl XmlElementPrelim {
         }
     }
 
+    /// Creates an element with the given `tag` name, that has no children.
     pub fn empty<S>(tag: S) -> Self
     where
         S: Into<Arc<str>>,
@@ -704,6 +719,7 @@ impl DerefMut for XmlTextPrelim {
 }
 
 impl XmlTextPrelim {
+    /// Creates a preliminary XML text with the given initial `str`.
     #[inline]
     pub fn new<S: Into<String>>(str: S) -> Self {
         XmlTextPrelim(str.into())
@@ -742,9 +758,12 @@ impl From<XmlTextPrelim> for In {
     }
 }
 
+/// A preliminary type that will be materialized into an [XmlTextRef] once it will be integrated into Yrs document. It is created from a text and optional attributes, or from a sequence of [Delta] changes.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct XmlDeltaPrelim {
+    /// The attributes of the XML text node.
     pub attributes: HashMap<Arc<str>, String>,
+    /// The content of the XML text node, as a sequence of changes.
     pub delta: Vec<Delta<In>>,
 }
 
@@ -804,6 +823,7 @@ impl XmlFragment for XmlFragmentRef {}
 impl IndexedSequence for XmlFragmentRef {}
 
 impl XmlFragmentRef {
+    /// Returns the XML node that contains this fragment, if it's nested in one.
     pub fn parent(&self) -> Option<XmlOut> {
         let item = self.0.item?;
         let parent = item.parent.as_branch()?;
@@ -913,6 +933,7 @@ impl DefaultPrelim for XmlFragmentRef {
 pub struct XmlFragmentPrelim(Vec<XmlIn>);
 
 impl XmlFragmentPrelim {
+    /// Creates a preliminary XML fragment with the given `iter` of children.
     pub fn new<I, T>(iter: I) -> Self
     where
         I: IntoIterator<Item = XmlIn>,
@@ -1000,7 +1021,9 @@ impl AsRef<MapRef> for XmlHookRef {
     }
 }
 
+/// Trait implemented by the XML node types: [XmlElementRef], [XmlFragmentRef] and [XmlTextRef].
 pub trait Xml: AsRef<Branch> {
+    /// Returns the XML node that contains this node, if there is one.
     fn parent(&self) -> Option<XmlOut> {
         let item = self.as_ref().item?;
         let parent = item.parent.as_branch()?;
@@ -1057,13 +1080,16 @@ pub trait Xml: AsRef<Branch> {
         Attributes(Entries::new(&self.as_ref().map, txn))
     }
 
+    /// Returns an iterator over the siblings that follow this node.
     fn siblings<'a, T: ReadTxn>(&self, txn: &'a T) -> Siblings<'a, T> {
         let ptr = BranchPtr::from(self.as_ref());
         Siblings::new(ptr.item, txn)
     }
 }
 
+/// Trait implemented by the XML node types that can have children: [XmlElementRef] and [XmlFragmentRef].
 pub trait XmlFragment: AsRef<Branch> {
+    /// Returns the first child of this node, if there is one.
     fn first_child(&self) -> Option<XmlOut> {
         let first = self.as_ref().first()?;
         match &first.content {
@@ -1097,9 +1123,31 @@ pub trait XmlFragment: AsRef<Branch> {
     where
         V: XmlPrelim,
     {
+        match self.try_insert(txn, index, xml_node) {
+            Ok(integrated) => integrated,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Inserts an XML node at the given `index`, like [XmlFragment::insert], but returns an error
+    /// instead of panicking when `index` is past the last child. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index` is greater than the number of children.
+    fn try_insert<V>(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        xml_node: V,
+    ) -> Result<V::Return, OutOfRange>
+    where
+        V: XmlPrelim,
+    {
+        OutOfRange::check(self.len(txn), index, 0)?;
         let ptr = self.as_ref().insert_at(txn, index, xml_node).unwrap(); // XML node is never empty
         if let Ok(integrated) = V::Return::try_from(ptr) {
-            integrated
+            Ok(integrated)
         } else {
             panic!("Defect: inserted XML element returned primitive value block")
         }
@@ -1127,17 +1175,36 @@ pub trait XmlFragment: AsRef<Branch> {
         self.remove_range(txn, index, 1)
     }
 
-    /// Removes a range of elements from current array, starting at given `index` up until
-    /// a particular number described by `len` has been deleted. This method panics in case when
-    /// not all expected elements were removed (due to insufficient number of elements in an array)
-    /// or `index` is outside the bounds of an array.
+    /// Removes `len` children, starting at given `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the last child. See [XmlFragment::try_remove_range].
     fn remove_range(&self, txn: &mut TransactionMut, index: u32, len: u32) {
+        if let Err(e) = self.try_remove_range(txn, index, len) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Removes `len` children starting at `index`, like [XmlFragment::remove_range], but returns
+    /// an error instead of panicking when the range runs past the last child. Nothing is removed
+    /// then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the number of children.
+    fn try_remove_range(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
         if walker.try_forward(txn, index) {
             walker.delete(txn, len)
-        } else {
-            panic!("Index {} is outside of the range of an array", index);
         }
+        Ok(())
     }
 
     /// Retrieves a value stored at a given `index`. Returns `None` when provided index was out
@@ -1206,6 +1273,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates an iterator over the attributes of the node stored in `branch`.
     pub fn new(branch: &'a Branch, txn: B) -> Self {
         let entries = Entries::new(&branch.map, txn);
         Attributes(entries)
@@ -1228,6 +1296,7 @@ where
     }
 }
 
+/// Iterator over the child nodes of an XML element or fragment.
 pub struct XmlNodes<'a, T> {
     iter: BlockIter,
     txn: &'a T,
@@ -1262,6 +1331,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates a tree walker that traverses the nodes nested in `root`.
     pub fn new(root: &'a Branch, txn: B) -> Self {
         TreeWalker {
             current: root.start.as_deref(),
@@ -1400,6 +1470,7 @@ impl XmlTextEvent {
     }
 }
 
+/// Iterator over the siblings that follow an XML node. Created by [Xml::siblings].
 pub struct Siblings<'a, T> {
     current: Option<ItemPtr>,
     _txn: &'a T,

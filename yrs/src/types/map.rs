@@ -149,6 +149,7 @@ impl DefaultPrelim for MapRef {
     }
 }
 
+/// Trait implemented by collaborative map types, such as [MapRef].
 pub trait Map: AsRef<Branch> + Sized {
     /// Returns a number of entries stored within current map.
     fn len<T: ReadTxn>(&self, _txn: &T) -> u32 {
@@ -180,6 +181,7 @@ pub trait Map: AsRef<Branch> + Sized {
         MapIter::new(self.as_ref(), txn)
     }
 
+    /// Consumes this map and returns an iterator over its entries, as key-value pairs.
     fn into_iter<'a, T: ReadTxn + 'a>(self, txn: &'a T) -> MapIntoIter<'a, T> {
         let branch_ptr = BranchPtr::from(self.as_ref());
         MapIntoIter::new(branch_ptr, txn)
@@ -396,6 +398,7 @@ pub trait Map: AsRef<Branch> + Sized {
     }
 }
 
+/// Iterator over the entries of a [Map], as key-value pairs.
 pub struct MapIter<'a, B, T>(Entries<'a, B, T>);
 
 impl<'a, B, T> MapIter<'a, B, T>
@@ -403,6 +406,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates an iterator over the entries of the map stored in `branch`.
     pub fn new(branch: &'a Branch, txn: B) -> Self {
         let entries = Entries::new(&branch.map, txn);
         MapIter(entries)
@@ -426,6 +430,7 @@ where
     }
 }
 
+/// Iterator over the entries of a [Map], as key-value pairs, that doesn't borrow the map. Created by [Map::into_iter].
 pub struct MapIntoIter<'a, T> {
     _txn: &'a T,
     entries: std::collections::hash_map::IntoIter<Arc<str>, ItemPtr>,
@@ -460,6 +465,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates an iterator over the keys of the map stored in `branch`.
     pub fn new(branch: &'a Branch, txn: B) -> Self {
         let entries = Entries::new(&branch.map, txn);
         Keys(entries)
@@ -488,6 +494,7 @@ where
     B: Borrow<T>,
     T: ReadTxn,
 {
+    /// Creates an iterator over the values of the map stored in `branch`.
     pub fn new(branch: &'a Branch, txn: B) -> Self {
         let entries = Entries::new(&branch.map, txn);
         Values(entries)

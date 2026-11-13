@@ -8,19 +8,28 @@ use std::convert::TryFrom;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
+/// The largest integer a JavaScript number holds exactly, `2^53 - 1` (`Number.MAX_SAFE_INTEGER`).
 pub const F64_MAX_SAFE_INTEGER: f64 = (i64::pow(2, 53) - 1) as f64;
+/// The smallest integer a JavaScript number holds exactly, `-(2^53 - 1)` (`Number.MIN_SAFE_INTEGER`).
 pub const F64_MIN_SAFE_INTEGER: f64 = -F64_MAX_SAFE_INTEGER;
 
 /// Any is an enum with a potentially associated value that is used to represent JSON values
 /// and supports efficient encoding of those values.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Any {
+    /// JavaScript `null`.
     Null,
+    /// JavaScript `undefined`.
     Undefined,
+    /// A boolean.
     Bool(bool),
+    /// A [Number]: an integer, a float or a big integer.
     Number(Number),
+    /// A string.
     String(Arc<str>),
+    /// A binary buffer.
     Buffer(Arc<[u8]>),
+    /// A JS array.
     Array(Arc<[Any]>),
     /// A JS object. Entries keep the order they were inserted (decoded) in, as JS object keys
     /// do, so a decoded map re-encodes to the same bytes.
@@ -40,6 +49,7 @@ impl Any {
     /// on an ordinary one.
     pub const MAX_DECODE_DEPTH: usize = 256;
 
+    /// Converts this value into `T`. Returns the value back as the error if it can't be converted.
     #[inline]
     pub fn cast<T>(self) -> Result<T, Self>
     where
@@ -50,6 +60,7 @@ impl Any {
         T::try_from(self)
     }
 
+    /// Reads a value from a `decoder`, in the lib0 "any" encoding. Fails if the data is malformed or nested deeper than [Any::MAX_DECODE_DEPTH].
     pub fn decode<R: Read>(decoder: &mut R) -> Result<Self, Error> {
         Self::decode_nested(decoder, 0)
     }
@@ -178,6 +189,7 @@ impl Any {
     //          (defined by the function that uses this library)
     // [31-127] the end of the data range is used for data encoding by
     //          lib0/encoding.js
+    /// Writes this value into an `encoder`, in the lib0 "any" encoding.
     pub fn encode<W: Write>(&self, encoder: &mut W) {
         match self {
             Any::Undefined => {
@@ -266,10 +278,12 @@ impl Any {
         }
     }
 
+    /// Parses a value from a JSON string.
     pub fn from_json(src: &str) -> Result<Self, Error> {
         Ok(serde_json::from_str(src)?)
     }
 
+    /// Appends this value, serialized as JSON, to `buf`.
     pub fn to_json(&self, buf: &mut String) {
         use serde::Serialize;
         use serde_json::Serializer;
@@ -290,6 +304,7 @@ impl Any {
         }
     }
 
+    /// Consumes this value and returns an iterator over the inner values of an array or a map. Returns `None` for any other value.
     pub fn try_into_iter(self) -> Option<AnyIntoIter> {
         match self {
             Any::Array(values) => Some(AnyIntoIter::from(values.clone())),
@@ -363,9 +378,13 @@ pub enum Number {
 }
 
 impl Number {
+    /// The largest integer that a JavaScript number holds exactly, `2^53 - 1`.
     pub const I64_MAX_SAFE_INTEGER: i64 = i64::pow(2, 53) - 1;
+    /// The smallest integer that a JavaScript number holds exactly, `-(2^53 - 1)`.
     pub const I64_MIN_SAFE_INTEGER: i64 = -Self::I64_MAX_SAFE_INTEGER;
+    /// [Number::I64_MAX_SAFE_INTEGER] as a float.
     pub const F64_MAX_SAFE_INTEGER: f64 = Self::I64_MAX_SAFE_INTEGER as f64;
+    /// [Number::I64_MIN_SAFE_INTEGER] as a float.
     pub const F64_MIN_SAFE_INTEGER: f64 = -Self::F64_MAX_SAFE_INTEGER;
 
     /// `value` as an [Number::Int] if it is a safe integer (but not `-0.0`), otherwise as a
@@ -382,6 +401,7 @@ impl Number {
         }
     }
 
+    /// Returns this number as an `i64`, or `None` if it's a float that isn't a whole number within the `i64` range.
     pub fn as_i64(self) -> Option<i64> {
         match self {
             Number::Int(value) | Number::BigInt(value) => Some(value),
@@ -400,6 +420,7 @@ impl Number {
         }
     }
 
+    /// Returns this number as an `f64`, or `None` if an integer can't be represented exactly as one.
     pub fn as_f64(self) -> Option<f64> {
         match self {
             Number::Int(value) | Number::BigInt(value) => exact_f64(value),
@@ -525,8 +546,11 @@ impl std::fmt::Display for Number {
     }
 }
 
+/// Iterator over the inner values of an [Any] array or map, created by [Any::try_iter]. Items are the entry's key (`None` for arrays) and its value.
 pub enum AnyIter<'a> {
+    /// Iterates over the elements of an array.
     Array(std::slice::Iter<'a, Any>),
+    /// Iterates over the entries of a map.
     Map(indexmap::map::Iter<'a, String, Any>),
 }
 
@@ -547,12 +571,14 @@ impl<'a> Iterator for AnyIter<'a> {
     }
 }
 
+/// Iterator over the elements of an [Any] array that owns a handle to it. Items are clones of the elements.
 pub struct AnyArrayIter {
     source: Arc<[Any]>,
     index: usize,
 }
 
 impl AnyArrayIter {
+    /// Creates an iterator over the elements of `source`.
     pub fn new(source: Arc<[Any]>) -> Self {
         Self { source, index: 0 }
     }
@@ -572,10 +598,13 @@ impl Iterator for AnyArrayIter {
     }
 }
 
+/// Iterator created by [Any::try_into_iter], over the inner values of an [Any] array or map.
 pub enum AnyIntoIter {
+    /// Iterates over the elements of an array.
     Array(AnyArrayIter),
     //TODO: we need to clone the map, because we need to consume its iterator
     // try to figure out something better
+    /// Iterates over the entries of a map.
     Map(indexmap::map::IntoIter<String, Any>),
 }
 

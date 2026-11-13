@@ -13,14 +13,23 @@ use crate::{
 /// affect the deep copy.
 #[derive(Debug, Clone, PartialEq)]
 pub enum In {
+    /// A value that is stored as it is.
     Any(Any),
+    /// A text, described as a sequence of changes.
     Text(DeltaPrelim),
+    /// An array.
     Array(ArrayPrelim),
+    /// A map.
     Map(MapPrelim),
+    /// An XML element.
     XmlElement(XmlElementPrelim),
+    /// An XML fragment.
     XmlFragment(XmlFragmentPrelim),
+    /// An XML text.
     XmlText(XmlDeltaPrelim),
+    /// A sub-document.
     Doc(Doc),
+    /// A weak link.
     #[cfg(feature = "weak")]
     WeakLink(crate::types::weak::WeakPrelim<BranchPtr>),
 }

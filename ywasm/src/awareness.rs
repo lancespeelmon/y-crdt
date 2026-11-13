@@ -4,10 +4,10 @@ use std::cell::UnsafeCell;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use yrs::block::ClientID;
-use yrs::sync::{Awareness as YAwareness, AwarenessUpdate, Timestamp};
+use yrs::protocol::{Awareness as YAwareness, AwarenessUpdate, Timestamp};
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
+use yrs::ClientID;
 
 use crate::doc::YDoc;
 use crate::js::{Callback, Js};
@@ -200,7 +200,7 @@ pub fn apply_update(
 
 pub struct JsClock;
 
-impl yrs::sync::time::Clock for JsClock {
+impl yrs::time::Clock for JsClock {
     fn now(&self) -> Timestamp {
         js_sys::Date::now() as u64
     }

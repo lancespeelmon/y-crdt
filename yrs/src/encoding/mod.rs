@@ -1,6 +1,10 @@
+/// Reading primitive values from binary data, and the errors this can fail with.
 pub mod read;
+/// Serialization of Rust types into [Any](crate::Any) values, and back.
 pub mod serde;
+/// Variable-length integer encoding.
 pub mod varint;
+/// Writing primitive values into binary data.
 pub mod write;
 
 #[cfg(test)]

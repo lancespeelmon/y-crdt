@@ -2,6 +2,7 @@ use crate::block::{EmbedPrelim, ItemContent, ItemPtr, Prelim, Unused};
 use crate::block_iter::BlockIter;
 use crate::encoding::read::Error;
 use crate::encoding::serde::from_any;
+use crate::error::OutOfRange;
 use crate::sticky_index::StickyIndex;
 use crate::transaction::TransactionMut;
 use crate::types::{
@@ -168,6 +169,7 @@ impl DefaultPrelim for ArrayRef {
     }
 }
 
+/// Trait implemented by collaborative array types, such as [ArrayRef].
 pub trait Array: AsRef<Branch> + Sized {
     /// Returns a number of elements stored in current array.
     fn len<T: ReadTxn>(&self, _txn: &T) -> u32 {
@@ -187,18 +189,38 @@ pub trait Array: AsRef<Branch> + Sized {
     where
         V: Prelim,
     {
+        match self.try_insert(txn, index, value) {
+            Ok(integrated) => integrated,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    /// Inserts a `value` at the given `index`, like [Array::insert], but returns an error instead
+    /// of panicking when `index` is past the end of the array. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index` is greater than the length of the array.
+    fn try_insert<V>(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        value: V,
+    ) -> Result<V::Return, OutOfRange>
+    where
+        V: Prelim,
+    {
+        OutOfRange::check(self.len(txn), index, 0)?;
         let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
-        if walker.try_forward(txn, index) {
-            let ptr = walker
-                .insert_contents(txn, value)
-                .expect("cannot insert empty value");
-            if let Ok(integrated) = ptr.try_into() {
-                integrated
-            } else {
-                panic!("Defect: unexpected integrated type")
-            }
+        let moved = walker.try_forward(txn, index);
+        debug_assert!(moved, "index was checked against the length");
+        let ptr = walker
+            .insert_contents(txn, value)
+            .expect("cannot insert empty value");
+        if let Ok(integrated) = ptr.try_into() {
+            Ok(integrated)
         } else {
-            panic!("Index {} is outside of the range of an array", index);
+            panic!("Defect: unexpected integrated type")
         }
     }
 
@@ -214,6 +236,9 @@ pub trait Array: AsRef<Branch> + Sized {
         T: IntoIterator<Item = V>,
         V: Into<Any>,
     {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         let prelim = RangePrelim::new(values);
         if !prelim.is_empty() {
             self.insert(txn, index, prelim);
@@ -246,17 +271,36 @@ pub trait Array: AsRef<Branch> + Sized {
         self.remove_range(txn, index, 1)
     }
 
-    /// Removes a range of elements from current array, starting at given `index` up until
-    /// a particular number described by `len` has been deleted. This method panics in case when
-    /// not all expected elements were removed (due to insufficient number of elements in an array)
-    /// or `index` is outside of the bounds of an array.
+    /// Removes `len` elements from current array, starting at given `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the end of the array. See [Array::try_remove_range].
     fn remove_range(&self, txn: &mut TransactionMut, index: u32, len: u32) {
+        if let Err(e) = self.try_remove_range(txn, index, len) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Removes `len` elements starting at `index`, like [Array::remove_range], but returns an
+    /// error instead of panicking when the range runs past the end of the array. Nothing is
+    /// removed then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the length of the array.
+    fn try_remove_range(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
         if walker.try_forward(txn, index) {
             walker.delete(txn, len)
-        } else {
-            panic!("Index {} is outside of the range of an array", index);
         }
+        Ok(())
     }
 
     /// Retrieves a value stored at a given `index`. Returns `None` when provided index was out
@@ -341,6 +385,7 @@ pub trait Array: AsRef<Branch> + Sized {
     }
 }
 
+/// Iterator over the values of an array.
 pub struct ArrayIter<B, T>
 where
     B: Borrow<T>,
@@ -355,6 +400,7 @@ impl<T> ArrayIter<T, T>
 where
     T: Borrow<T> + ReadTxn,
 {
+    /// Creates an iterator over the values of the given `array`, that takes the `txn`.
     pub fn from(array: &ArrayRef, txn: T) -> Self {
         ArrayIter {
             inner: BlockIter::new(array.0),
@@ -368,6 +414,7 @@ impl<'a, T> ArrayIter<&'a T, T>
 where
     T: Borrow<T> + ReadTxn,
 {
+    /// Creates an iterator over the values of the given `array`, that borrows the `txn`.
     pub fn from_ref(array: &Branch, txn: &'a T) -> Self {
         ArrayIter {
             inner: BlockIter::new(BranchPtr::from(array)),

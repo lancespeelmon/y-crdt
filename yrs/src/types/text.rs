@@ -1,5 +1,7 @@
 use crate::block::{Block, EmbedPrelim, Item, ItemContent, ItemPosition, ItemPtr, Prelim, Unused};
+use crate::error::OutOfRange;
 use crate::transaction::TransactionMut;
+use crate::types::offset::{OffsetError, TextOffset};
 use crate::types::{
     AsPrelim, Attrs, Branch, BranchPtr, DefaultPrelim, Delta, Out, Path, RootRef, SharedRef,
     TypePtr, TypeRef,
@@ -155,8 +157,10 @@ impl TryFrom<Out> for TextRef {
     }
 }
 
+/// Trait implemented by the collaborative text types: [TextRef] and [XmlTextRef].
 pub trait Text: AsRef<Branch> + Sized {
-    /// Returns a number of characters visible in a current text data structure.
+    /// The length of the text, in the document's [OffsetKind] units: UTF-16 code units by
+    /// default.
     fn len<T: ReadTxn>(&self, _txn: &T) -> u32 {
         self.as_ref().content_len
     }
@@ -166,11 +170,16 @@ pub trait Text: AsRef<Branch> + Sized {
     /// If `index` is equal to current data structure length, this `chunk` will be appended at
     /// the end of it.
     ///
-    /// This method will panic if provided `index` is greater than the length of a current text.
+    /// `index` counts in the document's [OffsetKind] units. [Text::try_insert_at] takes an index
+    /// in an explicit unit instead.
+    ///
+    /// # Panics
+    ///
+    /// If `index` is greater than the length of the text. See [Text::try_insert].
     ///
     /// # Examples
     ///
-    /// By default Document uses byte offset:
+    /// By default indexes count UTF-16 code units, like JavaScript strings and Yjs:
     ///
     /// ```
     /// use yrs::{Doc, Text, GetString, Transact};
@@ -178,40 +187,55 @@ pub trait Text: AsRef<Branch> + Sized {
     /// let doc = Doc::new();
     /// let ytext = doc.get_or_insert_text("text");
     /// let txn = &mut doc.transact_mut();
-    /// ytext.push(txn, "Hi ★ to you");
+    /// ytext.push(txn, "Hi 😀 to you");
     ///
-    /// // The same as `String::len()`
-    /// assert_eq!(ytext.len(txn), 13);
+    /// // The emoji is one character but two UTF-16 code units.
+    /// assert_eq!(ytext.len(txn), 12);
     ///
-    /// // To insert you have to count bytes and not chars.
-    /// ytext.insert(txn, 6, "!");
-    /// assert_eq!(ytext.get_string(txn), "Hi ★! to you");
+    /// ytext.insert(txn, 5, "!");
+    /// assert_eq!(ytext.get_string(txn), "Hi 😀! to you");
     /// ```
     ///
-    /// You can override how Yrs calculates the index with [OffsetKind]:
+    /// [OffsetKind::Bytes] counts UTF-8 bytes instead, like Rust's `str` indexes:
     ///
     /// ```
     /// use yrs::{Doc, Options, Text, GetString, Transact, OffsetKind};
     ///
     /// let doc = Doc::with_options(Options {
-    ///     offset_kind: OffsetKind::Utf16,
+    ///     offset_kind: OffsetKind::Bytes,
     ///     ..Default::default()
     /// });
     /// let ytext = doc.get_or_insert_text("text");
     /// let txn = &mut doc.transact_mut();
-    /// ytext.push(txn, "Hi ★ to you");
+    /// ytext.push(txn, "Hi 😀 to you");
     ///
-    /// // The same as `String::chars()::count()`
-    /// assert_eq!(ytext.len(txn), 11);
+    /// // The same as `str::len()`
+    /// assert_eq!(ytext.len(txn), 14);
     ///
-    /// // To insert you have to count chars.
-    /// ytext.insert(txn, 4, "!");
-    /// assert_eq!(ytext.get_string(txn), "Hi ★! to you");
+    /// ytext.insert(txn, 7, "!");
+    /// assert_eq!(ytext.get_string(txn), "Hi 😀! to you");
     /// ```
-    ///
     fn insert(&self, txn: &mut TransactionMut, index: u32, chunk: &str) {
+        if let Err(e) = self.try_insert(txn, index, chunk) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Inserts a `chunk` of text at a given `index`, like [Text::insert], but returns an error
+    /// instead of panicking when `index` is past the end of the text. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index` is greater than the length of the text.
+    fn try_insert(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        chunk: &str,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, 0)?;
         if chunk.is_empty() {
-            return;
+            return Ok(());
         }
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
@@ -225,11 +249,11 @@ pub trait Text: AsRef<Branch> + Sized {
                 }
             }
             txn.create_item(&pos, value, None);
-        } else {
-            panic!("The type or the position doesn't exist!");
         }
+        Ok(())
     }
 
+    /// Applies a sequence of [Delta] changes to this text, in order, starting from its beginning.
     fn apply_delta<D, P>(&self, txn: &mut TransactionMut, delta: D)
     where
         D: IntoIterator<Item = Delta<P>>,
@@ -279,6 +303,9 @@ pub trait Text: AsRef<Branch> + Sized {
         chunk: &str,
         attributes: Attrs,
     ) {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         if chunk.is_empty() {
             return;
         }
@@ -302,6 +329,9 @@ pub trait Text: AsRef<Branch> + Sized {
     where
         V: Into<EmbedPrelim<V>> + Prelim,
     {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         let this = BranchPtr::from(self.as_ref());
         if let Some(pos) = find_position(this, txn, index) {
             let ptr = txn
@@ -335,6 +365,9 @@ pub trait Text: AsRef<Branch> + Sized {
     where
         V: Into<EmbedPrelim<V>> + Prelim,
     {
+        if let Err(e) = OutOfRange::check(self.len(txn), index, 0) {
+            panic!("{}", e)
+        }
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             let item = insert(this, txn, &mut pos, embed.into(), attributes)
@@ -355,27 +388,155 @@ pub trait Text: AsRef<Branch> + Sized {
         self.insert(txn, idx, chunk)
     }
 
-    /// Removes up to a `len` characters from a current text structure, starting at given `index`.
-    /// This method panics in case when not all expected characters were removed (due to
-    /// insufficient number of characters to remove) or `index` is outside of the bounds of text.
+    /// Converts a position in an explicit unit into an index in the document's [OffsetKind]
+    /// units, the ones [Text::insert] and the other index-based methods take.
+    ///
+    /// ```
+    /// use yrs::{CharOffset, Doc, Text, Transact, Utf8Offset};
+    ///
+    /// let doc = Doc::new(); // counts UTF-16 code units
+    /// let text = doc.get_or_insert_text("text");
+    /// let mut txn = doc.transact_mut();
+    /// text.push(&mut txn, "😀 hi");
+    /// assert_eq!(text.offset(&txn, CharOffset(2)), Ok(3));
+    /// assert_eq!(text.offset(&txn, Utf8Offset(5)), Ok(3));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [OffsetError::OutOfRange] if `at` is past the end of the text, and
+    /// [OffsetError::InsideCharacter] if it falls inside a character.
+    fn offset<T: ReadTxn, O: Into<TextOffset>>(&self, txn: &T, at: O) -> Result<u32, OffsetError> {
+        crate::types::offset::to_kind(self.as_ref(), txn.store().offset_kind, at.into())
+    }
+
+    /// Inserts a `chunk` at a position in an explicit unit. See [Text::offset] and
+    /// [Text::try_insert].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [Text::offset]. Nothing changes then.
+    fn try_insert_at<O: Into<TextOffset>>(
+        &self,
+        txn: &mut TransactionMut,
+        at: O,
+        chunk: &str,
+    ) -> Result<(), OffsetError> {
+        let index = self.offset(txn, at)?;
+        self.try_insert(txn, index, chunk)?;
+        Ok(())
+    }
+
+    /// Removes the text between two positions in an explicit unit. See [Text::offset] and
+    /// [Text::try_remove_range].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [Text::offset], or [OffsetError::Reversed] if `end` is before `start`.
+    /// Nothing is removed then.
+    fn try_remove_range_at<O: Into<TextOffset>>(
+        &self,
+        txn: &mut TransactionMut,
+        start: O,
+        end: O,
+    ) -> Result<(), OffsetError> {
+        let (index, len) = crate::types::offset::to_kind_range(
+            self.as_ref(),
+            txn.store().offset_kind,
+            start.into(),
+            end.into(),
+        )?;
+        self.try_remove_range(txn, index, len)?;
+        Ok(())
+    }
+
+    /// Formats the text between two positions in an explicit unit. See [Text::offset] and
+    /// [Text::try_format].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [Text::offset], or [OffsetError::Reversed] if `end` is before `start`.
+    /// Nothing changes then.
+    fn try_format_at<O: Into<TextOffset>>(
+        &self,
+        txn: &mut TransactionMut,
+        start: O,
+        end: O,
+        attributes: Attrs,
+    ) -> Result<(), OffsetError> {
+        let (index, len) = crate::types::offset::to_kind_range(
+            self.as_ref(),
+            txn.store().offset_kind,
+            start.into(),
+            end.into(),
+        )?;
+        self.try_format(txn, index, len, attributes)?;
+        Ok(())
+    }
+
+    /// Removes `len` characters from a current text structure, starting at given `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the end of the text. See [Text::try_remove_range].
     fn remove_range(&self, txn: &mut TransactionMut, index: u32, len: u32) {
+        if let Err(e) = self.try_remove_range(txn, index, len) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Removes `len` characters starting at `index`, like [Text::remove_range], but returns an
+    /// error instead of panicking when the range runs past the end of the text. Nothing is
+    /// removed then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the length of the text.
+    fn try_remove_range(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             remove(txn, &mut pos, len)
-        } else {
-            panic!("The type or the position doesn't exist!");
         }
+        Ok(())
     }
 
     /// Wraps an existing piece of text within a range described by `index`-`len` parameters with
     /// formatting blocks containing provided `attributes` metadata.
+    ///
+    /// # Panics
+    ///
+    /// If `index..index + len` runs past the end of the text. See [Text::try_format].
     fn format(&self, txn: &mut TransactionMut, index: u32, len: u32, attributes: Attrs) {
+        if let Err(e) = self.try_format(txn, index, len, attributes) {
+            panic!("{}", e)
+        }
+    }
+
+    /// Formats `len` characters starting at `index`, like [Text::format], but returns an error
+    /// instead of panicking when the range runs past the end of the text. Nothing changes then.
+    ///
+    /// # Errors
+    ///
+    /// [OutOfRange] if `index + len` is greater than the length of the text.
+    fn try_format(
+        &self,
+        txn: &mut TransactionMut,
+        index: u32,
+        len: u32,
+        attributes: Attrs,
+    ) -> Result<(), OutOfRange> {
+        OutOfRange::check(self.len(txn), index, len)?;
         let this = BranchPtr::from(self.as_ref());
         if let Some(mut pos) = find_position(this, txn, index) {
             insert_format(this, txn, &mut pos, len, attributes)
-        } else {
-            panic!("Index {} is outside of the range.", index);
         }
+        Ok(())
     }
 
     /// Returns an ordered sequence of formatted chunks, current [Text] corresponds of. These chunks
@@ -1112,10 +1273,12 @@ pub struct Diff<T> {
 }
 
 impl<T> Diff<T> {
+    /// Creates a chunk of data with the given formatting `attributes`, and with no custom data attached.
     pub fn new(insert: Out, attributes: Option<Box<Attrs>>) -> Self {
         Self::with_change(insert, attributes, None)
     }
 
+    /// Creates a chunk of data with the given formatting `attributes`, with custom data `ychange` attached.
     pub fn with_change(insert: Out, attributes: Option<Box<Attrs>>, ychange: Option<T>) -> Self {
         Diff {
             insert,
@@ -1132,6 +1295,7 @@ impl<T> From<Diff<T>> for Delta {
     }
 }
 
+/// A [Prelim] that creates a text from a sequence of [Delta] changes.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeltaPrelim(Vec<Delta<In>>);
@@ -1185,26 +1349,34 @@ impl<T> std::fmt::Display for Diff<T> {
     }
 }
 
+/// Describes how a chunk of text differs between two snapshots: it's been added or removed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct YChange {
+    /// Whether the chunk has been added or removed.
     pub kind: ChangeKind,
+    /// The ID of the first item of the chunk.
     pub id: ID,
 }
 
 impl YChange {
+    /// Creates a description of a change of the given `kind` made by the item with the given `id`.
     pub fn new(kind: ChangeKind, id: ID) -> Self {
         YChange { kind, id }
     }
 
+    /// Returns the given `change` as it is. Can be used as the function that computes custom data of a [Diff].
     #[inline]
     pub fn identity(change: YChange) -> YChange {
         change
     }
 }
 
+/// The kind of a [YChange].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeKind {
+    /// The chunk has been added.
     Added,
+    /// The chunk has been removed.
     Removed,
 }
 
@@ -1448,6 +1620,7 @@ impl TextEvent {
 pub struct TextPrelim(String);
 
 impl TextPrelim {
+    /// Creates a preliminary text with the given initial `value`.
     #[inline]
     pub fn new<S: Into<String>>(value: S) -> Self {
         TextPrelim(value.into())
@@ -2421,7 +2594,10 @@ mod test {
 
     #[test]
     fn text_remove_4_byte_range() {
-        let d1 = Doc::new();
+        let d1 = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = d1.get_or_insert_text("test");
 
         txt.insert(&mut d1.transact_mut(), 0, "😭😊");
@@ -2439,7 +2615,10 @@ mod test {
 
     #[test]
     fn text_remove_3_byte_range() {
-        let d1 = Doc::new();
+        let d1 = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = d1.get_or_insert_text("test");
 
         txt.insert(&mut d1.transact_mut(), 0, "⏰⏳");
@@ -2456,7 +2635,10 @@ mod test {
     }
     #[test]
     fn delete_4_byte_character_from_middle() {
-        let doc = Doc::new();
+        let doc = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = doc.get_or_insert_text("test");
         let mut txn = doc.transact_mut();
 
@@ -2470,7 +2652,10 @@ mod test {
 
     #[test]
     fn delete_3_byte_character_from_middle_1() {
-        let doc = Doc::new();
+        let doc = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = doc.get_or_insert_text("test");
         let mut txn = doc.transact_mut();
 
@@ -2484,7 +2669,10 @@ mod test {
 
     #[test]
     fn delete_3_byte_character_from_middle_2() {
-        let doc = Doc::new();
+        let doc = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = doc.get_or_insert_text("test");
         let mut txn = doc.transact_mut();
 
@@ -2503,7 +2691,10 @@ mod test {
 
     #[test]
     fn delete_3_byte_character_from_middle_after_insert_and_format() {
-        let doc = Doc::new();
+        let doc = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::default()
+        });
         let txt = doc.get_or_insert_text("test");
         let mut txn = doc.transact_mut();
 
@@ -2524,7 +2715,10 @@ mod test {
 
     #[test]
     fn delete_multi_byte_character_from_middle_after_insert_and_format() {
-        let doc = Doc::with_client_id(1);
+        let doc = Doc::with_options(Options {
+            offset_kind: OffsetKind::Bytes,
+            ..Options::with_client_id(ClientID::new(1))
+        });
         let txt = doc.get_or_insert_text("test");
         let mut txn = doc.transact_mut();
 

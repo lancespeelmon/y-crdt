@@ -220,10 +220,12 @@ impl<'a> DoubleEndedIterator for RangesIter<'a> {
 impl<'a> ExactSizeIterator for RangesIter<'a> {}
 
 impl IdSet {
+    /// Creates an empty set.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates a set from the clock ranges of each client.
     pub fn from_iter<I1, I2>(iter: I1) -> Self
     where
         I1: IntoIterator<Item = (ClientID, I2)>,
@@ -242,10 +244,12 @@ impl IdSet {
         self.0.len()
     }
 
+    /// Returns the IDs of the clients that this set has ranges for.
     pub fn client_ids<'a>(&'a self) -> impl Iterator<Item = ClientID> + 'a {
         self.0.clients().keys().copied()
     }
 
+    /// Returns an iterator over the clients in this set and their clock ranges.
     pub fn iter(&self) -> Iter<'_> {
         Iter(self.0.clients().iter())
     }
@@ -254,6 +258,7 @@ impl IdSet {
         self.0.iter_blocks(blocks)
     }
 
+    /// Returns the clock ranges of the given client, to be modified. Creates an empty entry if the client has none.
     pub fn range_mut(&mut self, client_id: ClientID) -> &mut IdRange {
         self.0.entry(client_id).or_default()
     }
@@ -268,6 +273,7 @@ impl IdSet {
         self.0.is_empty()
     }
 
+    /// Adds `len` clock values, starting at the clock of the given `id`, to the set.
     pub fn insert(&mut self, id: ID, len: u32) {
         self.0
             .entry(id.client)
@@ -336,6 +342,7 @@ impl IdSet {
         }
     }
 
+    /// Returns the clock ranges that this set holds for the given client.
     pub fn get(&self, client_id: &ClientID) -> Option<&IdRange> {
         self.0.get(client_id)
     }

@@ -25,8 +25,7 @@ use std::sync::Arc;
 use wasm_bindgen::__rt::RcRefMut;
 use wasm_bindgen::convert::{FromWasmAbi, IntoWasmAbi};
 use wasm_bindgen::{JsCast, JsValue};
-use yrs::block::{EmbedPrelim, ItemContent, Prelim, Unused};
-use yrs::branch::{Branch, BranchPtr};
+use yrs::internals::{Branch, BranchPtr};
 use yrs::types::xml::XmlPrelim;
 use yrs::types::{
     TypeRef, TYPE_REFS_ARRAY, TYPE_REFS_DOC, TYPE_REFS_MAP, TYPE_REFS_TEXT, TYPE_REFS_WEAK,
@@ -36,6 +35,7 @@ use yrs::{
     Any, ArrayRef, BranchID, Doc, Map, MapRef, Number, Origin, Out, Text, TextRef, TransactionMut,
     WeakRef, Xml, XmlElementRef, XmlFragment, XmlFragmentRef, XmlOut, XmlTextRef,
 };
+use yrs::{EmbedPrelim, ItemContent, Prelim, Unused};
 
 #[repr(transparent)]
 pub struct Js(JsValue);

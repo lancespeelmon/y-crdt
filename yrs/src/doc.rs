@@ -100,6 +100,7 @@ macro_rules! define_doc_observer {
             Ok(())
         }
 
+        #[doc = concat!("Removes a callback that was subscribed under the given `key` via [`", stringify!($observe), "`](Self::", stringify!($observe), "). Returns `true` if there was one.")]
         pub fn $unobserve<K>(&self, key: K) -> Result<bool, TransactionAcqError>
         where
             K: Into<Origin>,
@@ -354,6 +355,7 @@ impl Doc {
     );
 
     define_doc_observer!(
+        /// Subscribe a callback that is called at the end of a transaction's commit, after the type-level observers have run and before garbage collection. The callback can modify the transaction.
         observe_after_transaction,
         unobserve_after_transaction,
         after_transaction_events,
@@ -451,11 +453,13 @@ impl Doc {
         txn.parent_doc()
     }
 
+    /// If this document has been inserted as a sub-document, returns the [BranchID] of its place in the parent document.
     pub fn branch_id(&self) -> Option<BranchID> {
         let txn = self.transact();
         txn.branch_id()
     }
 
+    /// Checks if `a` and `b` are handles to the same document.
     pub fn ptr_eq(a: &Doc, b: &Doc) -> bool {
         Arc::ptr_eq(&a.store.0, &b.store.0)
     }
@@ -522,9 +526,11 @@ pub struct Options {
     ///
     /// Default value: `None`.
     pub collection_id: Option<Arc<str>>,
-    /// How to we count offsets and lengths used in text operations.
+    /// How offsets and lengths in text operations are counted.
     ///
-    /// Default value: [OffsetKind::Bytes].
+    /// Default value: [OffsetKind::Utf16], as in Yjs, so indexes mean the same on every peer.
+    /// [crate::Text::try_insert_at] and the other `_at` methods take an offset in an explicit
+    /// unit whatever this is.
     pub offset_kind: OffsetKind,
     /// Determines if transactions commits should try to perform GC-ing of deleted items.
     ///
@@ -609,12 +615,13 @@ impl PartialEq for GcFilter {
 }
 
 impl Options {
+    /// Creates options with the given `client_id`, a random GUID and default settings.
     pub fn with_client_id(client_id: ClientID) -> Self {
         Options {
             client_id,
             guid: uuid_v4(),
             collection_id: None,
-            offset_kind: OffsetKind::Bytes,
+            offset_kind: OffsetKind::Utf16,
             skip_gc: false,
             auto_load: false,
             should_load: true,
@@ -626,12 +633,13 @@ impl Options {
         }
     }
 
+    /// Creates options with the given `guid` and `client_id` and default settings.
     pub fn with_guid_and_client_id(guid: Uuid, client_id: ClientID) -> Self {
         Options {
             client_id,
             guid,
             collection_id: None,
-            offset_kind: OffsetKind::Bytes,
+            offset_kind: OffsetKind::Utf16,
             skip_gc: false,
             auto_load: false,
             should_load: true,
@@ -1199,7 +1207,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "small-client")]
     fn pending_update_integration() {
         let doc = Doc::new();
         let txt = doc.get_or_insert_text("source");

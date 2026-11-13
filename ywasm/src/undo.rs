@@ -6,7 +6,7 @@ use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use yrs::branch::BranchPtr;
+use yrs::internals::BranchPtr;
 use yrs::undo::{EventKind, UndoManager};
 use yrs::{Doc, Transact};
 

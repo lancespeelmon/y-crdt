@@ -2,6 +2,7 @@ use super::{JsonPath, JsonPathToken, ParseError};
 use std::str::FromStr;
 
 impl<'a> JsonPath<'a> {
+    /// Parses a JSON path from a string.
     pub fn parse(path: &'a str) -> Result<Self, ParseError> {
         let mut tokens = Vec::new();
         let mut i = 0;
