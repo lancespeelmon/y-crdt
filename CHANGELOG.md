@@ -206,6 +206,9 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- yffi: a transaction keeps its document alive, so destroying the document while a transaction
+  on it is open no longer frees the store under it (a use-after-free); the document is freed when
+  the transaction is committed.
 - Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
   the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type

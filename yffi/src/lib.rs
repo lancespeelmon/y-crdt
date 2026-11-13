@@ -147,8 +147,14 @@ pub struct TreeWalker(NativeTreeWalker<'static, &'static Transaction, Transactio
 /// Transaction is one of the core types in Yrs. All operations that need to touch or
 /// modify a document's contents (a.k.a. block store), need to be executed in scope of a
 /// transaction.
-#[repr(transparent)]
-pub struct Transaction(TransactionInner);
+///
+/// It keeps its document alive: destroying the document while a transaction on it is open
+/// frees the document only once the transaction is committed.
+pub struct Transaction(
+    TransactionInner,
+    // Dropped after the transaction (fields drop in order), which borrows this document's store.
+    #[allow(dead_code)] Doc,
+);
 
 /// Iterator structure used by json path queries to traverse over the results of a query.
 #[repr(C)]
@@ -164,16 +170,18 @@ enum TransactionInner {
 }
 
 impl Transaction {
-    fn read_only(txn: yrs::Transaction) -> Self {
-        Transaction(TransactionInner::ReadOnly(unsafe {
-            std::mem::transmute(txn)
-        }))
+    fn read_only(txn: yrs::Transaction, doc: &Doc) -> Self {
+        Transaction(
+            TransactionInner::ReadOnly(unsafe { std::mem::transmute(txn) }),
+            doc.clone(),
+        )
     }
 
-    fn read_write(txn: yrs::TransactionMut) -> Self {
-        Transaction(TransactionInner::ReadWrite(unsafe {
-            std::mem::transmute(txn)
-        }))
+    fn read_write(txn: yrs::TransactionMut, doc: &Doc) -> Self {
+        Transaction(
+            TransactionInner::ReadWrite(unsafe { std::mem::transmute(txn) }),
+            doc.clone(),
+        )
     }
 
     fn is_writeable(&self) -> bool {
@@ -742,7 +750,7 @@ pub unsafe extern "C" fn ydoc_read_transaction(doc: *mut Doc) -> *mut Transactio
 
     let doc = doc.as_mut().unwrap();
     if let Ok(txn) = doc.try_transact() {
-        Box::into_raw(Box::new(Transaction::read_only(txn)))
+        Box::into_raw(Box::new(Transaction::read_only(txn, doc)))
     } else {
         null_mut()
     }
@@ -770,14 +778,14 @@ pub unsafe extern "C" fn ydoc_write_transaction(
     let doc = doc.as_mut().unwrap();
     if origin_len == 0 {
         if let Ok(txn) = doc.try_transact_mut() {
-            Box::into_raw(Box::new(Transaction::read_write(txn)))
+            Box::into_raw(Box::new(Transaction::read_write(txn, doc)))
         } else {
             null_mut()
         }
     } else {
         let origin = std::slice::from_raw_parts(origin as *const u8, origin_len as usize);
         if let Ok(txn) = doc.try_transact_mut_with(origin) {
-            Box::into_raw(Box::new(Transaction::read_write(txn)))
+            Box::into_raw(Box::new(Transaction::read_write(txn, doc)))
         } else {
             null_mut()
         }

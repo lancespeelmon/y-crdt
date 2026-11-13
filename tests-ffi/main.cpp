@@ -2798,3 +2798,18 @@ TEST_CASE("try functions for inserts and formats refuse bad indexes and attribut
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("a transaction keeps its document alive until it's committed") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+    ytext_insert(txt, txn, 0, "still here", NULL);
+    ytransaction_commit(txn);
+
+    txn = ydoc_read_transaction(doc);
+    ydoc_destroy(doc); // the transaction still holds the document
+    char *str = ytext_string(txt, txn);
+    REQUIRE(!strcmp(str, "still here"));
+    ystring_destroy(str);
+    ytransaction_commit(txn); // and now it's freed
+}
