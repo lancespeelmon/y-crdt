@@ -79,6 +79,54 @@ impl BlockIter {
         }
     }
 
+    /// Moves a fresh iterator to `index` for an edit, like [Self::try_forward] from the start,
+    /// but starting from the branch's search marker when it's valid. Leaves a new marker at the
+    /// last countable, live item before `index`: the edit about to happen goes after it, so the
+    /// caller restamps the marker once the edit is done (see `Branch::restamp_search_marker`).
+    pub fn seek(&mut self, txn: &TransactionMut, index: u32) -> bool {
+        debug_assert!(self.index == 0 && self.next_item == self.branch.start);
+        let moved = match self.branch.find_search_marker(txn.store(), index) {
+            Some((item, at)) => {
+                // A walk from the start reaches `item` in exactly this state.
+                self.next_item = Some(item);
+                self.index = at;
+                self.reached_end = false;
+                self.try_forward(txn, index - at)
+            }
+            None => self.try_forward(txn, index),
+        };
+        if moved {
+            self.leave_search_marker(txn);
+        }
+        moved
+    }
+
+    fn leave_search_marker(&self, txn: &TransactionMut) {
+        let encoding = txn.store().offset_kind;
+        let mut branch = self.branch;
+        let (mut item, end) = if self.reached_end {
+            (self.next_item, self.index)
+        } else if self.rel > 0 {
+            // `index` falls inside the next item, which starts `rel` before it.
+            let next = self.next_item.unwrap();
+            branch.set_search_marker(Some((next, self.index - self.rel)));
+            return;
+        } else {
+            (self.next_item.and_then(|i| i.left), self.index)
+        };
+        // The nearest countable, live item before the position ends at `end`: whatever is in
+        // between counts for nothing.
+        while let Some(i) = item {
+            if i.is_countable() && !i.is_deleted() {
+                let start = end.checked_sub(i.content_len(encoding));
+                branch.set_search_marker(start.map(|start| (i, start)));
+                return;
+            }
+            item = i.left;
+        }
+        branch.set_search_marker(None);
+    }
+
     pub fn try_forward<T: ReadTxn>(&mut self, txn: &T, mut len: u32) -> bool {
         if len == 0 && self.next_item.is_none() {
             return true;

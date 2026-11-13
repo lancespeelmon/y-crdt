@@ -11,6 +11,8 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Array inserts and removals, and removing XML children, find their index from the search
+  marker too: inserting at random positions in an array (B1.11) takes 20 ms instead of 34 ms.
 - Text edits find their index from a search marker, as in Yjs: the position of the last local
   edit, kept while nothing else changes the text before it. Edits near the previous one no longer
   walk the text from its start. Applying the B4 editing trace takes 161 ms instead of 2.25 s,
@@ -135,6 +137,11 @@ repository and its release notes.
     and block lists);
   - `Doc::compact` encodes a document and reloads it into a new one with the same options,
     dropping the spare capacity edits leave behind.
+- yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
+  `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
+  `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return
+  `Y_ERR_INVALID` (see `ylast_error`) instead of aborting on an index past the end, attributes
+  that aren't a map, or text that isn't UTF-8, and change nothing then.
 - `UpdateAccumulator`: merges updates as they arrive and keeps the result decoded, for servers
   that store a document as its update history. It decodes each update once instead of decoding
   the whole history on every merge, and gives the same bytes as `merge_updates_v1` over all of
@@ -193,6 +200,10 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- ywasm throws instead of panicking when asked to insert a value it can't: a shared type
+  that's already in a document (directly or inside a preliminary array, map or XML node), or
+  a value with no CRDT representation. The check runs before anything changes, so the
+  document stays usable; a panic used to leave it locked.
 - `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
   decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
   2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a

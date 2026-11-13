@@ -2746,3 +2746,51 @@ TEST_CASE("yxmltext_try_remove_range refuses a range past the end") {
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("try functions for inserts and formats refuse bad indexes and attributes") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *txt = ytext(doc, "text");
+    Branch *arr = yarray(doc, "array");
+    Branch *frag = yxmlfragment(doc, "xml");
+    YTransaction *txn = ydoc_write_transaction(doc, 0, NULL);
+
+    char *b = (char *)"bold";
+    char *keys[] = {b};
+    YInput yes = yinput_bool(Y_TRUE);
+    YInput bold = yinput_json_map(keys, &yes, 1);
+    YInput not_a_map = yinput_long(1);
+    YInput one = yinput_long(1);
+
+    REQUIRE_EQ(ytext_try_insert(txt, txn, 0, "hello"), Y_OK);
+    REQUIRE_EQ(ytext_try_format(txt, txn, 3, 5, &bold), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_format(txt, txn, 0, 2, &not_a_map), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_format(txt, txn, 0, 2, &bold), Y_OK);
+    REQUIRE_EQ(ytext_try_insert_embed(txt, txn, 9, &one, NULL), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_insert_embed(txt, txn, 5, &one, &not_a_map), Y_ERR_INVALID);
+    REQUIRE_EQ(ytext_try_insert_embed(txt, txn, 5, &one, NULL), Y_OK);
+    REQUIRE_EQ(ytext_len(txt, txn), 6);
+
+    REQUIRE_EQ(yarray_try_insert_range(arr, txn, 1, &one, 1), Y_ERR_INVALID);
+    REQUIRE_EQ(yarray_try_insert_range(arr, txn, 0, &one, 1), Y_OK);
+    REQUIRE_EQ(yarray_len(arr), 1);
+
+    Branch *elem = NULL;
+    REQUIRE_EQ(yxmlelem_try_insert_elem(frag, txn, 1, "p", &elem), Y_ERR_INVALID);
+    REQUIRE(elem == NULL);
+    REQUIRE_EQ(yxmlelem_try_insert_elem(frag, txn, 0, "p", &elem), Y_OK);
+    REQUIRE(elem != NULL);
+    Branch *xtxt = NULL;
+    REQUIRE_EQ(yxmlelem_try_insert_text(frag, txn, 3, &xtxt), Y_ERR_INVALID);
+    REQUIRE_EQ(yxmlelem_try_insert_text(frag, txn, 1, &xtxt), Y_OK);
+    REQUIRE(xtxt != NULL);
+
+    REQUIRE_EQ(yxmltext_try_insert(xtxt, txn, 1, "x", NULL), Y_ERR_INVALID);
+    REQUIRE_EQ(yxmltext_try_insert(xtxt, txn, 0, "abc", &not_a_map), Y_ERR_INVALID);
+    REQUIRE_EQ(yxmltext_try_insert(xtxt, txn, 0, "abc", &bold), Y_OK);
+    REQUIRE_EQ(yxmltext_try_format(xtxt, txn, 2, 5, &bold), Y_ERR_INVALID);
+    REQUIRE_EQ(yxmltext_try_format(xtxt, txn, 0, 1, &bold), Y_OK);
+    REQUIRE_EQ(yxmltext_len(xtxt, txn), 3);
+
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}

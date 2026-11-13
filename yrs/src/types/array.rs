@@ -211,12 +211,15 @@ pub trait Array: AsRef<Branch> + Sized {
         V: Prelim,
     {
         OutOfRange::check(self.len(txn), index, 0)?;
-        let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
-        let moved = walker.try_forward(txn, index);
+        let mut branch = BranchPtr::from(self.as_ref());
+        let mut walker = BlockIter::new(branch);
+        let moved = walker.seek(txn, index);
         debug_assert!(moved, "index was checked against the length");
         let ptr = walker
             .insert_contents(txn, value)
             .expect("cannot insert empty value");
+        // The insert went after the marker `seek` left.
+        branch.restamp_search_marker();
         if let Ok(integrated) = ptr.try_into() {
             Ok(integrated)
         } else {
@@ -296,9 +299,12 @@ pub trait Array: AsRef<Branch> + Sized {
         len: u32,
     ) -> Result<(), OutOfRange> {
         OutOfRange::check(self.len(txn), index, len)?;
-        let mut walker = BlockIter::new(BranchPtr::from(self.as_ref()));
-        if walker.try_forward(txn, index) {
-            walker.delete(txn, len)
+        let mut branch = BranchPtr::from(self.as_ref());
+        let mut walker = BlockIter::new(branch);
+        if walker.seek(txn, index) {
+            walker.delete(txn, len);
+            // Everything removed was after the marker `seek` left.
+            branch.restamp_search_marker();
         }
         Ok(())
     }
@@ -600,6 +606,81 @@ impl ArrayEvent {
     fn changes(&self, txn: &TransactionMut) -> &ChangeSet<Change> {
         let change_set = unsafe { self.change_set.get().as_mut().unwrap() };
         change_set.get_or_insert_with(|| Box::new(event_change_set(txn, self.target.0.start)))
+    }
+}
+
+#[cfg(test)]
+mod search_marker_test {
+    use crate::branch::SEARCH_MARKERS_OFF;
+    use crate::test_utils::exchange_updates;
+    use crate::{Array, Doc, MapPrelim, ReadTxn, StateVector, Transact};
+
+    struct Rng(u64);
+    impl Rng {
+        fn below(&mut self, n: u32) -> u32 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            if n == 0 {
+                0
+            } else {
+                (self.0 % n as u64) as u32
+            }
+        }
+    }
+
+    /// One random two-peer workload; returns both peers' encoded states.
+    fn workload(seed: u64) -> Vec<Vec<u8>> {
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let docs = [Doc::with_client_id(1), Doc::with_client_id(2)];
+        let arrays: Vec<_> = docs.iter().map(|d| d.get_or_insert_array("a")).collect();
+        for _ in 0..150 {
+            let p = rng.below(2) as usize;
+            if rng.below(10) == 0 {
+                exchange_updates(&[&docs[0], &docs[1]]);
+                continue;
+            }
+            let mut txn = docs[p].transact_mut();
+            for _ in 0..=rng.below(3) {
+                let len = arrays[p].len(&txn);
+                let at = rng.below(len + 1);
+                match rng.below(6) {
+                    0 | 1 => {
+                        arrays[p].insert(&mut txn, at, at as f64);
+                    }
+                    2 => {
+                        let n = 1 + rng.below(4);
+                        arrays[p].insert_range(&mut txn, at, (0..n).map(|v| v as f64));
+                    }
+                    3 => {
+                        arrays[p].insert(&mut txn, at, MapPrelim::default());
+                    }
+                    _ if len > at => {
+                        let n = 1 + rng.below((len - at).min(4));
+                        arrays[p].remove_range(&mut txn, at, n);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        exchange_updates(&[&docs[0], &docs[1]]);
+        docs.iter()
+            .map(|d| {
+                d.transact()
+                    .encode_state_as_update_v1(&StateVector::default())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn array_edits_found_from_a_search_marker_make_the_same_document_as_from_the_start() {
+        for seed in 0..60 {
+            SEARCH_MARKERS_OFF.with(|off| off.set(true));
+            let expected = workload(seed);
+            SEARCH_MARKERS_OFF.with(|off| off.set(false));
+            let actual = workload(seed);
+            assert!(actual == expected, "seed {seed}");
+        }
     }
 }
 

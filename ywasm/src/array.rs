@@ -122,6 +122,7 @@ impl YArray {
         items: Vec<JsValue>,
         txn: ImplicitTransaction,
     ) -> Result<()> {
+        items.iter().try_for_each(crate::js::validate)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.reserve(items.len());
@@ -141,6 +142,7 @@ impl YArray {
     /// Appends a range of `items` at the end of this `YArray` instance.
     #[wasm_bindgen(js_name = push)]
     pub fn push(&mut self, items: Vec<JsValue>, txn: ImplicitTransaction) -> Result<()> {
+        items.iter().try_for_each(crate::js::validate)?;
         match &mut self.0 {
             SharedCollection::Prelim(c) => {
                 c.extend_from_slice(&items);
