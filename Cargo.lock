@@ -1247,10 +1247,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "ybindings-core"
+version = "0.28.1"
+dependencies = [
+ "yrs",
+]
+
+[[package]]
 name = "yffi"
 version = "0.28.1"
 dependencies = [
  "serde_json",
+ "ybindings-core",
  "yrs",
 ]
 
@@ -1290,6 +1298,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
+ "ybindings-core",
  "yrs",
 ]
 

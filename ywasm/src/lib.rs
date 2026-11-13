@@ -6,6 +6,7 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
+use ybindings_core::Encoding;
 use yrs::updates::decoder::{Decode, DecoderV1};
 use yrs::updates::encoder::{Encode, Encoder};
 use yrs::{Assoc, ReadTxn, StateVector, StickyIndex, Transact, TransactionMut, Update};
@@ -131,33 +132,7 @@ pub fn debug_update_v2(update: js_sys::Uint8Array) -> Result<String> {
 /// constructing document's state snapshot.
 #[wasm_bindgen(js_name = applyUpdatesV1)]
 pub fn apply_updates_v1(gc: bool, updates: Vec<Uint8Array>) -> Result<Uint8Array> {
-    let len = updates.len();
-    let mut decoded: Vec<Update> = Vec::with_capacity(len);
-    for bytes in updates {
-        let update =
-            Update::decode_v1(&bytes.to_vec()).map_err(|e| JsValue::from(e.to_string()))?;
-        decoded.push(update);
-    }
-
-    let opts = yrs::Options {
-        skip_gc: !gc,
-        ..Default::default()
-    };
-    let doc = yrs::Doc::with_options(opts);
-    {
-        let mut txn = doc.transact_mut();
-        for update in decoded {
-            if let Err(e) = txn.apply_update(update) {
-                return Err(JsValue::from(e.to_string()));
-            }
-        }
-    }
-
-    let bytes = doc
-        .transact()
-        .encode_state_as_update_v1(&StateVector::default());
-
-    Ok(Uint8Array::from(bytes.as_slice()))
+    apply_updates(Encoding::V1, gc, updates)
 }
 
 /// Similar to `mergeUpdatesV2` but instead of just merging the updates, it creates a temporary
@@ -165,32 +140,13 @@ pub fn apply_updates_v1(gc: bool, updates: Vec<Uint8Array>) -> Result<Uint8Array
 /// constructing document's state snapshot.
 #[wasm_bindgen(js_name = applyUpdatesV2)]
 pub fn apply_updates_v2(gc: bool, updates: Vec<Uint8Array>) -> Result<Uint8Array> {
-    let len = updates.len();
-    let mut decoded: Vec<Update> = Vec::with_capacity(len);
-    for bytes in updates {
-        let update =
-            Update::decode_v2(&bytes.to_vec()).map_err(|e| JsValue::from(e.to_string()))?;
-        decoded.push(update);
-    }
+    apply_updates(Encoding::V2, gc, updates)
+}
 
-    let opts = yrs::Options {
-        skip_gc: !gc,
-        ..Default::default()
-    };
-    let doc = yrs::Doc::with_options(opts);
-    {
-        let mut txn = doc.transact_mut();
-        for update in decoded {
-            if let Err(e) = txn.apply_update(update) {
-                return Err(JsValue::from(e.to_string()));
-            }
-        }
-    }
-
-    let bytes = doc
-        .transact()
-        .encode_state_as_update_v2(&StateVector::default());
-
+fn apply_updates(encoding: Encoding, gc: bool, updates: Vec<Uint8Array>) -> Result<Uint8Array> {
+    let updates: Vec<Vec<u8>> = updates.iter().map(Uint8Array::to_vec).collect();
+    let bytes = ybindings_core::apply_updates(encoding, gc, &updates)
+        .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(Uint8Array::from(bytes.as_slice()))
 }
 
@@ -201,33 +157,25 @@ pub fn apply_updates_v2(gc: bool, updates: Vec<Uint8Array>) -> Result<Uint8Array
 /// Returns an error whenever any of the input updates couldn't be decoded.
 #[wasm_bindgen(js_name = mergeUpdatesV1)]
 pub fn merge_updates_v1(updates: js_sys::Array) -> Result<js_sys::Uint8Array> {
-    // Handle empty array case
-    if updates.length() == 0 {
-        return Ok(js_sys::Uint8Array::new_with_length(0));
-    }
+    merge_updates(Encoding::V1, updates)
+}
 
-    let mut merged_updates = Vec::new();
-
-    // Decode each update from the JavaScript array
-    for update_js in updates.iter() {
-        let update_bytes = js_sys::Uint8Array::from(update_js).to_vec();
-        match Update::decode_v1(&update_bytes) {
-            Ok(update) => merged_updates.push(update),
-            Err(e) => return Err(JsValue::from(e.to_string())),
-        }
-    }
-
-    // Merge all updates and encode as v1
-    let merged = Update::merge_updates(merged_updates);
-    let encoded = merged.encode_v1();
-    Ok(js_sys::Uint8Array::from(encoded.as_slice()))
+/// Merging no updates gives an encoded empty update, as in Yjs.
+fn merge_updates(encoding: Encoding, updates: js_sys::Array) -> Result<js_sys::Uint8Array> {
+    let updates: Vec<Vec<u8>> = updates
+        .iter()
+        .map(|u| js_sys::Uint8Array::from(u).to_vec())
+        .collect();
+    let merged = ybindings_core::merge_updates(encoding, &updates)
+        .map_err(|e| JsValue::from(e.to_string()))?;
+    Ok(js_sys::Uint8Array::from(merged.as_slice()))
 }
 
 /// Encodes the state vector an update (lib0 v1) would bring a document to, like Yjs'
 /// `encodeStateVectorFromUpdate`.
 #[wasm_bindgen(js_name = encodeStateVectorFromUpdateV1)]
 pub fn encode_state_vector_from_update_v1(update: &[u8]) -> Result<js_sys::Uint8Array> {
-    let sv = yrs::encode_state_vector_from_update_v1(update)
+    let sv = ybindings_core::state_vector_from_update(Encoding::V1, update)
         .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(js_sys::Uint8Array::from(sv.as_slice()))
 }
@@ -235,7 +183,7 @@ pub fn encode_state_vector_from_update_v1(update: &[u8]) -> Result<js_sys::Uint8
 /// Like `encodeStateVectorFromUpdateV1`, for an update encoded with lib0 v2.
 #[wasm_bindgen(js_name = encodeStateVectorFromUpdateV2)]
 pub fn encode_state_vector_from_update_v2(update: &[u8]) -> Result<js_sys::Uint8Array> {
-    let sv = yrs::encode_state_vector_from_update_v2(update)
+    let sv = ybindings_core::state_vector_from_update(Encoding::V2, update)
         .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(js_sys::Uint8Array::from(sv.as_slice()))
 }
@@ -244,16 +192,16 @@ pub fn encode_state_vector_from_update_v2(update: &[u8]) -> Result<js_sys::Uint8
 /// missing, like Yjs' `diffUpdate`.
 #[wasm_bindgen(js_name = diffUpdateV1)]
 pub fn diff_update_v1(update: &[u8], state_vector: &[u8]) -> Result<js_sys::Uint8Array> {
-    let diff =
-        yrs::diff_updates_v1(update, state_vector).map_err(|e| JsValue::from(e.to_string()))?;
+    let diff = ybindings_core::diff_update(Encoding::V1, update, state_vector)
+        .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(js_sys::Uint8Array::from(diff.as_slice()))
 }
 
 /// Like `diffUpdateV1`, with the update and the state vector both encoded with lib0 v2.
 #[wasm_bindgen(js_name = diffUpdateV2)]
 pub fn diff_update_v2(update: &[u8], state_vector: &[u8]) -> Result<js_sys::Uint8Array> {
-    let diff =
-        yrs::diff_updates_v2(update, state_vector).map_err(|e| JsValue::from(e.to_string()))?;
+    let diff = ybindings_core::diff_update(Encoding::V2, update, state_vector)
+        .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(js_sys::Uint8Array::from(diff.as_slice()))
 }
 
@@ -264,26 +212,7 @@ pub fn diff_update_v2(update: &[u8], state_vector: &[u8]) -> Result<js_sys::Uint
 /// Returns an error whenever any of the input updates couldn't be decoded.
 #[wasm_bindgen(js_name = mergeUpdatesV2)]
 pub fn merge_updates_v2(updates: js_sys::Array) -> Result<js_sys::Uint8Array> {
-    // Handle empty array case
-    if updates.length() == 0 {
-        return Ok(js_sys::Uint8Array::new_with_length(0));
-    }
-
-    let mut merged_updates = Vec::new();
-
-    // Decode each update from the JavaScript array
-    for update_js in updates.iter() {
-        let update_bytes = js_sys::Uint8Array::from(update_js).to_vec();
-        match Update::decode_v2(&update_bytes) {
-            Ok(update) => merged_updates.push(update),
-            Err(e) => return Err(JsValue::from(e.to_string())),
-        }
-    }
-
-    // Merge all updates and encode as v2
-    let merged = Update::merge_updates(merged_updates);
-    let encoded = merged.encode_v2();
-    Ok(js_sys::Uint8Array::from(encoded.as_slice()))
+    merge_updates(Encoding::V2, updates)
 }
 
 /// Encodes all updates that have happened since a given version `vector` into a compact delta

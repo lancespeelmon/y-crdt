@@ -137,6 +137,12 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `ybindings-core`, a crate with the rules yffi and ywasm share (7.7): the update utilities
+  (`merge_updates`, `diff_update`, `state_vector_from_update`, `apply_updates`) behind one
+  `Encoding` enum, `UndoSettings` for building undo options from a binding's settings, and the
+  preliminary-value depth limit.
+- `yrs::undo::Options::with_clock`, the default options with a given clock. On wasm, where
+  `Default` isn't available, this is how to build them.
 - Binding parity (plan item 7.6):
   - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
     `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
@@ -216,6 +222,14 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- ywasm's `mergeUpdatesV1([])`/`mergeUpdatesV2([])` return an encoded empty update, as Yjs does,
+  instead of zero bytes, which don't decode.
+- yffi: input that contains itself (an array input whose values point back at it) fails once it
+  nests more than 512 levels, instead of recursing until the stack overflows. The status
+  functions report it as `Y_ERR_PANIC`.
+- yffi: `yarray_try_insert_range` and `ytext_try_insert_embed` caught nothing: they called the
+  `extern "C"` function, which can't unwind, so a panic aborted the process. They now report it
+  as `Y_ERR_PANIC`.
 - yffi: an iterator (array, map, XML attributes, XML tree walker, weak link, JSON path) whose
   transaction has been committed returns NULL from its `*_next` function, with the reason in
   `ylast_error`, instead of reading through the freed transaction. It can still be destroyed.

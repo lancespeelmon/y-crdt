@@ -3,7 +3,8 @@
 members = [
   "yrs",
   "ywasm",
-  "yffi"
+  "yffi",
+  "ybindings-core"
 ]
 
 

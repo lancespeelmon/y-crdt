@@ -420,6 +420,23 @@ export const testMergeUpdatesV1 = tc => {
 /**
  * @param {t.TestCase} tc
  */
+export const testMergeNoUpdates = tc => {
+    // As in Yjs: an encoded empty update, which applies cleanly.
+    for (const [merge, apply] of [[Y.mergeUpdatesV1, Y.applyUpdate], [Y.mergeUpdatesV2, Y.applyUpdateV2]]) {
+        const merged = merge([])
+        t.assert(merged.length > 0)
+        if (merge === Y.mergeUpdatesV1) {
+            t.compare(Array.from(merged), [0, 0]) // what Yjs returns
+        }
+        const doc = new Y.YDoc()
+        apply(doc, merged)
+        t.compare(doc.getText('text').toString(), '')
+    }
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
 export const testMergeUpdatesV2 = tc => {
     // Create three separate documents with different changes
     const d1 = new Y.YDoc({clientID: 1})
@@ -459,9 +476,9 @@ export const testMergeUpdatesV2 = tc => {
     t.compare(textMerged.toString(), textSequential.toString())
     t.compare(textMerged.toString(), 'merged')
 
-    // Test merging empty array
+    // Merging nothing gives an encoded empty update, as in Yjs (see testMergeNoUpdates)
     const emptyMerge = Y.mergeUpdatesV2([])
-    t.assert(emptyMerge.length === 0, 'merging empty array should return empty update')
+    t.assert(emptyMerge.length > 0, 'merging an empty array should return an empty update')
 }
 
 /**

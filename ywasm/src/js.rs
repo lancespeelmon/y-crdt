@@ -402,12 +402,8 @@ pub fn validate(value: &JsValue) -> Result<()> {
     validate_nested(value, 0)
 }
 
-/// How deep preliminary collections may nest. A collection that contains itself would
-/// otherwise be followed forever.
-const MAX_PRELIM_DEPTH: usize = 512;
-
 fn validate_nested(value: &JsValue, depth: usize) -> Result<()> {
-    if depth > MAX_PRELIM_DEPTH {
+    if ybindings_core::check_depth(depth).is_err() {
         return Err(JsValue::from_str(errors::PRELIM_TOO_DEEP));
     }
     match Js::new(value.clone()).as_value()? {

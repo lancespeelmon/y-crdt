@@ -39,22 +39,12 @@ impl YUndoManager {
 impl YUndoManager {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Result<YUndoManager> {
-        let mut o = yrs::undo::Options {
-            capture_timeout_millis: 500,
-            tracked_origins: HashSet::new(),
-            capture_transaction: None,
-            timestamp: Arc::new(crate::awareness::JsClock),
-            init_undo_stack: Vec::new(),
-            init_redo_stack: Vec::new(),
-            delete_filter: None,
-            ignore_remote_map_changes: false,
-            track_null_origin: None,
-            max_stack_len: None,
-        };
+        let mut settings = ybindings_core::UndoSettings::default();
         if options.is_object() {
             if let Ok(js) = Reflect::get(&options, &JsValue::from_str("captureTimeout")) {
                 if let Some(millis) = js.as_f64() {
-                    o.capture_timeout_millis = millis as u64;
+                    // A negative timeout behaves as 0: nothing is merged.
+                    settings.capture_timeout_millis = Some(millis.max(0.0) as u64);
                 }
             }
             if let Ok(js) = Reflect::get(&options, &JsValue::from_str("trackedOrigins")) {
@@ -62,21 +52,22 @@ impl YUndoManager {
                     // As in Yjs, `null` in the list tracks changes made without an origin, and
                     // a list without it doesn't.
                     let mut track_null = false;
-                    let array = js_sys::Array::from(&js);
-                    for js in array.iter() {
+                    let mut origins = Vec::new();
+                    for js in js_sys::Array::from(&js).iter() {
                         if js.is_null() || js.is_undefined() {
                             track_null = true;
                         } else {
-                            o.tracked_origins.insert(Js::from(js).into());
+                            origins.push(Js::from(js).into());
                         }
                     }
-                    o.track_null_origin = Some(track_null);
+                    settings.tracked_origins = Some((origins, track_null));
                 }
             }
             if let Ok(js) = Reflect::get(&options, &JsValue::from_str("ignoreRemoteMapChanges")) {
-                o.ignore_remote_map_changes = js.is_truthy();
+                settings.ignore_remote_map_changes = js.is_truthy();
             }
         }
+        let o = settings.into_options(Arc::new(crate::awareness::JsClock));
         Ok(YUndoManager(UndoManager::with_options(o)))
     }
 

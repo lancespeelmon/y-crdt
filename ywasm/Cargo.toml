@@ -19,6 +19,7 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 yrs = { path = "../yrs", version = "0.28.1", default-features = false, features = ["weak", "protocol"] }
+ybindings-core = { path = "../ybindings-core" }
 wasm-bindgen = { version = "0.2" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde-wasm-bindgen = "0.6"
