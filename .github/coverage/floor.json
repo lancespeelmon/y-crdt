@@ -1,9 +1,9 @@
 {
-  "encoding": 83.76,
-  "update": 88.43,
-  "block": 79.22,
-  "store": 86.03,
-  "transaction": 82.65,
-  "sync": 80.34,
-  "total": 84.85
+  "encoding": 83.78,
+  "update": 89.34,
+  "block": 79.23,
+  "store": 86.96,
+  "transaction": 83.04,
+  "protocol": 88.07,
+  "total": 85.72
 }
