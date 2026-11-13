@@ -510,3 +510,39 @@ export const testRootOfAnotherTypeThrows = tc => {
     t.fails(() => doc.getArray('shared'))
     doc.getMap('shared')
 }
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testDiffUpdateAndStateVectorFromUpdate = tc => {
+    const d1 = new Y.YDoc({clientID: 1})
+    const text = d1.getText('text')
+    text.insert(0, 'hello')
+    const first = Y.encodeStateAsUpdate(d1)
+    text.insert(5, ' world')
+    const full = Y.encodeStateAsUpdate(d1)
+
+    // what a peer holding only the first update has, and what it still misses
+    const sv = Y.encodeStateVectorFromUpdateV1(first)
+    const rest = Y.diffUpdateV1(full, sv)
+    const peer = new Y.YDoc({clientID: 2})
+    const peerText = peer.getText('text')
+    Y.applyUpdate(peer, first)
+    Y.applyUpdate(peer, rest)
+    t.compare(peerText.toString(), 'hello world')
+    t.compare(Y.encodeStateVectorFromUpdateV1(full), Y.encodeStateVector(d1))
+
+    // v2 likewise: a third peer with the first update gets the rest from a v2 diff
+    const fullV2 = Y.encodeStateAsUpdateV2(d1)
+    const holder = new Y.YDoc({clientID: 9})
+    Y.applyUpdate(holder, first)
+    const firstV2 = Y.encodeStateAsUpdateV2(holder)
+    const svV2 = Y.encodeStateVectorFromUpdateV2(firstV2)
+    const third = new Y.YDoc({clientID: 3})
+    const thirdText = third.getText('text')
+    Y.applyUpdateV2(third, firstV2)
+    Y.applyUpdateV2(third, Y.diffUpdateV2(fullV2, svV2))
+    t.compare(thirdText.toString(), 'hello world')
+
+    t.fails(() => Y.diffUpdateV1(new Uint8Array([255, 255, 255]), sv))
+}

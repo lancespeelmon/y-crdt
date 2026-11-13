@@ -315,6 +315,12 @@ typedef struct StickyIndex StickyIndex;
 
 #define YCHANGE_REMOVE -1
 
+/**
+ * A flag for [yundo_manager_with_flags]: when undoing re-adds a map entry that a remote peer
+ * has overwritten since, keep the remote value (Yjs' `ignoreRemoteMapChanges`).
+ */
+#define Y_UNDO_IGNORE_REMOTE_MAP_CHANGES 1
+
 #define Y_KIND_UNDO 0
 
 #define Y_KIND_REDO 1
@@ -2719,6 +2725,13 @@ void yevent_keys_destroy(struct YEventKeyChange *keys, uint32_t len);
 YUndoManager *yundo_manager(const struct YUndoManagerOptions *options);
 
 /**
+ * Like [yundo_manager], with options given as values instead of a struct, so that new ones can
+ * be added without changing a struct's layout: `capture_timeout_millis` (negative for the
+ * default) and `flags`, a combination of `Y_UNDO_*` flags.
+ */
+YUndoManager *yundo_manager_with_flags(int32_t capture_timeout_millis, uint8_t flags);
+
+/**
  * Deallocated undo manager instance created via `yundo_manager`.
  */
 void yundo_manager_destroy(YUndoManager *mgr);
@@ -3109,5 +3122,62 @@ int32_t yxmltext_try_format(const Branch *txt,
                             uint32_t index,
                             uint32_t len,
                             const struct YInput *attrs);
+
+/**
+ * Merges `count` updates encoded with lib0 v1 into one, like Yjs' `mergeUpdates`. Returns
+ * [Y_ERR_INVALID] if one of them doesn't decode.
+ */
+int32_t ymerge_updates_v1(const char *const *updates,
+                          const uint32_t *lens,
+                          uint32_t count,
+                          char **out,
+                          uint32_t *out_len);
+
+/**
+ * Like [ymerge_updates_v1], for updates encoded with lib0 v2.
+ */
+int32_t ymerge_updates_v2(const char *const *updates,
+                          const uint32_t *lens,
+                          uint32_t count,
+                          char **out,
+                          uint32_t *out_len);
+
+/**
+ * Encodes the state vector an update (lib0 v1) would bring a document to, like Yjs'
+ * `encodeStateVectorFromUpdate`: it says what a peer holding only that update has.
+ */
+int32_t yencode_state_vector_from_update_v1(const char *update,
+                                            uint32_t update_len,
+                                            char **out,
+                                            uint32_t *out_len);
+
+/**
+ * Like [yencode_state_vector_from_update_v1], for an update encoded with lib0 v2.
+ */
+int32_t yencode_state_vector_from_update_v2(const char *update,
+                                            uint32_t update_len,
+                                            char **out,
+                                            uint32_t *out_len);
+
+/**
+ * The part of an update (lib0 v1) that a peer with state vector `sv` (lib0 v1) is missing,
+ * like Yjs' `diffUpdate`.
+ */
+int32_t ydiff_updates_v1(const char *update,
+                         uint32_t update_len,
+                         const char *sv,
+                         uint32_t sv_len,
+                         char **out,
+                         uint32_t *out_len);
+
+/**
+ * Like [ydiff_updates_v1], with the update and the state vector both encoded with lib0 v2.
+ */
+int32_t ydiff_updates_v2(const char *update,
+                         uint32_t update_len,
+                         const char *sv,
+                         uint32_t sv_len,
+                         char **out,
+                         uint32_t *out_len);
 
 #endif

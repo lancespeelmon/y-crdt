@@ -137,6 +137,12 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Binding parity (plan item 7.6):
+  - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
+    `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
+    `yundo_manager_with_flags` takes `Y_UNDO_IGNORE_REMOTE_MAP_CHANGES`.
+  - ywasm: `diffUpdateV1`/`V2` and `encodeStateVectorFromUpdateV1`/`V2`, next to the existing
+    `mergeUpdatesV1`/`V2`.
 - Server lifecycle (plan item 6.8):
   - `ReadTxn::write_state_as_update_v1` writes the v1 state to an `std::io::Write` in 64 KiB
     chunks, with the same bytes as `encode_state_as_update_v1`;
