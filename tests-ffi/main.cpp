@@ -2746,3 +2746,7 @@ TEST_CASE("yxmltext_try_remove_range refuses a range past the end") {
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("the library's ABI version matches the header's") {
+    REQUIRE_EQ(yffi_abi_version(), Y_ABI_VERSION);
+}

@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
+  instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
+  pointers to them, which is all the API allows, is unaffected.
 - Text edits find their index from a search marker, as in Yjs: the position of the last local
   edit, kept while nothing else changes the text before it. Edits near the previous one no longer
   walk the text from its start. Applying the B4 editing trace takes 161 ms instead of 2.25 s,
@@ -128,6 +131,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
+  can check at startup that it loaded the library its header describes. CI checks that the
+  header compiles as strict C99.
 - `UpdateAccumulator`: merges updates as they arrive and keeps the result decoded, for servers
   that store a document as its update history. It decodes each update once instead of decoding
   the whole history on every merge, and gives the same bytes as `merge_updates_v1` over all of
