@@ -201,7 +201,6 @@ pub trait Map: AsRef<Branch> + Sized {
                 parent: BranchPtr::from(inner).into(),
                 left: left.cloned(),
                 right: None,
-                index: 0,
                 current_attrs: None,
             }
         };

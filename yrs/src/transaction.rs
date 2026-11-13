@@ -866,6 +866,7 @@ impl<'doc> TransactionMut<'doc> {
                 if let TypePtr::Branch(mut parent) = item.parent {
                     parent.block_len -= item.len();
                     parent.content_len -= item.content_len(store.offset_kind);
+                    parent.bump_seq_version();
                 }
             }
 
@@ -1743,3 +1744,56 @@ impl_origin!(i32);
 impl_origin!(i64);
 impl_origin!(i128);
 impl_origin!(isize);
+
+#[cfg(test)]
+mod test {
+    use crate::block::{ItemContent, Prelim};
+    use crate::branch::{Branch, BranchPtr};
+    use crate::types::{DeepObservable, TypeRef};
+    use crate::{Doc, Map, MapPrelim, MapRef, Transact, TransactionMut};
+    use std::sync::{Arc, Mutex};
+
+    /// A nested type of a kind that has no event (an XML hook from Yjs, here).
+    struct Hook;
+
+    impl Prelim for Hook {
+        type Return = MapRef;
+
+        fn into_content(self, _txn: &mut TransactionMut) -> (ItemContent, Option<Self>) {
+            let branch = Branch::new(TypeRef::XmlHook("hook".into()));
+            (ItemContent::Type(branch), None)
+        }
+
+        fn integrate(self, _txn: &mut TransactionMut, _inner_ref: BranchPtr) {}
+    }
+
+    #[test]
+    fn a_changed_type_without_events_leaves_deep_observers_the_other_events() {
+        let doc = Doc::new();
+        let root = doc.get_or_insert_map("root");
+        let (hook, nested) = {
+            let mut txn = doc.transact_mut();
+            let hook: MapRef = root.insert(&mut txn, "hook", Hook);
+            let nested: MapRef = root.insert(&mut txn, "nested", MapPrelim::default());
+            (hook, nested)
+        };
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let s = seen.clone();
+        root.observe_deep("deep", move |_, events: &crate::types::Events| {
+            let paths = events.iter().map(|e| e.path()).collect::<Vec<_>>();
+            s.lock().unwrap().push(paths);
+        });
+
+        // The hook is changed and observed (deeply, through `root`) but has no event to build;
+        // the nested map's event must still reach the observer, once and with its own path.
+        {
+            let mut txn = doc.transact_mut();
+            hook.insert(&mut txn, "a", 1);
+            nested.insert(&mut txn, "b", 2);
+        }
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert_eq!(seen[0].len(), 1, "{seen:?}");
+        assert_eq!(format!("{:?}", seen[0][0]), r#"[Key("nested")]"#);
+    }
+}
