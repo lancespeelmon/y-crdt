@@ -141,6 +141,9 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
+  subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
+  so a host can release what `state` points to (plan item 7.4).
 - Binding parity (plan item 7.6):
   - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
     `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
