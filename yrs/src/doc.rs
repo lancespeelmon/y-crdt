@@ -1412,6 +1412,31 @@ mod test {
     }
 
     #[test]
+    fn snapshot_with_a_client_at_clock_zero_encodes_without_it() {
+        let mut options = Options::with_client_id(ClientID::new(1));
+        options.skip_gc = true;
+        let doc = Doc::with_options(options);
+        let txt = doc.get_or_insert_text("text");
+        txt.insert(&mut doc.transact_mut(), 0, "hello");
+
+        // a snapshot listing client 1 at clock 0 (as one decoded from another peer may)
+        let snapshot = Snapshot::new(
+            StateVector::from_iter([(ClientID::new(1), 0)]),
+            IdSet::default(),
+        );
+        let mut encoder = EncoderV1::new();
+        doc.transact()
+            .encode_state_from_snapshot(&snapshot, &mut encoder)
+            .unwrap();
+        let update = Update::decode_v1(&encoder.to_vec()).unwrap();
+
+        let remote = Doc::with_client_id(2);
+        let remote_txt = remote.get_or_insert_text("text");
+        remote.transact_mut().apply_update(update).unwrap();
+        assert_eq!(remote_txt.get_string(&remote.transact()), "");
+    }
+
+    #[test]
     fn snapshot_non_splitting_text() {
         let mut options = Options::default();
         options.skip_gc = true;

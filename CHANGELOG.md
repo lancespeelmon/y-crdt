@@ -56,6 +56,8 @@ repository and its release notes.
 - V2 encoding wrote binary content (`Uint8Array` values from Yjs) with a second length prefix,
   so any v2 re-encode, merge or diff of such a document produced bytes that neither Yjs nor yrs
   could decode.
+- `encode_state_from_snapshot` panicked when the snapshot listed a client at clock 0. Such
+  clients are now skipped, as in Yjs.
 - Deleting and garbage-collecting deeply nested shared types no longer recurses, so it cannot
   overflow the stack.
 - Decoding reserves memory in proportion to the remaining input rather than to lengths read
