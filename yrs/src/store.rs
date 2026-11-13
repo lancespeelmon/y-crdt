@@ -30,6 +30,7 @@ pub struct Store {
     pub(crate) client_id: ClientID,
     pub(crate) offset_kind: OffsetKind,
     pub(crate) skip_gc: bool,
+    pub(crate) gc_filter: Option<crate::doc::GcFilter>,
     pub(crate) cleanup_formatting: bool,
 
     /// Root types (a.k.a. top-level types). These types are defined by users at the document level,
@@ -70,6 +71,7 @@ impl Store {
             client_id: options.client_id,
             offset_kind: options.offset_kind,
             skip_gc: options.skip_gc,
+            gc_filter: options.gc_filter.clone(),
             cleanup_formatting: options.cleanup_formatting,
             types: HashMap::default(),
             blocks: BlockStore::default(),

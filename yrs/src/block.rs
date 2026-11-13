@@ -1,5 +1,5 @@
 use crate::block_store::BlockStore;
-use crate::branch::{Branch, BranchPtr};
+use crate::branch::{Branch, BranchID, BranchPtr};
 use crate::doc::{DocAddr, OffsetKind};
 use crate::encoding::read::Error;
 use crate::gc::GCCollector;
@@ -1536,6 +1536,28 @@ impl Item {
     /// erased from memory, but just marked as deleted.
     pub fn is_deleted(&self) -> bool {
         self.info.is_deleted()
+    }
+
+    /// What this item holds.
+    pub fn content(&self) -> &ItemContent {
+        &self.content
+    }
+
+    /// The map key this item is stored under, if its parent is a map (or an XML element's
+    /// attributes).
+    pub fn parent_sub(&self) -> Option<&str> {
+        self.parent_sub.as_deref()
+    }
+
+    /// The shared type this item belongs to: its name if it is a root type, otherwise the ID of
+    /// the item that holds it. `None` for an item not yet integrated whose parent is unknown.
+    pub fn parent_id(&self) -> Option<BranchID> {
+        match &self.parent {
+            TypePtr::Branch(branch) => Some(branch.id()),
+            TypePtr::Named(name) => Some(BranchID::Root(name.clone())),
+            TypePtr::ID(id) => Some(BranchID::Nested(*id)),
+            TypePtr::Unknown => None,
+        }
     }
 
     /// Checks if item content can be considered countable. Countable elements can be split

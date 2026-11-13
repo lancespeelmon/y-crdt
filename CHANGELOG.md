@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `Options` has a new `gc_filter: Option<GcFilter>` field, Yjs' `gcFilter`:
+  garbage collection skips the deleted items it returns `false` for. Struct literals of
+  `Options` need the field, or `..Default::default()`.
 - Subdocument references are written like Yjs' `ContentDoc`: `gc` only when it is off,
   `autoLoad` only when it is on, and never `shouldLoad`, so Yjs peers no longer load every
   yrs-created subdocument eagerly. On read, `shouldLoad` is `shouldLoad || autoLoad`, as in Yjs.
@@ -31,6 +34,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `PermanentUserData` (Yjs' class of the same name): maps client IDs to users and records who
+  deleted what, in the same document layout as Yjs, so both read each other's data.
+  Recording is explicit (`record_deletions`, `record_local_deletions`), since yrs has no timers.
+- `Item::content`, `Item::parent_sub` and `Item::parent_id`, for inspecting items, for example
+  from a `GcFilter`.
 - Byte-level update utilities from Yjs, which need no `Doc`: `parse_update_meta_v1/_v2`
   (`parseUpdateMeta`), `convert_update_v1_to_v2` and `convert_update_v2_to_v1`
   (`convertUpdateFormat*`, byte-identical to Yjs), `snapshot_contains_update_v1/_v2`
