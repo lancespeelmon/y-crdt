@@ -11,6 +11,12 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the error enums are `#[non_exhaustive]`: `error::Error`, `UpdateError`,
+  `encoding::read::Error` (now named `DecodeError`), `MalformedKind`, `sync::awareness::Error`
+  (now `AwarenessError`), `sync::protocol::Error` (now `ProtocolError`), `json_path::ParseError`
+  and `QuoteError`. The old names stay as aliases. Data enums (`Any`, `Out`, `Number`,
+  `ItemContent`, `TypeRef`, `Delta`) stay exhaustive, so matches on them keep checking every
+  case.
 - **Breaking (ywasm):** `getText`, `getArray`, `getMap` and `getXmlFragment` throw when the root
   exists with another type, like Yjs, instead of reinterpreting it.
 - **Breaking:** `Any::Map` holds an `AnyMap` (`indexmap::IndexMap<String, Any>`) instead of a

@@ -782,6 +782,7 @@ pub trait Quotable: AsRef<Branch> + Sized {
 
 /// Error that may appear in result of [Quotable::quote] method call.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum QuoteError {
     /// Range lower or upper indexes passed to [Quotable::quote] were beyond scope of quoted
     /// collection.

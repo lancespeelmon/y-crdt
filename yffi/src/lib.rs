@@ -1456,11 +1456,13 @@ fn err_code(e: Error) -> u8 {
         Error::TypeMismatch(_) => ERR_TYPE_MISMATCH,
         Error::Custom(_) => ERR_CUSTOM,
         Error::Malformed(_) => ERR_MALFORMED,
+        _ => ERR_CUSTOM,
     }
 }
 fn update_err_code(e: UpdateError) -> u8 {
     match e {
         UpdateError::InvalidParent(_, _) => ERR_INVALID_PARENT,
+        _ => ERR_CUSTOM,
     }
 }
 

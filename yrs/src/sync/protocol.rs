@@ -477,9 +477,13 @@ impl Decode for SyncMessage {
     }
 }
 
+/// The name this module's error had before [ProtocolError].
+pub type Error = ProtocolError;
+
 /// An error type returned in response from y-sync [Protocol].
 #[derive(Debug, Error)]
-pub enum Error {
+#[non_exhaustive]
+pub enum ProtocolError {
     /// Incoming Y-protocol message couldn't be deserialized.
     #[error("failed to deserialize message: {0}")]
     DecodingError(#[from] read::Error),
