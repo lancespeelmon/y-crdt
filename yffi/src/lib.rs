@@ -6230,6 +6230,18 @@ pub unsafe extern "C" fn ybranch_json(branch: *mut Branch, txn: *mut Transaction
 // Status codes and the per-thread error message (plan item 7.1). Functions that return a status
 // leave a description of the last failure on the calling thread, which `ylast_error` reads.
 
+/// The version of the C interface this header describes. It goes up whenever a change would
+/// break a program built against the previous header: a function's signature, a struct's
+/// layout or a constant's meaning. Compare it with [yffi_abi_version] at startup to catch a
+/// program loading a library it wasn't built for.
+pub const Y_ABI_VERSION: u32 = 1;
+
+/// The [Y_ABI_VERSION] the loaded library was built with.
+#[no_mangle]
+pub extern "C" fn yffi_abi_version() -> u32 {
+    Y_ABI_VERSION
+}
+
 /// Status of a call that succeeded.
 pub const Y_OK: i32 = 0;
 /// Status of a call refused for bad input, before it changed anything. [ylast_error] says why.

@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
+  instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
+  pointers to them, which is all the API allows, is unaffected.
 - Array inserts and removals, and removing XML children, find their index from the search
   marker too: inserting at random positions in an array (B1.11) takes 20 ms instead of 34 ms.
 - Text edits find their index from a search marker, as in Yjs: the position of the last local
@@ -133,6 +136,9 @@ repository and its release notes.
 - yffi: `yset_callback_free_hook` sets a function called with each callback's `state` once its
   subscription ends (unsubscribed, replaced under the same key, or dropped with its document),
   so a host can release what `state` points to (plan item 7.4).
+- yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
+  can check at startup that it loaded the library its header describes. CI checks that the
+  header compiles as strict C99.
 - yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
   `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
   `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return

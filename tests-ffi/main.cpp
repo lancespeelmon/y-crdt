@@ -2747,6 +2747,10 @@ TEST_CASE("yxmltext_try_remove_range refuses a range past the end") {
     ydoc_destroy(doc);
 }
 
+TEST_CASE("the library's ABI version matches the header's") {
+    REQUIRE_EQ(yffi_abi_version(), Y_ABI_VERSION);
+}
+
 TEST_CASE("try functions for inserts and formats refuse bad indexes and attributes") {
     YDoc *doc = ydoc_new_with_id(1);
     Branch *txt = ytext(doc, "text");
