@@ -27,6 +27,9 @@ repository and its release notes.
 - **Breaking:** `TypeRef::XmlHook` is now `TypeRef::XmlHook(Arc<str>)` and carries the hook
   name, like `TypeRef::XmlElement` carries its tag. `XmlHookRef::hook_name` returns it.
 
+- **Breaking (yffi):** `ERR_INVALID_PARENT` is now 11. It was 9, the same value as
+  `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
+
 ### Added
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
@@ -56,6 +59,8 @@ repository and its release notes.
 - V2 encoding wrote binary content (`Uint8Array` values from Yjs) with a second length prefix,
   so any v2 re-encode, merge or diff of such a document produced bytes that neither Yjs nor yrs
   could decode.
+- `encode_state_from_snapshot` panicked when the snapshot listed a client at clock 0. Such
+  clients are now skipped, as in Yjs.
 - Deleting and garbage-collecting deeply nested shared types no longer recurses, so it cannot
   overflow the stack.
 - Decoding reserves memory in proportion to the remaining input rather than to lengths read
@@ -65,6 +70,22 @@ repository and its release notes.
 - yffi: `yinput_null`/`yinput_undefined` and the matching `YOutput` constructors no longer
   return uninitialized memory in the value field.
 - The C header `libyrs.h` now includes `ERR_MALFORMED`.
+- yffi: `ychunks_destroy`, `yundo_manager_destroy`, `ysticky_index_destroy`, `yweak_destroy` and
+  `yweak_iter_destroy` accept NULL, like the other destroy functions.
+- yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
+  as UTF-8 unchecked (undefined behaviour).
+
+- ywasm: transaction origins that aren't strings (objects, numbers, `null`) were stored as raw
+  wasm-bindgen heap slot indices: a second read got a freed slot, some transactions threw, and
+  `trackedOrigins` never matched an object. They are now kept in a registry and compared with
+  `===`, as in Yjs. The registry holds origin objects weakly, so it doesn't keep them alive. An
+  origin set from Rust reads as a `Uint8Array` of its bytes.
+- ywasm: passing a ywasm object other than a transaction (or a freed one) where a transaction
+  is expected is now an error instead of a cast of its pointer. Using a freed shared type is
+  also an error.
+- ywasm: a `BigInt` value panicked (and trapped the instance); it is now stored as an integer,
+  or rejected if it doesn't fit 64 bits. A `Uint8Array` is now stored as binary, as in Yjs,
+  instead of as an object with numbered keys.
 
 ### Removed
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).

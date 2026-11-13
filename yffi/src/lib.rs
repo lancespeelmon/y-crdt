@@ -1423,7 +1423,7 @@ pub const ERR_CUSTOM: u8 = 9;
 pub const ERR_MALFORMED: u8 = 10;
 
 /// Error code: update block assigned to parent that is not a valid shared ref of deleted block.
-pub const ERR_INVALID_PARENT: u8 = 9;
+pub const ERR_INVALID_PARENT: u8 = 11;
 
 fn err_code(e: Error) -> u8 {
     match e {
@@ -2771,7 +2771,9 @@ pub unsafe extern "C" fn ytext_chunks(
 /// Deallocates result of `ytext_chunks` method.
 #[no_mangle]
 pub unsafe extern "C" fn ychunks_destroy(chunks: *mut YChunk, len: u32) {
-    drop(Vec::from_raw_parts(chunks, len as usize, len as usize));
+    if !chunks.is_null() {
+        drop(Vec::from_raw_parts(chunks, len as usize, len as usize));
+    }
 }
 
 pub const YCHANGE_ADD: i8 = 1;
@@ -4862,7 +4864,9 @@ pub unsafe extern "C" fn yundo_manager(options: *const YUndoManagerOptions) -> *
 /// Deallocated undo manager instance created via `yundo_manager`.
 #[no_mangle]
 pub unsafe extern "C" fn yundo_manager_destroy(mgr: *mut YUndoManager) {
-    drop(Box::from_raw(mgr));
+    if !mgr.is_null() {
+        drop(Box::from_raw(mgr));
+    }
 }
 
 /// Adds an origin to be tracked by current undo manager. This way only changes made within context
@@ -5618,7 +5622,9 @@ impl From<StickyIndex> for YStickyIndex {
 /// Releases resources allocated by `YStickyIndex` pointers.
 #[no_mangle]
 pub unsafe extern "C" fn ysticky_index_destroy(pos: *mut YStickyIndex) {
-    drop(Box::from_raw(pos))
+    if !pos.is_null() {
+        drop(Box::from_raw(pos));
+    }
 }
 
 /// Returns association of current `YStickyIndex`.
@@ -5756,7 +5762,9 @@ pub type Weak = LinkSource;
 
 #[no_mangle]
 pub unsafe extern "C" fn yweak_destroy(weak: *const Weak) {
-    drop(Arc::from_raw(weak));
+    if !weak.is_null() {
+        drop(Arc::from_raw(weak));
+    }
 }
 
 #[no_mangle]
@@ -5827,7 +5835,9 @@ pub unsafe extern "C" fn yweak_iter(
 
 #[no_mangle]
 pub unsafe extern "C" fn yweak_iter_destroy(iter: *mut WeakIter) {
-    drop(Box::from_raw(iter))
+    if !iter.is_null() {
+        drop(Box::from_raw(iter));
+    }
 }
 
 #[no_mangle]
@@ -6064,8 +6074,9 @@ pub unsafe extern "C" fn ybranch_get(
     branch_id: *const YBranchId,
     txn: *mut Transaction,
 ) -> *mut Branch {
-    let txn = txn.as_ref().unwrap();
-    let branch_id = branch_id.as_ref().unwrap();
+    let (Some(txn), Some(branch_id)) = (txn.as_ref(), branch_id.as_ref()) else {
+        return null_mut();
+    };
     let client_or_len = branch_id.client_or_len;
     let ptr = if client_or_len >= 0 {
         BranchID::get_nested(
@@ -6074,7 +6085,11 @@ pub unsafe extern "C" fn ybranch_get(
         )
     } else {
         let name = std::slice::from_raw_parts(branch_id.variant.name, (-client_or_len) as usize);
-        BranchID::get_root(txn, std::str::from_utf8_unchecked(name))
+        // a root name that isn't valid UTF-8 can't name any root type
+        match std::str::from_utf8(name) {
+            Ok(name) => BranchID::get_root(txn, name),
+            Err(_) => None,
+        }
     };
 
     match ptr {

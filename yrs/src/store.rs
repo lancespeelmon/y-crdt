@@ -167,7 +167,9 @@ impl Store {
         let local_sv = self.blocks.get_state_vector();
         let mut diff = Vec::with_capacity(sv.len());
         for (&client_id, &clock) in sv.iter() {
-            if local_sv.contains_client(&client_id) {
+            // A client at clock 0 has nothing in the snapshot, and `clock - 1` below would
+            // underflow. Yjs skips it too (`createDocFromSnapshot`).
+            if clock > 0 && local_sv.contains_client(&client_id) {
                 diff.push((client_id, clock.min(local_sv.get(&client_id))));
             }
         }
@@ -178,7 +180,7 @@ impl Store {
         encoder.write_var(diff.len());
         for (client, clock) in diff {
             let blocks = self.blocks.get_client(&client).unwrap();
-            let clock = clock.min(blocks.clock() + 1);
+            // `clock` is already at most the client's clock (see `diff` above)
             let last_idx = blocks.find_index(clock - 1).unwrap();
             // write # encoded structs
             encoder.write_var(last_idx + 1);

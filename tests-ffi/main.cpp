@@ -2648,3 +2648,28 @@ TEST_CASE("YTransaction apply malformed V2 update") {
     ytransaction_commit(txn);
     ydoc_destroy(doc);
 }
+
+TEST_CASE("Destroy functions accept NULL and error codes are distinct") {
+    ychunks_destroy(NULL, 0);
+    yundo_manager_destroy(NULL);
+    ysticky_index_destroy(NULL);
+    yweak_destroy(NULL);
+    yweak_iter_destroy(NULL);
+    REQUIRE(ERR_INVALID_PARENT != ERR_CUSTOM);
+    REQUIRE(ERR_INVALID_PARENT != ERR_MALFORMED);
+}
+
+TEST_CASE("ybranch_get returns NULL for a root name that isn't UTF-8") {
+    YDoc *doc = ydoc_new_with_id(1);
+    Branch *map = ymap(doc, "map");
+    YBranchId id = ybranch_id(map);
+    const uint8_t bad_name[] = {0xff, 0xfe, 0xfd};
+    id.client_or_len = -3;
+    id.variant.name = bad_name;
+    YTransaction *txn = ydoc_read_transaction(doc);
+    REQUIRE(ybranch_get(&id, txn) == NULL);
+    REQUIRE(ybranch_get(NULL, txn) == NULL);
+    REQUIRE(ybranch_get(&id, NULL) == NULL);
+    ytransaction_commit(txn);
+    ydoc_destroy(doc);
+}
