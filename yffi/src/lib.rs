@@ -4901,6 +4901,26 @@ pub unsafe extern "C" fn yundo_manager(options: *const YUndoManagerOptions) -> *
     Box::into_raw(boxed)
 }
 
+/// A flag for [yundo_manager_with_flags]: when undoing re-adds a map entry that a remote peer
+/// has overwritten since, keep the remote value (Yjs' `ignoreRemoteMapChanges`).
+pub const Y_UNDO_IGNORE_REMOTE_MAP_CHANGES: u8 = 1;
+
+/// Like [yundo_manager], with options given as values instead of a struct, so that new ones can
+/// be added without changing a struct's layout: `capture_timeout_millis` (negative for the
+/// default) and `flags`, a combination of `Y_UNDO_*` flags.
+#[no_mangle]
+pub unsafe extern "C" fn yundo_manager_with_flags(
+    capture_timeout_millis: i32,
+    flags: u8,
+) -> *mut YUndoManager {
+    let mut o = yrs::undo::Options::default();
+    if capture_timeout_millis >= 0 {
+        o.capture_timeout_millis = capture_timeout_millis as u64;
+    }
+    o.ignore_remote_map_changes = flags & Y_UNDO_IGNORE_REMOTE_MAP_CHANGES != 0;
+    Box::into_raw(Box::new(yrs::undo::UndoManager::with_options(o)))
+}
+
 /// Deallocated undo manager instance created via `yundo_manager`.
 #[no_mangle]
 pub unsafe extern "C" fn yundo_manager_destroy(mgr: *mut YUndoManager) {
@@ -6547,5 +6567,157 @@ pub unsafe extern "C" fn yxmltext_try_format(
         XmlTextRef::from_raw_branch(txt)
             .try_format(txn, index, len, attrs)
             .map_err(|e| e.to_string())
+    })
+}
+
+// Update utilities that work on encoded updates alone, without a document (plan item 7.6,
+// parity with Yjs' `mergeUpdates`, `diffUpdate` and `encodeStateVectorFromUpdate`). Each
+// returns a status; on `Y_OK` the result is written to `out`/`out_len` and must be released
+// with `ybinary_destroy`.
+
+/// Writes `bytes` to the out-parameters.
+unsafe fn write_binary(
+    bytes: Vec<u8>,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> Result<(), String> {
+    let out = out.as_mut().ok_or("out is NULL")?;
+    let out_len = out_len.as_mut().ok_or("out_len is NULL")?;
+    let len = u32::try_from(bytes.len()).map_err(|_| "result is over 4 GiB".to_string())?;
+    let binary = bytes.into_boxed_slice();
+    *out_len = len;
+    *out = Box::into_raw(binary) as *mut c_char;
+    Ok(())
+}
+
+/// The `count` buffers at `updates`, with lengths at `lens`.
+unsafe fn read_buffers<'a>(
+    updates: *const *const c_char,
+    lens: *const u32,
+    count: u32,
+) -> Result<Vec<&'a [u8]>, String> {
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    if updates.is_null() || lens.is_null() {
+        return Err("updates or lens are NULL".into());
+    }
+    let updates = std::slice::from_raw_parts(updates, count as usize);
+    let lens = std::slice::from_raw_parts(lens, count as usize);
+    updates
+        .iter()
+        .zip(lens)
+        .map(|(&ptr, &len)| read_buffer(ptr, len))
+        .collect()
+}
+
+unsafe fn read_buffer<'a>(ptr: *const c_char, len: u32) -> Result<&'a [u8], String> {
+    if len == 0 {
+        Ok(&[])
+    } else if ptr.is_null() {
+        Err("buffer is NULL".into())
+    } else {
+        Ok(std::slice::from_raw_parts(ptr as *const u8, len as usize))
+    }
+}
+
+/// Merges `count` updates encoded with lib0 v1 into one, like Yjs' `mergeUpdates`. Returns
+/// [Y_ERR_INVALID] if one of them doesn't decode.
+#[no_mangle]
+pub unsafe extern "C" fn ymerge_updates_v1(
+    updates: *const *const c_char,
+    lens: *const u32,
+    count: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let updates = read_buffers(updates, lens, count)?;
+        let merged = yrs::merge_updates_v1(updates).map_err(|e| e.to_string())?;
+        write_binary(merged, out, out_len)
+    })
+}
+
+/// Like [ymerge_updates_v1], for updates encoded with lib0 v2.
+#[no_mangle]
+pub unsafe extern "C" fn ymerge_updates_v2(
+    updates: *const *const c_char,
+    lens: *const u32,
+    count: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let updates = read_buffers(updates, lens, count)?;
+        let merged = yrs::merge_updates_v2(updates).map_err(|e| e.to_string())?;
+        write_binary(merged, out, out_len)
+    })
+}
+
+/// Encodes the state vector an update (lib0 v1) would bring a document to, like Yjs'
+/// `encodeStateVectorFromUpdate`: it says what a peer holding only that update has.
+#[no_mangle]
+pub unsafe extern "C" fn yencode_state_vector_from_update_v1(
+    update: *const c_char,
+    update_len: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let update = read_buffer(update, update_len)?;
+        let sv = yrs::encode_state_vector_from_update_v1(update).map_err(|e| e.to_string())?;
+        write_binary(sv, out, out_len)
+    })
+}
+
+/// Like [yencode_state_vector_from_update_v1], for an update encoded with lib0 v2.
+#[no_mangle]
+pub unsafe extern "C" fn yencode_state_vector_from_update_v2(
+    update: *const c_char,
+    update_len: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let update = read_buffer(update, update_len)?;
+        let sv = yrs::encode_state_vector_from_update_v2(update).map_err(|e| e.to_string())?;
+        write_binary(sv, out, out_len)
+    })
+}
+
+/// The part of an update (lib0 v1) that a peer with state vector `sv` (lib0 v1) is missing,
+/// like Yjs' `diffUpdate`.
+#[no_mangle]
+pub unsafe extern "C" fn ydiff_updates_v1(
+    update: *const c_char,
+    update_len: u32,
+    sv: *const c_char,
+    sv_len: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let update = read_buffer(update, update_len)?;
+        let sv = read_buffer(sv, sv_len)?;
+        let diff = yrs::diff_updates_v1(update, sv).map_err(|e| e.to_string())?;
+        write_binary(diff, out, out_len)
+    })
+}
+
+/// Like [ydiff_updates_v1], with the update and the state vector both encoded with lib0 v2.
+#[no_mangle]
+pub unsafe extern "C" fn ydiff_updates_v2(
+    update: *const c_char,
+    update_len: u32,
+    sv: *const c_char,
+    sv_len: u32,
+    out: *mut *mut c_char,
+    out_len: *mut u32,
+) -> i32 {
+    ffi_guard(|| {
+        let update = read_buffer(update, update_len)?;
+        let sv = read_buffer(sv, sv_len)?;
+        let diff = yrs::diff_updates_v2(update, sv).map_err(|e| e.to_string())?;
+        write_binary(diff, out, out_len)
     })
 }

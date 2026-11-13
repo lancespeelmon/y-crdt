@@ -130,6 +130,12 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Binding parity (plan item 7.6):
+  - yffi: `ymerge_updates_v1`/`_v2`, `ydiff_updates_v1`/`_v2` and
+    `yencode_state_vector_from_update_v1`/`_v2` work on encoded updates without a document;
+    `yundo_manager_with_flags` takes `Y_UNDO_IGNORE_REMOTE_MAP_CHANGES`.
+  - ywasm: `diffUpdateV1`/`V2` and `encodeStateVectorFromUpdateV1`/`V2`, next to the existing
+    `mergeUpdatesV1`/`V2`.
 - yffi: status-returning variants of the remaining index-taking edits, `ytext_try_format`,
   `ytext_try_insert_embed`, `yarray_try_insert_range`, `yxmlelem_try_insert_elem`,
   `yxmlelem_try_insert_text`, `yxmltext_try_insert` and `yxmltext_try_format`. They return
