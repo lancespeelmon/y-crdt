@@ -72,13 +72,13 @@ impl Js {
             Any::Null => Js(JsValue::NULL),
             Any::Undefined => Js(JsValue::UNDEFINED),
             Any::Bool(value) => Js(JsValue::from_bool(*value)),
-            Any::Number(value) => match value.as_f64() {
-                Some(value) => Js(JsValue::from_f64(value)),
-                None => match value.as_i64() {
-                    Some(value) => Js(js_sys::BigInt::from(value).into()),
-                    None => Js(JsValue::UNDEFINED),
-                },
+            Any::Number(Number::BigInt(value)) => Js(js_sys::BigInt::from(*value).into()),
+            // As on the wire: a JS number when one holds the value exactly, a BigInt if not.
+            Any::Number(number @ Number::Int(value)) => match number.as_f64() {
+                Some(f) => Js(JsValue::from_f64(f)),
+                None => Js(js_sys::BigInt::from(*value).into()),
             },
+            Any::Number(Number::Float(value)) => Js(JsValue::from_f64(*value)),
             Any::String(str) => Js(JsValue::from_str(&*str)),
             Any::Buffer(binary) => Js(Uint8Array::from(binary.as_ref()).into()),
             Any::Array(array) => {
@@ -150,7 +150,7 @@ impl Js {
             let i: i64 = digits
                 .parse()
                 .map_err(|_| JsValue::from_str(errors::BIGINT_OUT_OF_RANGE))?;
-            Ok(ValueRef::Any(Any::Number(Number::Int(i))))
+            Ok(ValueRef::Any(Any::Number(Number::BigInt(i))))
         } else if self.0.is_instance_of::<Uint8Array>() {
             // like Yjs, a Uint8Array is binary content, not an object with numbered keys
             let bytes = Uint8Array::new(&self.0).to_vec();

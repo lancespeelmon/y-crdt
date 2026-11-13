@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `Number` has a new `BigInt(i64)` variant for JavaScript `BigInt`s (lib0 tag 122).
+  They used to decode as `Number::Int` and go back out as JS numbers, losing their type and
+  precision. `Number::BigInt` compares equal to a `Number::Int` of the same value. ywasm
+  converts JS `BigInt`s to and from it.
 - **Breaking:** `undo::Options` has four new fields, Yjs' `deleteFilter` (`delete_filter`) and
   `ignoreRemoteMapChanges` (`ignore_remote_map_changes`), plus `track_null_origin` and
   `max_stack_len` (a bound Yjs doesn't have: the oldest items are dropped and what they kept
@@ -73,6 +77,10 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
+  decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
+  2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a
+  `Float`.
 - `Awareness::remove_state` no longer notifies `on_change` observers when the client had no
   state (an operator-precedence slip).
 - Text split to be formatted is merged back at commit, as Yjs merges split items, so yrs encodes

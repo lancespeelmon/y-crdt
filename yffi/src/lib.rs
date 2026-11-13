@@ -3224,7 +3224,7 @@ impl From<Number> for YOutput {
     #[inline]
     fn from(value: Number) -> Self {
         match value {
-            Number::Int(value) => YOutput::from(value),
+            Number::Int(value) | Number::BigInt(value) => YOutput::from(value),
             Number::Float(value) => YOutput::from(value),
         }
     }

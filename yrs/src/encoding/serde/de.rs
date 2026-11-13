@@ -243,7 +243,7 @@ impl<'de> Deserializer<'de> for AnyDeserializer<'de> {
             Any::Undefined => self.deserialize_unit(visitor),
             Any::Bool(_) => self.deserialize_bool(visitor),
             Any::Number(Number::Float(_)) => self.deserialize_f64(visitor),
-            Any::Number(Number::Int(_)) => self.deserialize_i64(visitor),
+            Any::Number(Number::Int(_) | Number::BigInt(_)) => self.deserialize_i64(visitor),
             Any::String(_) => self.deserialize_string(visitor),
             Any::Buffer(_) => self.deserialize_byte_buf(visitor),
             Any::Array(_) => self.deserialize_seq(visitor),

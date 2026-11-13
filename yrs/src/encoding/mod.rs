@@ -18,6 +18,7 @@ mod test {
             any::<bool>().prop_map(Any::Bool),
             any::<f64>().prop_map(Any::from),
             any::<i64>().prop_map(Any::from),
+            any::<i64>().prop_map(|n| Any::Number(crate::Number::BigInt(n))),
             any::<String>().prop_map(Any::from),
             any::<Vec<u8>>().prop_map(Any::from),
         ]
