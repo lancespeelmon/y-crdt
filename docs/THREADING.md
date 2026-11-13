@@ -12,7 +12,7 @@ read-write transaction, at a time.
 
 - `transact` and `transact_mut` block until the lock is free.
 - `try_transact` and `try_transact_mut` return `TransactionAcqError` instead of blocking.
-- `transact_async` and `transact_mut_async` wait asynchronously.
+- The `AsyncTransact` trait's `transact` and `transact_mut` wait asynchronously.
 
 A thread that would wait for a lock it already holds is refused instead of deadlocking:
 `try_transact*` returns `TransactionAcqError::Reentrant`, and `transact*` panics with an

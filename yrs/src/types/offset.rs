@@ -88,13 +88,10 @@ pub enum OffsetError {
     /// The offset falls inside a character: within a UTF-8 sequence or a UTF-16 surrogate pair.
     #[error("offset {0} is inside a character")]
     InsideCharacter(u32),
-}
-
-fn measure_kind(kind: OffsetKind, s: &str) -> u32 {
-    (match kind {
-        OffsetKind::Bytes => s.len(),
-        OffsetKind::Utf16 => s.encode_utf16().count(),
-    }) as u32
+    /// A range ends before it starts. The values are its start and end, in the document's
+    /// units.
+    #[error("range ends at {1}, before its start at {0}")]
+    Reversed(u32, u32),
 }
 
 /// Converts `at` into the units of `kind`, by walking the visible content of `branch`.
@@ -135,9 +132,10 @@ pub(crate) fn to_kind(
                     }
                     return Ok(out + prefix_kind);
                 }
-                (in_unit, measure_kind(kind, s))
+                (in_unit, item.content_len(kind))
             }
-            _ => (1, item.content_len(kind)),
+            // Embeds and nested types are one unit in every unit.
+            _ => (item.len(), item.content_len(kind)),
         };
         if remaining < in_unit {
             // A one-unit embed with nothing left to skip: the offset is right before it.
@@ -159,5 +157,20 @@ pub(crate) fn to_kind(
             available: total_in_unit,
         }
         .into())
+    }
+}
+
+/// Resolves `start..end` into an index and length in the units of `kind`.
+pub(crate) fn to_kind_range(
+    branch: &Branch,
+    kind: OffsetKind,
+    start: TextOffset,
+    end: TextOffset,
+) -> Result<(u32, u32), OffsetError> {
+    let start = to_kind(branch, kind, start)?;
+    let end = to_kind(branch, kind, end)?;
+    match end.checked_sub(start) {
+        Some(len) => Ok((start, len)),
+        None => Err(OffsetError::Reversed(start, end)),
     }
 }

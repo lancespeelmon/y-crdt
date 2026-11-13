@@ -432,7 +432,7 @@ pub trait Text: AsRef<Branch> + Sized {
     ///
     /// # Errors
     ///
-    /// The errors of [Text::offset], or [OffsetError::OutOfRange] if `end` is before `start`.
+    /// The errors of [Text::offset], or [OffsetError::Reversed] if `end` is before `start`.
     /// Nothing is removed then.
     fn try_remove_range_at<O: Into<TextOffset>>(
         &self,
@@ -440,7 +440,12 @@ pub trait Text: AsRef<Branch> + Sized {
         start: O,
         end: O,
     ) -> Result<(), OffsetError> {
-        let (index, len) = self.typed_range(txn, start, end)?;
+        let (index, len) = crate::types::offset::to_kind_range(
+            self.as_ref(),
+            txn.store().offset_kind,
+            start.into(),
+            end.into(),
+        )?;
         self.try_remove_range(txn, index, len)?;
         Ok(())
     }
@@ -450,7 +455,7 @@ pub trait Text: AsRef<Branch> + Sized {
     ///
     /// # Errors
     ///
-    /// The errors of [Text::offset], or [OffsetError::OutOfRange] if `end` is before `start`.
+    /// The errors of [Text::offset], or [OffsetError::Reversed] if `end` is before `start`.
     /// Nothing changes then.
     fn try_format_at<O: Into<TextOffset>>(
         &self,
@@ -459,29 +464,14 @@ pub trait Text: AsRef<Branch> + Sized {
         end: O,
         attributes: Attrs,
     ) -> Result<(), OffsetError> {
-        let (index, len) = self.typed_range(txn, start, end)?;
+        let (index, len) = crate::types::offset::to_kind_range(
+            self.as_ref(),
+            txn.store().offset_kind,
+            start.into(),
+            end.into(),
+        )?;
         self.try_format(txn, index, len, attributes)?;
         Ok(())
-    }
-
-    #[doc(hidden)]
-    fn typed_range<T: ReadTxn, O: Into<TextOffset>>(
-        &self,
-        txn: &T,
-        start: O,
-        end: O,
-    ) -> Result<(u32, u32), OffsetError> {
-        let start = self.offset(txn, start)?;
-        let end = self.offset(txn, end)?;
-        match end.checked_sub(start) {
-            Some(len) => Ok((start, len)),
-            None => Err(OutOfRange {
-                index: start,
-                len: 0,
-                available: end,
-            }
-            .into()),
-        }
     }
 
     /// Removes `len` characters from a current text structure, starting at given `index`.
