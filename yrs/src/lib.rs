@@ -638,7 +638,6 @@ mod utils;
 
 /// [Any] values, a JSON-like data model with a compact binary encoding.
 pub mod any;
-pub mod atomic;
 mod block_iter;
 mod branch;
 /// Binary encoding primitives, and the serde (de)serialization support built on them.
@@ -652,6 +651,7 @@ mod input;
 pub mod iter;
 /// JSONPath queries over shared types.
 pub mod json_path;
+pub mod memory;
 pub mod metrics;
 /// [Observer], used to manage subscriptions to events.
 pub mod observer;
