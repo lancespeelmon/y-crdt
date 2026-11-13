@@ -119,6 +119,7 @@ pub trait ReadTxn: Sized {
     /// - [TransactionMut::encode_update] encodes only inserts and deletes made within the scope
     /// of the current transaction.
     fn encode_state_as_update<E: Encoder>(&self, sv: &StateVector, encoder: &mut E) {
+        let _span = crate::metrics::span!("yrs::encode");
         let store = self.store();
         store.write_blocks_from(sv, encoder);
         let ds = IdSet::from_store(&store.blocks);
@@ -141,7 +142,11 @@ pub trait ReadTxn: Sized {
         let mut encoder = EncoderV1::new();
         self.encode_state_as_update(sv, &mut encoder);
         // check for pending data
-        merge_pending_v1(encoder.to_vec(), self.store())
+        let bytes = merge_pending_v1(encoder.to_vec(), self.store());
+        if let Some(metrics) = &self.store().metrics {
+            metrics.0.state_encoded(bytes.len());
+        }
+        bytes
     }
 
     /// Encodes the difference between remote peer state given its `state_vector` and the state
@@ -159,9 +164,12 @@ pub trait ReadTxn: Sized {
     fn encode_state_as_update_v2(&self, sv: &StateVector) -> Vec<u8> {
         let mut encoder = EncoderV2::new();
         self.encode_state_as_update(sv, &mut encoder);
-
         // check for pending data
-        merge_pending_v2(encoder.to_vec(), self.store())
+        let bytes = merge_pending_v2(encoder.to_vec(), self.store());
+        if let Some(metrics) = &self.store().metrics {
+            metrics.0.state_encoded(bytes.len());
+        }
+        bytes
     }
 
     /// Returns an iterator over top level (root) shared types available in current [Doc].
@@ -904,7 +912,39 @@ impl<'doc> TransactionMut<'doc> {
     /// Remote update integration requires that all to-be-integrated blocks must have their direct
     /// predecessors already in place. Out of order updates from the same peer will be stashed
     /// internally and their integration will be postponed until missing blocks arrive first.
-    pub fn apply_update(&mut self, mut update: Update) -> Result<(), UpdateError> {
+    pub fn apply_update(&mut self, update: Update) -> Result<(), UpdateError> {
+        // Counting walks the update and the pending state, so only when something listens.
+        #[cfg(feature = "tracing")]
+        let traced = tracing::enabled!(tracing::Level::DEBUG);
+        #[cfg(not(feature = "tracing"))]
+        let traced = false;
+        let observed = traced || self.store().metrics.is_some();
+        if !observed {
+            return self.apply_update_inner(update);
+        }
+        let span = crate::metrics::span!("yrs::apply_update", blocks, pending_blocks);
+        let applied = update.counts();
+        crate::metrics::record!(span, blocks, applied.blocks);
+        let result = self.apply_update_inner(update);
+        let store = self.store();
+        let pending = crate::metrics::UpdateCounts {
+            blocks: store
+                .pending
+                .as_ref()
+                .map_or(0, |p| p.update.counts().blocks),
+            delete_ranges: store
+                .pending_ds
+                .as_ref()
+                .map_or(0, |ds| ds.iter().map(|(_, r)| r.iter().count()).sum()),
+        };
+        crate::metrics::record!(span, pending_blocks, pending.blocks);
+        if let Some(metrics) = &store.metrics {
+            metrics.0.update_applied(applied, pending);
+        }
+        result
+    }
+
+    fn apply_update_inner(&mut self, mut update: Update) -> Result<(), UpdateError> {
         // force that transaction.local is set to non-local
         self.local = false;
         let store = self.store_mut();
@@ -975,8 +1015,8 @@ impl<'doc> TransactionMut<'doc> {
                 let ds = store.pending_ds.take().unwrap_or_default();
                 let mut ds_update = Update::new();
                 ds_update.delete_set = ds;
-                self.apply_update(pending.update)?;
-                self.apply_update(ds_update)?;
+                self.apply_update_inner(pending.update)?;
+                self.apply_update_inner(ds_update)?;
             }
         }
 
@@ -1129,6 +1169,13 @@ impl<'doc> TransactionMut<'doc> {
             return;
         }
         self.committed = true;
+        let _span = crate::metrics::span!("yrs::commit");
+        if let Some(metrics) = &self.store.metrics {
+            let ranges = |set: &IdSet| set.iter().map(|(_, r)| r.iter().count()).sum();
+            metrics
+                .0
+                .transaction_committed(ranges(&self.insert_set), ranges(&self.delete_set));
+        }
 
         // 2. emit 'beforeObserverCalls'
         if let Some(mut events) = self.store.events.take() {

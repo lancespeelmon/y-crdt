@@ -34,6 +34,7 @@ pub struct Store {
     pub(crate) gc_filter: Option<crate::doc::GcFilter>,
     #[cfg_attr(not(feature = "weak"), allow(dead_code))]
     pub(crate) weak_links: bool,
+    pub(crate) metrics: Option<crate::metrics::Metrics>,
     pub(crate) cleanup_formatting: bool,
 
     /// Root types (a.k.a. top-level types). These types are defined by users at the document level,
@@ -76,6 +77,7 @@ impl Store {
             skip_gc: options.skip_gc,
             gc_filter: options.gc_filter.clone(),
             weak_links: options.weak_links,
+            metrics: options.metrics.clone(),
             cleanup_formatting: options.cleanup_formatting,
             types: HashMap::default(),
             blocks: BlockStore::default(),

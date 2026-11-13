@@ -54,11 +54,48 @@ impl Any {
         Self::decode_nested(decoder, 0)
     }
 
+    // Nested values recurse through `decode_nested` and `decode_map`/`decode_array`, so those
+    // frames, times [Any::MAX_DECODE_DEPTH], are what decoding needs of the stack. The scalar
+    // cases live in `decode_scalar` to keep their locals out of the recursive frames.
     fn decode_nested<R: Read>(decoder: &mut R, depth: usize) -> Result<Self, Error> {
         let tag = decoder.read_u8()?;
-        if matches!(tag, 117 | 118) && depth >= Self::MAX_DECODE_DEPTH {
-            return Err(Error::UnexpectedValue);
+        match tag {
+            117 | 118 if depth >= Self::MAX_DECODE_DEPTH => Err(Error::UnexpectedValue),
+            // CASE 118: Map<string,Any>
+            118 => Self::decode_map(decoder, depth),
+            // CASE 117: Array<Any>
+            117 => Self::decode_array(decoder, depth),
+            _ => Self::decode_scalar(decoder, tag),
         }
+    }
+
+    #[inline(never)]
+    fn decode_map<R: Read>(decoder: &mut R, depth: usize) -> Result<Self, Error> {
+        let len: usize = decoder.read_var()?;
+        let mut map = AnyMap::new();
+        map.try_reserve(Self::reservation(decoder, len, depth))
+            .map_err(|_| Error::UnexpectedValue)?;
+        for _ in 0..len {
+            let key = decoder.read_string()?.to_owned();
+            let value = Self::decode_nested(decoder, depth + 1)?;
+            map.insert(key, value);
+        }
+        Ok(Any::Map(Arc::new(map)))
+    }
+
+    #[inline(never)]
+    fn decode_array<R: Read>(decoder: &mut R, depth: usize) -> Result<Self, Error> {
+        let len: usize = decoder.read_var()?;
+        let mut arr = Vec::new();
+        arr.try_reserve(Self::reservation(decoder, len, depth))?;
+        for _ in 0..len {
+            arr.push(Self::decode_nested(decoder, depth + 1)?);
+        }
+        Ok(Any::Array(Arc::from(arr)))
+    }
+
+    #[inline(never)]
+    fn decode_scalar<R: Read>(decoder: &mut R, tag: u8) -> Result<Self, Error> {
         Ok(match tag {
             // CASE 127: undefined
             127 => Any::Undefined,
@@ -87,28 +124,6 @@ impl Any {
             119 => {
                 let str = decoder.read_string()?;
                 Any::String(Arc::from(str))
-            }
-            // CASE 118: Map<string,Any>
-            118 => {
-                let len: usize = decoder.read_var()?;
-                let mut map = AnyMap::new();
-                map.try_reserve(Self::reservation(decoder, len, depth))
-                    .map_err(|_| Error::UnexpectedValue)?;
-                for _ in 0..len {
-                    let key = decoder.read_string()?;
-                    map.insert(key.to_owned(), Self::decode_nested(decoder, depth + 1)?);
-                }
-                Any::Map(Arc::new(map))
-            }
-            // CASE 117: Array<Any>
-            117 => {
-                let len: usize = decoder.read_var()?;
-                let mut arr = Vec::new();
-                arr.try_reserve(Self::reservation(decoder, len, depth))?;
-                for _ in 0..len {
-                    arr.push(Self::decode_nested(decoder, depth + 1)?);
-                }
-                Any::Array(Arc::from(arr))
             }
             // CASE 116: buffer
             116 => Any::Buffer(Arc::from(decoder.read_buf()?)),

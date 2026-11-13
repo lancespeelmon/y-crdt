@@ -874,6 +874,27 @@ impl Update {
         decoder: &mut D,
         max_blocks: usize,
     ) -> Result<Self, Error> {
+        let span = crate::metrics::span!("yrs::decode", blocks, delete_ranges);
+        let update = Self::decode_blocks(decoder, max_blocks)?;
+        #[cfg(feature = "tracing")]
+        {
+            let counts = update.counts();
+            crate::metrics::record!(span, blocks, counts.blocks);
+            crate::metrics::record!(span, delete_ranges, counts.delete_ranges);
+        }
+        let _ = &span;
+        Ok(update)
+    }
+
+    /// How many blocks and delete ranges this update holds.
+    pub(crate) fn counts(&self) -> crate::metrics::UpdateCounts {
+        crate::metrics::UpdateCounts {
+            blocks: self.blocks.clients.values().map(|b| b.len()).sum(),
+            delete_ranges: self.delete_set.iter().map(|(_, r)| r.iter().count()).sum(),
+        }
+    }
+
+    fn decode_blocks<D: Decoder>(decoder: &mut D, max_blocks: usize) -> Result<Self, Error> {
         // read blocks
         let clients_len: u32 = decoder.read_var()?;
         // Checked here because the reservation below is sized by this count.
