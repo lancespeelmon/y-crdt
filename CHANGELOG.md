@@ -35,8 +35,17 @@ repository and its release notes.
   refusing ones that would decode into more than a given number of blocks.
 - `Any::MAX_DECODE_DEPTH`: decoding an `Any` value nested deeper than this returns an error.
 - `SECURITY.md` describing how to report vulnerabilities privately.
+- Property tests for CRDT behaviour (`yrs/tests/crdt_properties.rs`): convergence, apply in any
+  order, merge ≡ sequential apply, diffs, and encode/decode stability.
+- Tests that sync and awareness messages match y-protocols byte for byte.
+- A CI coverage job with a ratchet: line coverage per module may not drop below
+  `.github/coverage/floor.json`.
 
 ### Fixed
+- Updates received out of order could stay pending forever, so a peer never showed content that
+  had arrived. A pending update recorded only which client it waited for, sometimes the wrong
+  one (one whose blocks it held itself), and compared clocks, which can't see a hole that yrs
+  fills with a Skip. It now records the exact IDs it waits for and is retried once they arrive.
 - A v1 update whose embed or format JSON held an integer too large for an i64 (Yjs writes
   `1e19` as twenty digits) was rejected as a whole. Such numbers now read as floats, as
   `JSON.parse` reads them.
