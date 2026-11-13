@@ -11,6 +11,11 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Text edits find their index from a search marker, as in Yjs: the position of the last local
+  edit, kept while nothing else changes the text before it. Edits near the previous one no longer
+  walk the text from its start. Applying the B4 editing trace takes 161 ms instead of 2.25 s,
+  and random-position inserts (B1.4) 19 ms instead of 33 ms. Text with formatting still walks
+  from the start, as it must collect the attributes in effect.
 - A transaction merges its new blocks with their neighbours in one pass over each client's
   block list, instead of shifting the rest of the list once per merged run. Applying 80,000
   edits merged into one update takes 6 ms instead of 95 ms.

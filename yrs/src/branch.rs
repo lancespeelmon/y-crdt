@@ -10,8 +10,8 @@ use crate::types::{
     Entries, Event, Events, Path, PathSegment, RootRef, SharedRef, TypePtr, TypeRef,
 };
 use crate::{
-    ArrayRef, Doc, MapRef, Observer, Origin, Out, ReadTxn, TextRef, TransactionMut, WriteTxn,
-    XmlElementRef, XmlFragmentRef, XmlTextRef, ID,
+    ArrayRef, Doc, MapRef, Observer, OffsetKind, Origin, Out, ReadTxn, TextRef, TransactionMut,
+    WriteTxn, XmlElementRef, XmlFragmentRef, XmlTextRef, ID,
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -150,6 +150,25 @@ impl std::fmt::Debug for BranchPtr {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Turns search markers off on this thread, so a test can compare with lookups from the start.
+    pub(crate) static SEARCH_MARKERS_OFF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A remembered position in a branch's sequence: the item with ID `id` starts at index `index`. Yjs keeps such markers so that edits near the last one
+/// don't walk the sequence from its start; this is one marker, for text.
+///
+/// It's valid while `version` equals the branch's `seq_version`. Every insert or delete of a
+/// countable item bumps that, and a local text edit, which only changes the sequence after the
+/// marker it was found from, stamps the marker again.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SearchMarker {
+    id: ID,
+    index: u32,
+    version: u64,
+}
+
 /// Branch describes a content of a complex Yrs data structures, such as arrays or maps.
 pub struct Branch {
     /// A pointer to a first block of a indexed sequence component of this branch node. If `None`,
@@ -191,6 +210,13 @@ pub struct Branch {
     pub(crate) type_ref: TypeRef,
 
     pub(crate) has_formatting: bool,
+
+    /// Bumped whenever a countable item enters or leaves this branch's sequence, which moves the
+    /// index of everything after it. See [SearchMarker].
+    pub(crate) seq_version: u64,
+
+    /// Where the last local text edit found its index, to start the next lookup from.
+    pub(crate) search_marker: Option<SearchMarker>,
 
     pub(crate) observers: Observer<ObserveFn>,
 
@@ -235,7 +261,78 @@ impl Branch {
             observers: Observer::default(),
             deep_observers: Observer::default(),
             has_formatting: false,
+            seq_version: 0,
+            search_marker: None,
         })
+    }
+
+    /// Records a sequence change that moves indexes, which invalidates the search marker.
+    #[inline]
+    pub(crate) fn bump_seq_version(&mut self) {
+        self.seq_version = self.seq_version.wrapping_add(1);
+    }
+
+    /// Sets the search marker to a countable, live item that starts at index `index`, or
+    /// clears it.
+    pub(crate) fn set_search_marker(&mut self, at: Option<(ItemPtr, u32)>) {
+        self.search_marker = at.map(|(item, index)| SearchMarker {
+            id: item.id,
+            index,
+            version: self.seq_version,
+        });
+    }
+
+    /// Marks the search marker as still valid after an edit that came after it. Only call this
+    /// right after an edit whose lookup set the marker: its changes are all past the marker's
+    /// item, so they don't move it.
+    pub(crate) fn restamp_search_marker(&mut self) {
+        if let Some(marker) = &mut self.search_marker {
+            marker.version = self.seq_version;
+        }
+    }
+
+    /// A countable, live item that starts strictly before index `index`, with its index, found from the search marker. `None` if there's no valid marker: the
+    /// branch changed since it was set, or it has formatting (whose attributes a lookup must
+    /// collect from the start).
+    pub(crate) fn find_search_marker(
+        &self,
+        store: &crate::store::Store,
+        index: u32,
+    ) -> Option<(ItemPtr, u32)> {
+        if self.has_formatting || index == 0 {
+            return None;
+        }
+        #[cfg(test)]
+        if SEARCH_MARKERS_OFF.with(std::cell::Cell::get) {
+            return None;
+        }
+        let marker = self.search_marker.as_ref()?;
+        if marker.version != self.seq_version {
+            return None;
+        }
+        // Look the item up by ID: the item the marker was set on may since have been squashed
+        // into its left neighbour and freed.
+        let mut item = store.blocks.get_item(&marker.id)?;
+        if item.is_deleted() || !item.is_countable() {
+            return None;
+        }
+        let into = marker.id.clock - item.id.clock;
+        if into > 0
+            && matches!(item.content, ItemContent::String(_))
+            && store.offset_kind != OffsetKind::Utf16
+        {
+            // Squashed into a string item: clock units are UTF-16, the index isn't.
+            return None;
+        }
+        let mut at = marker.index.checked_sub(into)?;
+        // Step back to an item that starts before `index`.
+        while at >= index {
+            item = item.left?;
+            if !item.is_deleted() && item.is_countable() {
+                at = at.checked_sub(item.content_len(store.offset_kind))?;
+            }
+        }
+        Some((item, at))
     }
 
     pub fn is_deleted(&self) -> bool {
@@ -461,7 +558,6 @@ impl Branch {
             parent: parent.into(),
             left,
             right,
-            index: 0,
             current_attrs: None,
         };
 
