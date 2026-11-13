@@ -150,6 +150,33 @@ pub trait ReadTxn: Sized {
         bytes
     }
 
+    /// An estimate of the heap memory this document's blocks hold. See
+    /// [crate::memory::MemoryUsage] for what it counts.
+    fn memory_usage(&self) -> crate::memory::MemoryUsage {
+        crate::memory::MemoryUsage::of(self.store())
+    }
+
+    /// Writes the same bytes as [Self::encode_state_as_update_v1] to `out`, a chunk at a time,
+    /// so that a large document doesn't need a second copy of its whole state in memory (unless
+    /// it has pending updates, which have to be merged in first).
+    ///
+    /// # Errors
+    ///
+    /// The first error `out` returns. What was written before it is then incomplete.
+    fn write_state_as_update_v1<W: std::io::Write>(
+        &self,
+        sv: &StateVector,
+        out: &mut W,
+    ) -> std::io::Result<()> {
+        let store = self.store();
+        if store.pending.is_some() || store.pending_ds.is_some() {
+            return out.write_all(&self.encode_state_as_update_v1(sv));
+        }
+        let mut encoder = crate::updates::encoder::StreamEncoderV1::new(out);
+        self.encode_state_as_update(sv, &mut encoder);
+        encoder.finish()
+    }
+
     /// Encodes the difference between remote peer state given its `state_vector` and the state
     /// of a current local peer, using lib0 v2 encoding. Also includes pending updates which were
     /// not yet integrated into the main document state and entire delete set.
@@ -975,14 +1002,9 @@ impl<'doc> TransactionMut<'doc> {
         let known_state = store.blocks.known_state(&update.blocks);
         update.blocks.exclude(&known_state);
 
-        // we need to check early since update clients are consumed during `update.integrate`
-        let mut retry = match &store.pending {
-            Some(pending) => pending
-                .missing
-                .iter()
-                .any(|(client, _)| update.blocks.clients.contains_key(client)),
-            None => false,
-        };
+        // Retry the pending update only once a block it waits for has arrived (step 3). Blocks
+        // from a client it waits on that don't fill the gap join it instead of re-running it.
+        let mut retry = false;
 
         // 2. Integrate incoming update
         let (remaining, remaining_ds) = update.integrate(self)?;
@@ -1005,7 +1027,12 @@ impl<'doc> TransactionMut<'doc> {
                     for (&client, &clock) in remaining.missing.iter() {
                         pending.missing.set_min(client, clock);
                     }
-                    pending.update = Update::merge_updates(vec![pending.update, remaining.update]);
+                    // Usually the blocked blocks sit wholly before or after the queue's, and
+                    // join it in O(new); otherwise merge the two.
+                    if let Err(rest) = pending.update.try_merge_disjoint(remaining.update) {
+                        let queued = std::mem::take(&mut pending.update);
+                        pending.update = Update::merge_updates(vec![queued, rest]);
+                    }
                 }
                 Some(pending)
             } else {

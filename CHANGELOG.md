@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Updates that arrive before the ones they depend on no longer make the pending queue quadratic. A
+  blocked update joins the queue without re-merging all of it when its blocks sit wholly before or
+  after the queue's, and the queue is retried only once a block it waits for has arrived. Applying
+  8,000 one-character updates in reverse order takes 2.7 ms instead of 385 ms.
 - yffi's opaque types (`YDoc`, `Branch`, `YTransaction`, …) are declared as incomplete structs
   instead of empty ones, which are a GNU extension; the header is now ISO C. Code that only uses
   pointers to them, which is all the API allows, is unaffected.
@@ -133,6 +137,13 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- Server lifecycle (plan item 6.8):
+  - `ReadTxn::write_state_as_update_v1` writes the v1 state to an `std::io::Write` in 64 KiB
+    chunks, with the same bytes as `encode_state_as_update_v1`;
+  - `ReadTxn::memory_usage` estimates the heap held by a document's blocks (items, content
+    and block lists);
+  - `Doc::compact` encodes a document and reloads it into a new one with the same options,
+    dropping the spare capacity edits leave behind.
 - yffi: `Y_ABI_VERSION` in the header and `yffi_abi_version()` in the library, so a program
   can check at startup that it loaded the library its header describes. CI checks that the
   header compiles as strict C99.
@@ -203,6 +214,9 @@ repository and its release notes.
   created with a NULL guid gets a random one, as before) instead of allocating strings the
   caller couldn't free, and the array from `ytransaction_subdocs` is released with the new
   `ysubdocs_destroy`.
+- yffi: a transaction keeps its document alive, so destroying the document while a transaction
+  on it is open no longer frees the store under it (a use-after-free); the document is freed when
+  the transaction is committed.
 - Undo redoes deleted items in the order it finds them, as Yjs does, instead of in hash order:
   the same edits and undo calls now give the same document every time.
 - ywasm throws instead of panicking when asked to insert a value it can't: a shared type
@@ -276,9 +290,14 @@ repository and its release notes.
   instead of as an object with numbered keys.
 
 ### Removed
+- **Breaking:** `yrs::atomic::AtomicRef` is gone. Nothing in yrs or its bindings used it, and it
+  was `Send` and `Sync` for every `T`, which let a non-thread-safe value cross threads. Use the
+  `arc-swap` crate (`ArcSwap`), which is what yrs uses internally.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- `benchmarks/compare/compare.mjs` runs B1/B4 workloads against Yjs and ywasm and checks they
+  agree; results in `benchmarks/COMPARISON.md` (ywasm 0.08–0.29× Yjs's time).
 - `yrs/tests/relay.rs`: a reference relay (a per-document actor speaking y-protocols, with
   message and update limits, awareness timeouts and removal on disconnect, and eviction through a
   persistence hook) and the tests that keep it working. CI's clippy also checks
