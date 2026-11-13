@@ -32,6 +32,114 @@ where
     Ok(Update::merge_updates(merge).encode_v1())
 }
 
+/// Merges updates as they arrive, keeping the result decoded, for a server that stores a
+/// document as its update history instead of loading it into a [Doc].
+///
+/// Calling [merge_updates_v1] on the stored history plus each new update decodes the whole
+/// history every time. An accumulator decodes each update once: it collects them and folds them
+/// into its merged update every `batch` updates, and encodes only when asked.
+///
+/// ```
+/// use yrs::{merge_updates_v1, Doc, ReadTxn, StateVector, Text, Transact, UpdateAccumulator};
+///
+/// let doc = Doc::new();
+/// let text = doc.get_or_insert_text("text");
+/// let mut acc = UpdateAccumulator::new(64);
+/// let mut all = Vec::new();
+/// for chunk in ["a", "b", "c"] {
+///     let sv = doc.transact().state_vector();
+///     text.push(&mut doc.transact_mut(), chunk);
+///     let update = doc.transact().encode_state_as_update_v1(&sv);
+///     acc.push_v1(&update).unwrap();
+///     all.push(update);
+/// }
+/// assert_eq!(acc.encode_v1(), merge_updates_v1(&all).unwrap());
+/// ```
+#[derive(Debug, Default)]
+pub struct UpdateAccumulator {
+    merged: Option<Update>,
+    pending: Vec<Update>,
+    batch: usize,
+}
+
+impl UpdateAccumulator {
+    /// An empty accumulator that folds updates in every `batch` updates (at least 1). Larger
+    /// batches merge less often but hold more updates unmerged.
+    pub fn new(batch: usize) -> Self {
+        UpdateAccumulator {
+            merged: None,
+            pending: Vec::new(),
+            batch: batch.max(1),
+        }
+    }
+
+    /// Adds an update encoded with lib0 v1.
+    ///
+    /// # Errors
+    ///
+    /// If `update` doesn't decode. The accumulator is unchanged then.
+    pub fn push_v1(&mut self, update: &[u8]) -> Result<(), Error> {
+        self.push(Update::decode_v1(update)?);
+        Ok(())
+    }
+
+    /// Adds an update encoded with lib0 v2.
+    ///
+    /// # Errors
+    ///
+    /// If `update` doesn't decode. The accumulator is unchanged then.
+    pub fn push_v2(&mut self, update: &[u8]) -> Result<(), Error> {
+        self.push(Update::decode_v2(update)?);
+        Ok(())
+    }
+
+    /// Adds a decoded update.
+    pub fn push(&mut self, update: Update) {
+        self.pending.push(update);
+        if self.pending.len() >= self.batch {
+            self.fold();
+        }
+    }
+
+    /// Number of updates added since the last fold.
+    pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    fn fold(&mut self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let merged = self.merged.take();
+        let pending = std::mem::take(&mut self.pending);
+        self.merged = Some(Update::merge_updates(merged.into_iter().chain(pending)));
+    }
+
+    /// Everything added so far as one update, encoded with lib0 v1.
+    pub fn encode_v1(&mut self) -> Vec<u8> {
+        self.fold();
+        match &self.merged {
+            Some(update) => update.encode_v1(),
+            None => Update::new().encode_v1(),
+        }
+    }
+
+    /// Everything added so far as one update, encoded with lib0 v2.
+    pub fn encode_v2(&mut self) -> Vec<u8> {
+        self.fold();
+        match &self.merged {
+            Some(update) => update.encode_v2(),
+            None => Update::new().encode_v2(),
+        }
+    }
+
+    /// Everything added so far as one decoded update, leaving the accumulator empty.
+    pub fn into_update(mut self) -> Update {
+        self.fold();
+        self.merged.unwrap_or_default()
+    }
+}
+
 /// Merges a sequence of updates (encoded using lib0 v2 encoding) together, producing another
 /// update (also lib0 v2 encoded) in the result. Returned binary is a combination of all input
 /// `updates`, compressed.
@@ -527,6 +635,65 @@ mod test {
             let out = obfuscate_update_v1(&update, keep).unwrap();
             assert!(String::from_utf8_lossy(&out).contains("visible"));
         }
+    }
+
+    #[test]
+    fn an_accumulator_merges_like_merge_updates_whatever_its_batch() {
+        use crate::updates::decoder::Decode;
+        use crate::{
+            convert_update_v1_to_v2, Array, Doc, Map, ReadTxn, Text, Transact, Update,
+            UpdateAccumulator,
+        };
+        let peers: Vec<Doc> = (1..=3).map(Doc::with_client_id).collect();
+        let mut updates = Vec::new();
+        let mut rng = fastrand::Rng::with_seed(7);
+        for i in 0..200u32 {
+            let doc = &peers[rng.usize(..peers.len())];
+            let sv = doc.transact().state_vector();
+            {
+                let text = doc.get_or_insert_text("t");
+                let array = doc.get_or_insert_array("a");
+                let map = doc.get_or_insert_map("m");
+                let mut txn = doc.transact_mut();
+                match i % 4 {
+                    0 | 1 => {
+                        let len = text.len(&txn);
+                        text.insert(&mut txn, rng.u32(0..=len), "xy");
+                    }
+                    2 => {
+                        array.push_back(&mut txn, i64::from(i));
+                    }
+                    _ => {
+                        map.insert(&mut txn, format!("k{}", i % 5), i64::from(i));
+                    }
+                }
+            }
+            updates.push(doc.transact().encode_state_as_update_v1(&sv));
+            if rng.bool() {
+                // sync two peers, so later updates depend on others' items
+                let (a, b) = (&peers[rng.usize(..3)], &peers[rng.usize(..3)]);
+                let u = a
+                    .transact()
+                    .encode_state_as_update_v1(&b.transact().state_vector());
+                b.transact_mut()
+                    .apply_update(Update::decode_v1(&u).unwrap())
+                    .unwrap();
+            }
+        }
+        let expected = merge_updates_v1(&updates).unwrap();
+        for batch in [1, 7, 64, 1000] {
+            let mut acc = UpdateAccumulator::new(batch);
+            for u in &updates {
+                acc.push_v1(u).unwrap();
+            }
+            assert_eq!(acc.encode_v1(), expected, "batch {batch}");
+        }
+        let mut acc = UpdateAccumulator::new(5);
+        for u in &updates {
+            acc.push_v2(&convert_update_v1_to_v2(u).unwrap()).unwrap();
+        }
+        assert_eq!(acc.encode_v1(), expected);
+        assert!(UpdateAccumulator::new(3).push_v1(&[0xff]).is_err());
     }
 
     #[test]

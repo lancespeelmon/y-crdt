@@ -110,6 +110,10 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `UpdateAccumulator`: merges updates as they arrive and keeps the result decoded, for servers
+  that store a document as its update history. It decodes each update once instead of decoding
+  the whole history on every merge, and gives the same bytes as `merge_updates_v1` over all of
+  them, whatever its batch size.
 - yffi: `ylast_error()` and status codes (`Y_OK`, `Y_ERR_INVALID`, `Y_ERR_PANIC`), with
   `ytext_try_insert`, `ytext_try_remove_range`, `yarray_try_remove_range`,
   `yxmlelem_try_remove_range` and `yxmltext_try_remove_range`, which return a status instead of aborting on a bad index or a
