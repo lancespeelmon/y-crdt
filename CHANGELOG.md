@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- Transactions take the document lock with a try first and only set up a waiter when it's
+  contended, saving an allocation per transaction and about a third of an empty write
+  transaction's cost. Offset conversions skip the per-character walk for ASCII text.
 - **Breaking:** text indexes count UTF-16 code units by default (`Options::offset_kind` is
   `OffsetKind::Utf16`), as in Yjs, so an index means the same position on every peer. Set
   `OffsetKind::Bytes` for the old behavior. ywasm already used UTF-16; yffi keeps UTF-8 bytes,

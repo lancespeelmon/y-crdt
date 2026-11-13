@@ -1675,6 +1675,9 @@ impl SplittableString {
 
     #[inline(always)]
     pub fn len_utf16(&self) -> usize {
+        if self.content.is_ascii() {
+            return self.content.len();
+        }
         self.encode_utf16().count()
     }
 
@@ -1689,6 +1692,7 @@ impl SplittableString {
     pub(crate) fn block_offset(&self, offset: u32, kind: OffsetKind) -> u32 {
         match kind {
             OffsetKind::Utf16 => offset,
+            OffsetKind::Bytes if ascii_prefix(&self.content, offset as usize) => offset,
             OffsetKind::Bytes => {
                 let mut remaining = offset;
                 let mut i = 0;
@@ -1711,6 +1715,7 @@ impl SplittableString {
     pub(crate) fn from_block_offset(&self, block_offset: u32, kind: OffsetKind) -> u32 {
         match kind {
             OffsetKind::Utf16 => block_offset,
+            OffsetKind::Bytes if ascii_prefix(&self.content, block_offset as usize) => block_offset,
             OffsetKind::Bytes => {
                 let mut remaining = block_offset;
                 let mut i = 0;
@@ -1786,6 +1791,7 @@ pub(crate) fn split_str(
 ) -> (Cow<'_, str>, Cow<'_, str>) {
     let off = match kind {
         OffsetKind::Bytes => offset,
+        OffsetKind::Utf16 if ascii_prefix(str, offset) => offset,
         OffsetKind::Utf16 => {
             let mut off = 0;
             let mut i = 0;
@@ -1806,6 +1812,14 @@ pub(crate) fn split_str(
     };
     let (left, right) = str.split_at(off);
     (Cow::Borrowed(left), Cow::Borrowed(right))
+}
+
+/// Whether the first `len` bytes of `s` exist and are ASCII, so that `len` counts the same
+/// position in bytes, chars and UTF-16 code units. `is_ascii` is vectorized, unlike walking
+/// the chars.
+#[inline]
+fn ascii_prefix(s: &str, len: usize) -> bool {
+    s.as_bytes().get(..len).is_some_and(<[u8]>::is_ascii)
 }
 
 #[inline(never)]
