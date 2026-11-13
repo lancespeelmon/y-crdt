@@ -173,3 +173,24 @@ export const testObserversUsingObservedeep = tc => {
     t.assert(calls === 3)
     t.compare(paths, [[], ['map'], ['map', 'array']])
 }
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertingAnIntegratedTypeThrowsAndChangesNothing = tc => {
+    const d1 = new Y.YDoc()
+    const map = d1.getMap('test')
+    const array = d1.getArray('array')
+    const text = d1.getText('text')
+    t.fails(() => map.set('k', text))
+    // inside a preliminary type too, found before the outer one is inserted
+    t.fails(() => map.set('k', new Y.YArray([1, text])))
+    t.fails(() => array.push([1, new Y.YArray([text])]))
+    t.fails(() => text.insertEmbed(0, array))
+    t.compare(map.toJson(), {})
+    t.compare(array.toJson(), [])
+    // and the document is still usable
+    map.set('k', new Y.YArray([1, 2]))
+    array.push([3])
+    t.compare(map.toJson(), {k: [1, 2]})
+    t.compare(array.toJson(), [3])
+}

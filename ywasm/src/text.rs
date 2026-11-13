@@ -160,6 +160,7 @@ impl YText {
         attributes: JsValue,
         txn: ImplicitTransaction,
     ) -> crate::Result<()> {
+        crate::js::validate(&embed)?;
         match &self.0 {
             SharedCollection::Prelim(_) => {
                 Err(JsValue::from_str(crate::js::errors::INVALID_PRELIM_OP))
