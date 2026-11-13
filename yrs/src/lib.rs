@@ -315,9 +315,13 @@
 //!
 //! let local = Doc::with_client_id(123);
 //! let text1 = local.get_or_insert_text("article");
-//! let mut mgr = UndoManager::with_options(Options::default());
+//! // Only track changes made with the local peer's origin. As in Yjs, an undo manager created
+//! // without tracked origins tracks changes made without one, such as `apply_update` below.
+//! let mut mgr = UndoManager::with_options(Options {
+//!     tracked_origins: std::collections::HashSet::from([local.client_id().into()]),
+//!     ..Options::default()
+//! });
 //! mgr.expand_scope(&local, &text1);
-//! mgr.include_origin(local.client_id()); // only track changes originating from local peer
 //!
 //! let remote = Doc::with_client_id(321);
 //! let text2 = remote.get_or_insert_text("article");

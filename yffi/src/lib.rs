@@ -4883,6 +4883,9 @@ pub unsafe extern "C" fn yundo_manager_add_origin(
     let mgr = mgr.as_mut().unwrap();
     let bytes = std::slice::from_raw_parts(origin as *const u8, origin_len as usize);
     mgr.include_origin(Origin::from(bytes));
+    // As documented above, only the added origins are tracked from now on, not transactions
+    // without an origin (which a Rust or Yjs undo manager keeps tracking).
+    mgr.set_track_null_origin(false);
 }
 
 /// Removes an origin previously added to undo manager via `yundo_manager_add_origin`.

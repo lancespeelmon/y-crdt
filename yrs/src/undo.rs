@@ -375,6 +375,12 @@ where
         inner.options.tracked_origins.insert(origin.into());
     }
 
+    /// Whether to track transactions without an origin, like adding or deleting `null` in Yjs'
+    /// `trackedOrigins`. See [Options::track_null_origin].
+    pub fn set_track_null_origin(&mut self, track: bool) {
+        self.inner_mut().track_null_origin = track;
+    }
+
     /// Removes an `origin` from the list of origins tracked by a current undo manager.
     pub fn exclude_origin<O>(&mut self, origin: O)
     where

@@ -18,7 +18,12 @@ repository and its release notes.
   in `trackedOrigins`.
 - **Breaking:** the UndoManager tracks transactions without an origin as Yjs does: when it is
   created with no tracked origins (Yjs' default `{null}`), and still after
-  `include_origin`. They used to stop being tracked once any origin was included.
+  `include_origin`. They used to stop being tracked once any origin was included. Code that
+  relied on that (the crate docs used to show it), for example to keep remote updates applied
+  without an origin out of the undo stack, should pass its origins in `Options::tracked_origins`,
+  set `Options::track_null_origin` to `Some(false)`, or call the new
+  `UndoManager::set_track_null_origin(false)`. yffi's `yundo_manager_add_origin` does the
+  latter, keeping its documented behavior.
 - **Breaking:** `Options` has a new `gc_filter: Option<GcFilter>` field, Yjs' `gcFilter`:
   garbage collection skips the deleted items it returns `false` for. Struct literals of
   `Options` need the field, or `..Default::default()`.
