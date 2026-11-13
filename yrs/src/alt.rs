@@ -36,8 +36,9 @@ where
 /// document as its update history instead of loading it into a [Doc].
 ///
 /// Calling [merge_updates_v1] on the stored history plus each new update decodes the whole
-/// history every time. An accumulator decodes each update once: it collects them and folds them
-/// into its merged update every `batch` updates, and encodes only when asked.
+/// history every time. An accumulator decodes each update once and merges every `batch` of them
+/// into a level. Levels of similar size merge with each other, like the digits of a binary
+/// counter, so each update is merged again only O(log n) times. It encodes only when asked.
 ///
 /// ```
 /// use yrs::{merge_updates_v1, Doc, ReadTxn, StateVector, Text, Transact, UpdateAccumulator};
@@ -55,11 +56,20 @@ where
 /// }
 /// assert_eq!(acc.encode_v1(), merge_updates_v1(&all).unwrap());
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct UpdateAccumulator {
-    merged: Option<Update>,
+    /// Merged levels, oldest first, each with the number of batches it holds. Weights strictly
+    /// decrease from the oldest.
+    levels: Vec<(usize, Update)>,
     pending: Vec<Update>,
     batch: usize,
+}
+
+impl Default for UpdateAccumulator {
+    /// An accumulator with a batch of 64.
+    fn default() -> Self {
+        UpdateAccumulator::new(64)
+    }
 }
 
 impl UpdateAccumulator {
@@ -67,7 +77,7 @@ impl UpdateAccumulator {
     /// batches merge less often but hold more updates unmerged.
     pub fn new(batch: usize) -> Self {
         UpdateAccumulator {
-            merged: None,
+            levels: Vec::new(),
             pending: Vec::new(),
             batch: batch.max(1),
         }
@@ -106,19 +116,38 @@ impl UpdateAccumulator {
         self.pending.len()
     }
 
+    /// Merges the pending updates into a new level, then merges levels of equal weight.
     fn fold(&mut self) {
         if self.pending.is_empty() {
             return;
         }
-        let merged = self.merged.take();
         let pending = std::mem::take(&mut self.pending);
-        self.merged = Some(Update::merge_updates(merged.into_iter().chain(pending)));
+        self.levels.push((1, Update::merge_updates(pending)));
+        while let [.., (older, _), (newer, _)] = self.levels[..] {
+            if older > newer {
+                break;
+            }
+            let (w2, u2) = self.levels.pop().unwrap_or_else(|| unreachable!());
+            let (w1, u1) = self.levels.pop().unwrap_or_else(|| unreachable!());
+            self.levels.push((w1 + w2, Update::merge_updates([u1, u2])));
+        }
+    }
+
+    /// Folds everything into one level and returns it.
+    fn merged(&mut self) -> Option<&Update> {
+        self.fold();
+        if self.levels.len() > 1 {
+            let levels = std::mem::take(&mut self.levels);
+            let weight = levels.iter().map(|(w, _)| w).sum();
+            let merged = Update::merge_updates(levels.into_iter().map(|(_, u)| u));
+            self.levels.push((weight, merged));
+        }
+        self.levels.first().map(|(_, u)| u)
     }
 
     /// Everything added so far as one update, encoded with lib0 v1.
     pub fn encode_v1(&mut self) -> Vec<u8> {
-        self.fold();
-        match &self.merged {
+        match self.merged() {
             Some(update) => update.encode_v1(),
             None => Update::new().encode_v1(),
         }
@@ -126,17 +155,16 @@ impl UpdateAccumulator {
 
     /// Everything added so far as one update, encoded with lib0 v2.
     pub fn encode_v2(&mut self) -> Vec<u8> {
-        self.fold();
-        match &self.merged {
+        match self.merged() {
             Some(update) => update.encode_v2(),
             None => Update::new().encode_v2(),
         }
     }
 
-    /// Everything added so far as one decoded update, leaving the accumulator empty.
+    /// Everything added so far as one decoded update, consuming the accumulator.
     pub fn into_update(mut self) -> Update {
-        self.fold();
-        self.merged.unwrap_or_default()
+        self.merged();
+        self.levels.pop().map(|(_, u)| u).unwrap_or_default()
     }
 }
 
@@ -640,6 +668,7 @@ mod test {
     #[test]
     fn an_accumulator_merges_like_merge_updates_whatever_its_batch() {
         use crate::updates::decoder::Decode;
+        use crate::updates::encoder::Encode;
         use crate::{
             convert_update_v1_to_v2, Array, Doc, Map, ReadTxn, Text, Transact, Update,
             UpdateAccumulator,
@@ -694,6 +723,16 @@ mod test {
         }
         assert_eq!(acc.encode_v1(), expected);
         assert!(UpdateAccumulator::new(3).push_v1(&[0xff]).is_err());
+
+        // Encoding midway, then adding more, still matches; so does the default batch.
+        let mut acc = UpdateAccumulator::default();
+        for (i, u) in updates.iter().enumerate() {
+            acc.push_v1(u).unwrap();
+            if i == 100 {
+                assert_eq!(acc.encode_v1(), merge_updates_v1(&updates[..=100]).unwrap());
+            }
+        }
+        assert_eq!(acc.into_update().encode_v1(), expected);
     }
 
     #[test]
