@@ -20,7 +20,8 @@ pub enum Error {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum UpdateError {
-    /// A block's parent, identified by the first value, must be either deleted or a shared type. The second value is the type tag that was found instead.
+    /// A block names the item with this ID as its parent, but that item holds neither a shared
+    /// type nor deleted content. The second value is the content tag it holds instead.
     #[error("block parent {0} must be deleted or shared ref type. Type: {1}")]
     InvalidParent(ID, u8),
 }
