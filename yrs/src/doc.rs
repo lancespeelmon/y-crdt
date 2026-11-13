@@ -1,4 +1,4 @@
-use crate::block::{ClientID, ItemContent, ItemPtr, Prelim};
+use crate::block::{ClientID, Item, ItemContent, ItemPtr, Prelim};
 use crate::branch::BranchPtr;
 use crate::encoding::read::Error;
 use crate::event::{SubdocsEvent, TransactionCleanupEvent, UpdateEvent};
@@ -530,6 +530,53 @@ pub struct Options {
     ///
     /// Default value: `None`.
     pub meta: Option<Any>,
+
+    /// Yjs' `gcFilter`: when garbage collection is on, a deleted item is collected only if this
+    /// returns `true` for it. Items inside a collected shared type are collected with it, without
+    /// asking. Use it to keep the history of some content, as Yjs' `PermanentUserData` users
+    /// do to show who deleted what.
+    ///
+    /// Default value: `None`, which collects every deleted item.
+    pub gc_filter: Option<GcFilter>,
+
+    /// Whether weak links (the `weak` feature's [crate::WeakRef]) may be created in this document.
+    /// They are a yrs extension: Yjs can't decode them and rejects any update that contains one,
+    /// so turn this off when Yjs peers share the document. While it is off, `link` returns
+    /// `None` and `quote` returns [crate::types::weak::QuoteError::Disabled]. Weak links that
+    /// arrive in updates are still read. Has no effect without the `weak` feature.
+    ///
+    /// Default value: `true`. yffi and ywasm documents default to `false`.
+    pub weak_links: bool,
+}
+
+/// The predicate of [Options::gc_filter]. Two filters are equal only if they are the same `Arc`.
+#[derive(Clone)]
+pub struct GcFilter(pub Arc<dyn Fn(&Item) -> bool + Send + Sync>);
+
+impl GcFilter {
+    /// Wraps `f` as a filter.
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(&Item) -> bool + Send + Sync + 'static,
+    {
+        GcFilter(Arc::new(f))
+    }
+
+    pub(crate) fn allows(&self, item: &Item) -> bool {
+        (self.0)(item)
+    }
+}
+
+impl std::fmt::Debug for GcFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GcFilter")
+    }
+}
+
+impl PartialEq for GcFilter {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl Options {
@@ -544,6 +591,8 @@ impl Options {
             should_load: true,
             cleanup_formatting: true,
             meta: None,
+            gc_filter: None,
+            weak_links: true,
         }
     }
 
@@ -558,6 +607,8 @@ impl Options {
             should_load: true,
             cleanup_formatting: false,
             meta: None,
+            gc_filter: None,
+            weak_links: true,
         }
     }
 

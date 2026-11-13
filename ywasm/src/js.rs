@@ -72,13 +72,13 @@ impl Js {
             Any::Null => Js(JsValue::NULL),
             Any::Undefined => Js(JsValue::UNDEFINED),
             Any::Bool(value) => Js(JsValue::from_bool(*value)),
-            Any::Number(value) => match value.as_f64() {
-                Some(value) => Js(JsValue::from_f64(value)),
-                None => match value.as_i64() {
-                    Some(value) => Js(js_sys::BigInt::from(value).into()),
-                    None => Js(JsValue::UNDEFINED),
-                },
+            Any::Number(Number::BigInt(value)) => Js(js_sys::BigInt::from(*value).into()),
+            // As on the wire: a JS number when one holds the value exactly, a BigInt if not.
+            Any::Number(number @ Number::Int(value)) => match number.as_f64() {
+                Some(f) => Js(JsValue::from_f64(f)),
+                None => Js(js_sys::BigInt::from(*value).into()),
             },
+            Any::Number(Number::Float(value)) => Js(JsValue::from_f64(*value)),
             Any::String(str) => Js(JsValue::from_str(&*str)),
             Any::Buffer(binary) => Js(Uint8Array::from(binary.as_ref()).into()),
             Any::Array(array) => {
@@ -150,7 +150,7 @@ impl Js {
             let i: i64 = digits
                 .parse()
                 .map_err(|_| JsValue::from_str(errors::BIGINT_OUT_OF_RANGE))?;
-            Ok(ValueRef::Any(Any::Number(Number::Int(i))))
+            Ok(ValueRef::Any(Any::Number(Number::BigInt(i))))
         } else if self.0.is_instance_of::<Uint8Array>() {
             // like Yjs, a Uint8Array is binary content, not an object with numbered keys
             let bytes = Uint8Array::new(&self.0).to_vec();
@@ -907,6 +907,8 @@ pub(crate) mod errors {
     pub const ANOTHER_RW_TX: &'static str = "another read-write transaction is in progress";
     pub const OUT_OF_BOUNDS: &'static str = "index outside of the bounds of an array";
     pub const KEY_NOT_FOUND: &'static str = "key was not found in a map";
+    pub const WEAK_LINKS_DISABLED: &'static str =
+        "weak links are disabled for this document: create it with `weakLinks: true`";
     pub const INVALID_PRELIM_OP: &'static str = "preliminary type doesn't support this operation";
     pub const INVALID_FMT: &'static str = "given object cannot be used as formatting attributes";
     pub const INVALID_XML_ATTRS: &'static str = "given object cannot be used as XML attributes";

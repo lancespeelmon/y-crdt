@@ -177,6 +177,10 @@ impl YMap {
                 let link = c.link(txn, key);
                 match link {
                     Some(link) => Ok(YWeakLink::from_prelim(link, txn.doc().clone()).into()),
+                    // `link` is also None when the doc doesn't allow weak links.
+                    None if c.get(txn, key).is_some() => {
+                        Err(JsValue::from_str(js::errors::WEAK_LINKS_DISABLED))
+                    }
                     None => Err(JsValue::from_str(js::errors::KEY_NOT_FOUND)),
                 }
             }),

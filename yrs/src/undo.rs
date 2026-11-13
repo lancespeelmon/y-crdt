@@ -1,11 +1,11 @@
-use crate::block::ItemPtr;
+use crate::block::{Item, ItemPtr};
 use crate::branch::{Branch, BranchPtr};
 use crate::id_set::DeleteSet;
 use crate::iter::TxnIterator;
 use crate::slice::BlockSlice;
 use crate::sync::Clock;
 use crate::transaction::Origin;
-use crate::{Doc, IdSet, Observer, Transact, TransactionMut, Uuid, ID};
+use crate::{Doc, IdSet, Observer, ReadTxn, Transact, TransactionMut, Uuid, ID};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -101,6 +101,8 @@ pub trait Meta: Default {}
 impl<M> Meta for M where M: Default {}
 
 struct Inner<M> {
+    /// Whether transactions without an origin are tracked; see [Options::track_null_origin].
+    track_null_origin: bool,
     docs: HashMap<Arc<str>, Doc>,
     scope: HashSet<BranchPtr>,
     options: Options<M>,
@@ -134,7 +136,11 @@ where
     pub fn with_options(mut options: Options<M>) -> Self {
         let undo_stack = UndoStack(std::mem::take(&mut options.init_undo_stack));
         let redo_stack = UndoStack(std::mem::take(&mut options.init_redo_stack));
+        let track_null_origin = options
+            .track_null_origin
+            .unwrap_or(options.tracked_origins.is_empty());
         let mut state = Arc::new(Inner {
+            track_null_origin,
             scope: HashSet::new(),
             options,
             undo_stack,
@@ -220,7 +226,7 @@ where
             || !txn
                 .origin()
                 .map(|o| inner.options.tracked_origins.contains(o))
-                .unwrap_or(inner.options.tracked_origins.len() == 1) // tracked origins contain only undo manager itself
+                .unwrap_or(inner.track_null_origin)
     }
 
     fn handle_after_transaction(inner: &mut Inner<M>, txn: &mut TransactionMut) {
@@ -281,6 +287,14 @@ where
             let doc = txn.doc().guid();
             let item = StackItem::new(doc, txn.delete_set.clone(), insertions);
             stack.push(item);
+            if let Some(max) = inner.options.max_stack_len {
+                let excess = stack.len().saturating_sub(max.max(1));
+                for evicted in stack.drain(..excess) {
+                    if evicted.doc == target {
+                        Self::release_kept(&inner.scope, &*txn, &evicted);
+                    }
+                }
+            }
         }
 
         if !undoing && !redoing {
@@ -378,6 +392,12 @@ where
         inner.options.tracked_origins.insert(origin.into());
     }
 
+    /// Whether to track transactions without an origin, like adding or deleting `null` in Yjs'
+    /// `trackedOrigins`. See [Options::track_null_origin].
+    pub fn set_track_null_origin(&mut self, track: bool) {
+        self.inner_mut().track_null_origin = track;
+    }
+
     /// Removes an `origin` from the list of origins tracked by a current undo manager.
     pub fn exclude_origin<O>(&mut self, origin: O)
     where
@@ -450,19 +470,24 @@ where
     ) -> bool {
         let len = stack.len();
         for stack_item in stack.drain(0..len) {
-            let mut deleted = stack_item.deletions.blocks();
             if let Some(doc) = docs.get(&stack_item.doc) {
                 let txn = doc.transact();
-                while let Some(slice) = deleted.next(&txn) {
-                    if let Some(item) = slice.as_item() {
-                        if scope.iter().any(|b| b.is_parent_of(Some(item))) {
-                            item.keep(false);
-                        }
-                    }
-                }
+                Self::release_kept(scope, &txn, &stack_item);
             }
         }
         len != 0
+    }
+
+    /// Lets garbage collection take the deleted items `stack_item` kept for undoing.
+    fn release_kept<T: ReadTxn>(scope: &HashSet<BranchPtr>, txn: &T, stack_item: &StackItem<M>) {
+        let mut deleted = stack_item.deletions.blocks();
+        while let Some(slice) = deleted.next(txn) {
+            if let Some(item) = slice.as_item() {
+                if scope.iter().any(|b| b.is_parent_of(Some(item))) {
+                    item.keep(false);
+                }
+            }
+        }
     }
 
     pub fn as_origin(&self) -> Origin {
@@ -617,6 +642,7 @@ where
                     stack,
                     other,
                     &state.scope,
+                    &state.options,
                     &mut state.observer_popped,
                     undoing,
                     origin.clone(),
@@ -651,6 +677,7 @@ where
                     stack,
                     other,
                     &state.scope,
+                    &state.options,
                     &mut state.observer_popped,
                     undoing,
                     origin.clone(),
@@ -671,6 +698,7 @@ where
         stack: &mut UndoStack<M>,
         other: &UndoStack<M>,
         scope: &HashSet<BranchPtr>,
+        options: &Options<M>,
         observer_popped: &mut Observer<UndoFn<M>>,
         undoing: bool,
         origin: Origin,
@@ -713,16 +741,28 @@ where
         for &ptr in to_redo.iter() {
             let mut ptr = ptr;
             change_performed |= ptr
-                .redo(&mut txn, &to_redo, &item.insertions, stack, other)
+                .redo(
+                    &mut txn,
+                    &to_redo,
+                    &item.insertions,
+                    stack,
+                    other,
+                    options.ignore_remote_map_changes,
+                )
                 .is_some();
         }
 
         // We want to delete in reverse order so that children are deleted before
         // parents, so we have more information available when items are filtered.
         for &item in to_delete.iter().rev() {
-            // if self.options.delete_filter(item) {
-            txn.delete(item);
-            change_performed = true;
+            if options
+                .delete_filter
+                .as_ref()
+                .is_none_or(|keep| keep(&item))
+            {
+                txn.delete(item);
+                change_performed = true;
+            }
         }
 
         txn.commit();
@@ -847,9 +887,34 @@ pub struct Options<M> {
 
     /// Initial redo stack that can be pre-filled with some operations that can be redone.
     pub init_redo_stack: Vec<StackItem<M>>,
+
+    /// Yjs' `deleteFilter`: undoing an insertion (or redoing a deletion) deletes only the items
+    /// this returns `true` for. Default: `None`, which deletes them all.
+    pub delete_filter: Option<DeleteFilterFn>,
+
+    /// Yjs' `ignoreRemoteMapChanges`: redo a map entry even if another peer has overwritten the
+    /// key since. By default such an entry is left as the other peer set it.
+    pub ignore_remote_map_changes: bool,
+
+    /// Whether transactions without an origin are tracked, like `null` in Yjs'
+    /// `trackedOrigins`. Default: `None`, which tracks them if `tracked_origins` is empty when the
+    /// manager is created (Yjs' default set is `{null}`). Origins included later with
+    /// [UndoManager::include_origin] don't change it.
+    pub track_null_origin: Option<bool>,
+
+    /// The most stack items kept on each of the undo and redo stacks (at least 1: `Some(0)`
+    /// keeps one). When a new item would go over it, the oldest one is dropped, and the deleted
+    /// content only it kept becomes collectable. That release needs the dropped item's document,
+    /// so an item of another document in a multi-document scope is dropped without it; its
+    /// content becomes collectable after `clear` or when that document is dropped. Yjs has no
+    /// limit. Default: `None`, no limit.
+    pub max_stack_len: Option<usize>,
 }
 
 pub type CaptureTransactionFn = Arc<dyn Fn(&TransactionMut) -> bool + Send + Sync + 'static>;
+
+/// See [Options::delete_filter].
+pub type DeleteFilterFn = Arc<dyn Fn(&Item) -> bool + Send + Sync + 'static>;
 
 #[cfg(not(target_family = "wasm"))]
 impl<M> Default for Options<M> {
@@ -861,6 +926,10 @@ impl<M> Default for Options<M> {
             timestamp: Arc::new(crate::sync::time::SystemClock),
             init_undo_stack: Vec::new(),
             init_redo_stack: Vec::new(),
+            delete_filter: None,
+            ignore_remote_map_changes: false,
+            track_null_origin: None,
+            max_stack_len: None,
         }
     }
 }
@@ -1046,6 +1115,125 @@ mod test {
         Text, TextPrelim, TextRef, Transact, UndoManager, Update, Xml, XmlElementPrelim,
         XmlElementRef, XmlFragment, XmlTextPrelim, ID,
     };
+
+    fn manager(doc: &Doc, map: &MapRef, configure: impl FnOnce(&mut Options<()>)) -> UndoManager {
+        let mut options = Options::default();
+        options.capture_timeout_millis = 0;
+        configure(&mut options);
+        let mut mgr = UndoManager::with_options(options);
+        mgr.expand_scope(doc, map);
+        mgr
+    }
+
+    #[test]
+    fn the_delete_filter_keeps_what_it_refuses_when_undoing() {
+        let doc = Doc::with_client_id(1);
+        let map = doc.get_or_insert_map("map");
+        let mut mgr = manager(&doc, &map, |o| {
+            o.delete_filter = Some(Arc::new(|item: &crate::block::Item| {
+                item.parent_sub() != Some("keep")
+            }));
+        });
+        {
+            let mut txn = doc.transact_mut();
+            map.insert(&mut txn, "keep", 1);
+            map.insert(&mut txn, "drop", 2);
+        }
+        assert!(mgr.undo_blocking());
+        let txn = doc.transact();
+        assert_eq!(map.get(&txn, "keep"), Some(1.into()));
+        assert_eq!(map.get(&txn, "drop"), None);
+    }
+
+    #[test]
+    fn redo_of_a_map_entry_overwritten_remotely_follows_ignore_remote_map_changes() {
+        for ignore in [false, true] {
+            let local = Doc::with_client_id(1);
+            let remote = Doc::with_client_id(2);
+            let map = local.get_or_insert_map("map");
+            let mut mgr = manager(&local, &map, |o| o.ignore_remote_map_changes = ignore);
+            map.insert(&mut local.transact_mut(), "a", "local");
+            assert!(mgr.undo_blocking());
+            exchange_updates(&[&local, &remote]);
+            let remote_map = remote.get_or_insert_map("map");
+            remote_map.insert(&mut remote.transact_mut(), "a", "remote");
+            exchange_updates(&[&local, &remote]);
+
+            mgr.redo_blocking();
+            let expected = if ignore { "local" } else { "remote" };
+            assert_eq!(
+                map.get(&local.transact(), "a"),
+                Some(expected.into()),
+                "ignore_remote_map_changes = {}",
+                ignore
+            );
+        }
+    }
+
+    #[test]
+    fn untagged_changes_stay_tracked_after_including_an_origin_like_yjs() {
+        let doc = Doc::with_client_id(1);
+        let map = doc.get_or_insert_map("map");
+        let mut mgr = manager(&doc, &map, |_| {});
+        mgr.include_origin("tagged");
+        map.insert(&mut doc.transact_mut(), "untagged", 1);
+        map.insert(&mut doc.transact_mut_with("tagged"), "tagged", 2);
+        map.insert(&mut doc.transact_mut_with("other"), "other", 3);
+        assert!(mgr.undo_blocking());
+        assert!(mgr.undo_blocking());
+        assert!(
+            !mgr.undo_blocking(),
+            "the untracked origin left nothing to undo"
+        );
+        let txn = doc.transact();
+        assert_eq!(map.len(&txn), 1);
+        assert_eq!(map.get(&txn, "other"), Some(3.into()));
+        drop(txn);
+
+        // Opting out, as Yjs does by leaving `null` out of `trackedOrigins`.
+        let mut mgr = manager(&doc, &map, |o| o.track_null_origin = Some(false));
+        map.insert(&mut doc.transact_mut(), "untagged", 4);
+        assert!(!mgr.undo_blocking());
+    }
+
+    #[test]
+    fn a_bounded_stack_drops_its_oldest_items_and_their_kept_deletions() {
+        let doc = Doc::with_client_id(1);
+        let map = doc.get_or_insert_map("map");
+        let text = doc.get_or_insert_text("text");
+        let mut mgr = manager(&doc, &map, |o| o.max_stack_len = Some(2));
+        mgr.expand_scope(&doc, &text);
+        text.insert(&mut doc.transact_mut(), 0, "abc"); // clocks 0..3
+        text.remove_range(&mut doc.transact_mut(), 0, 3);
+        let kept = |doc: &Doc| {
+            let txn = doc.transact();
+            let item = txn.store().blocks.get_item(&ID::new(ClientID::new(1), 0));
+            item.map(|i| i.info.is_keep())
+        };
+        assert_eq!(
+            kept(&doc),
+            Some(true),
+            "the undo stack keeps the deleted text"
+        );
+        map.insert(&mut doc.transact_mut(), "a", 1);
+        map.insert(&mut doc.transact_mut(), "b", 2);
+        assert_eq!(
+            kept(&doc),
+            Some(false),
+            "dropped with the oldest stack items"
+        );
+
+        assert!(mgr.undo_blocking());
+        assert!(mgr.undo_blocking());
+        assert!(!mgr.undo_blocking(), "only two items were kept");
+        let txn = doc.transact();
+        assert_eq!(map.len(&txn), 0);
+        assert_eq!(
+            text.get_string(&txn),
+            "",
+            "the dropped deletion is not undone"
+        );
+    }
 
     #[test]
     fn selective_clear_preserves_other_stack_and_reports_actual_changes() {
@@ -1886,9 +2074,12 @@ mod test {
         const ORIGIN: &str = "undoable";
         let doc = Doc::with_client_id(1);
         let f = doc.get_or_insert_xml_fragment("test");
-        let mut mgr = UndoManager::new();
+        // As in the Yjs test: only ORIGIN is tracked, so the untagged setup below isn't.
+        let mut mgr = UndoManager::with_options(Options {
+            tracked_origins: std::collections::HashSet::from([crate::Origin::from(ORIGIN)]),
+            ..Options::default()
+        });
         mgr.expand_scope(&doc, &f);
-        mgr.include_origin(ORIGIN);
         {
             let mut txn = doc.transact_mut();
             let e = f.insert(&mut txn, 0, XmlElementPrelim::empty("test"));

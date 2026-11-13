@@ -292,9 +292,13 @@ pub trait Map: AsRef<Branch> + Sized {
         ptr.remove(txn, key)
     }
 
-    /// Returns [WeakPrelim] to a given `key`, if it exists in a current map.
+    /// Returns [WeakPrelim] to a given `key`, if it exists in a current map. Also `None` if the
+    /// document doesn't allow weak links (see [crate::Options::weak_links]).
     #[cfg(feature = "weak")]
-    fn link<T: ReadTxn>(&self, _txn: &T, key: &str) -> Option<crate::WeakPrelim<Self>> {
+    fn link<T: ReadTxn>(&self, txn: &T, key: &str) -> Option<crate::WeakPrelim<Self>> {
+        if !txn.store().weak_links {
+            return None;
+        }
         let ptr = BranchPtr::from(self.as_ref());
         let block = ptr.map.get(key)?;
         let start = StickyIndex::from_id(block.id().clone(), Assoc::Before);

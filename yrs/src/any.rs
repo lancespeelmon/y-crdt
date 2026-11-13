@@ -59,14 +59,21 @@ impl Any {
             127 => Any::Undefined,
             // CASE 126: null
             126 => Any::Null,
-            // CASE 125: integer
-            125 => Any::Number(Number::Int(decoder.read_var::<i64>()?)),
+            // CASE 125: integer. lib0 keeps the sign of -0, which only a float can hold.
+            125 => {
+                let n = decoder.read_var_signed::<i64>()?;
+                if n.value() == 0 && n.is_negative() {
+                    Any::Number(Number::Float(-0.0))
+                } else {
+                    Any::Number(Number::Int(n.value()))
+                }
+            }
             // CASE 124: float32
             124 => Any::Number(Number::Float(decoder.read_f32()? as f64)),
             // CASE 123: float64
             123 => Any::Number(Number::Float(decoder.read_f64()?)),
             // CASE 122: bigint
-            122 => Any::Number(Number::Int(decoder.read_i64()?)),
+            122 => Any::Number(Number::BigInt(decoder.read_i64()?)),
             // CASE 121: boolean (false)
             121 => Any::Bool(false),
             // CASE 120: boolean (true)
@@ -177,19 +184,28 @@ impl Any {
                             // TYPE 125: INTEGER
                             encoder.write_u8(125);
                             encoder.write_var(n)
-                        } else if (n as f32) as i64 == n {
-                            // TYPE 124: FLOAT32
-                            encoder.write_u8(124);
-                            encoder.write_f32(n as f32)
-                        } else if (n as f64) as i64 == n {
-                            // TYPE 123: FLOAT64
-                            encoder.write_u8(123);
-                            encoder.write_f64(n as f64)
+                        } else if let Some(f) = exact_f64(n) {
+                            // A JS number, as lib0 writes one, when it holds `n` exactly.
+                            if (f as f32) as f64 == f {
+                                // TYPE 124: FLOAT32
+                                encoder.write_u8(124);
+                                encoder.write_f32(f as f32)
+                            } else {
+                                // TYPE 123: FLOAT64
+                                encoder.write_u8(123);
+                                encoder.write_f64(f)
+                            }
                         } else {
-                            // TYPE 122: BigInt
+                            // TYPE 122: BigInt. Rounding to a JS number would leave the peer
+                            // that wrote `n` with a different value from all the others.
                             encoder.write_u8(122);
                             encoder.write_i64(n)
                         }
+                    }
+                    Number::BigInt(n) => {
+                        // TYPE 122: BigInt
+                        encoder.write_u8(122);
+                        encoder.write_i64(n)
                     }
                     Number::Float(n) => {
                         if (n as f32) as f64 == n {
@@ -304,10 +320,25 @@ impl std::fmt::Display for Any {
     }
 }
 
+/// `n` as an `f64`, if that is exact. `n as f64 as i64` alone saturates: `i64::MAX` rounds to
+/// 2^63, which converts back to `i64::MAX`.
+fn exact_f64(n: i64) -> Option<f64> {
+    let f = n as f64;
+    (f < 9_223_372_036_854_775_808.0 && f as i64 == n).then_some(f)
+}
+
+/// A number in an [Any]: what a JavaScript number holds, plus `BigInt`.
 #[derive(Debug, Clone, Copy)]
 pub enum Number {
+    /// An integer. On the wire it is a JS number when one holds it exactly (always within
+    /// ±2^53, see [Number::I64_MAX_SAFE_INTEGER]), and a `BigInt` otherwise, so every peer
+    /// reads the same value. Peers decode those as [Number::BigInt], which compares equal.
     Int(i64),
+    /// A float. `-0.0` keeps its sign.
     Float(f64),
+    /// A JavaScript `BigInt`. It is encoded as one (lib0 tag 122), so Yjs reads a `bigint` and
+    /// every 64-bit value survives the round trip.
+    BigInt(i64),
 }
 
 impl Number {
@@ -316,8 +347,11 @@ impl Number {
     pub const F64_MAX_SAFE_INTEGER: f64 = Self::I64_MAX_SAFE_INTEGER as f64;
     pub const F64_MIN_SAFE_INTEGER: f64 = -Self::F64_MAX_SAFE_INTEGER;
 
+    /// `value` as an [Number::Int] if it is a safe integer (but not `-0.0`), otherwise as a
+    /// [Number::Float].
     pub fn try_i64(value: f64) -> Self {
         if value.trunc() == value
+            && !(value == 0.0 && value.is_sign_negative())
             && value >= Self::F64_MIN_SAFE_INTEGER
             && value <= Self::F64_MAX_SAFE_INTEGER
         {
@@ -329,12 +363,15 @@ impl Number {
 
     pub fn as_i64(self) -> Option<i64> {
         match self {
-            Number::Int(value) => Some(value),
+            Number::Int(value) | Number::BigInt(value) => Some(value),
             Number::Float(value) => {
-                // check if conversion is lossless
-                let converted = value as i64;
-                if converted as f64 == value {
-                    Some(converted)
+                // Lossless only for whole numbers in i64's range: `as` saturates, so 2^63 would
+                // come out as i64::MAX.
+                if value.trunc() == value
+                    && value >= -9_223_372_036_854_775_808.0
+                    && value < 9_223_372_036_854_775_808.0
+                {
+                    Some(value as i64)
                 } else {
                     None
                 }
@@ -344,14 +381,7 @@ impl Number {
 
     pub fn as_f64(self) -> Option<f64> {
         match self {
-            Number::Int(value) => {
-                let n = value as f64;
-                if n as i64 == value {
-                    Some(n)
-                } else {
-                    None
-                }
-            }
+            Number::Int(value) | Number::BigInt(value) => exact_f64(value),
             Number::Float(value) => Some(value),
         }
     }
@@ -360,12 +390,15 @@ impl Number {
 impl PartialEq for Number {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Number::Int(a), Number::Int(b)) => a == b,
             (Number::Float(a), Number::Float(b)) => a == b,
-            _ => match (self.as_f64(), other.as_f64()) {
-                (Some(a), Some(b)) => a == b,
-                _ => false,
-            },
+            (Number::Float(_), _) | (_, Number::Float(_)) => {
+                match (self.as_f64(), other.as_f64()) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                }
+            }
+            // Int and BigInt compare by value.
+            _ => self.as_i64() == other.as_i64(),
         }
     }
 }
@@ -402,6 +435,9 @@ impl Serialize for Number {
         S: Serializer,
     {
         use serde::ser::Error;
+        if let Number::BigInt(v) = self {
+            return serializer.serialize_i64(*v);
+        }
         match self.as_f64() {
             Some(v) => serializer.serialize_f64(v),
             None => match self.as_i64() {
@@ -446,6 +482,7 @@ impl<'de> Deserialize<'de> for Number {
                 if v <= Number::F64_MAX_SAFE_INTEGER
                     && v > Number::F64_MIN_SAFE_INTEGER
                     && v.trunc() == v
+                    && !(v == 0.0 && v.is_sign_negative())
                 {
                     Ok(Number::Int(v as i64))
                 } else {
@@ -461,7 +498,7 @@ impl<'de> Deserialize<'de> for Number {
 impl std::fmt::Display for Number {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Number::Int(value) => write!(f, "{}", value),
+            Number::Int(value) | Number::BigInt(value) => write!(f, "{}", value),
             Number::Float(value) => write!(f, "{}", value),
         }
     }
@@ -1109,5 +1146,68 @@ mod test {
         assert_eq!(hex(Number::Float(f64::NAN)), "7b7ff8000000000000");
         assert_eq!(hex(Number::Float(f64::INFINITY)), "7c7f800000");
         assert_eq!(hex(Number::Float(f64::NEG_INFINITY)), "7cff800000");
+    }
+
+    fn decode_hex(hex: &str) -> Any {
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        Any::decode(&mut Cursor::new(&bytes)).unwrap()
+    }
+
+    #[test]
+    fn big_integers_are_js_numbers_unless_they_are_bigints() {
+        // Beyond 2^53 an Int is a JS number if one holds it exactly, and a BigInt if not.
+        // i64::MAX used to come out as the float32 2^63.
+        assert_eq!(hex(Number::Int(1 << 62)), "7c5e800000");
+        assert_eq!(hex(Number::Int((1 << 53) + 2)), "7b4340000000000001");
+        assert_eq!(hex(Number::Int((1 << 62) + 1)), "7a4000000000000001");
+        assert_eq!(hex(Number::Int(i64::MAX)), "7a7fffffffffffffff");
+        // A BigInt is written as lib0's bigint, whatever its size, and reads back as one.
+        for n in [0, 5, (1 << 62) + 1, i64::MAX, i64::MIN] {
+            let mut buf = Vec::new();
+            Any::Number(Number::BigInt(n)).encode(&mut buf);
+            assert_eq!(buf[0], 122);
+            match Any::decode(&mut Cursor::new(&buf)).unwrap() {
+                Any::Number(Number::BigInt(m)) => assert_eq!(m, n),
+                other => panic!("{:?}", other),
+            }
+        }
+        assert_eq!(hex(Number::BigInt(5)), "7a0000000000000005");
+        // Int and BigInt of the same value are equal, as in JS' `5n == 5`.
+        assert_eq!(Number::BigInt(5), Number::Int(5));
+        assert_ne!(Number::BigInt((1 << 62) + 1), Number::Int(1 << 62));
+    }
+
+    #[test]
+    fn floats_out_of_i64_range_are_not_integers() {
+        assert_eq!(Number::Float(9_223_372_036_854_775_808.0).as_i64(), None);
+        assert_eq!(
+            Number::Float(-9_223_372_036_854_775_808.0).as_i64(),
+            Some(i64::MIN)
+        );
+        assert_eq!(Number::Float(f64::NAN).as_i64(), None);
+        assert_eq!(Number::Float(3.0).as_i64(), Some(3));
+    }
+
+    #[test]
+    fn negative_zero_keeps_its_sign() {
+        // lib0 writes -0 as a var int with the sign bit set.
+        match decode_hex("7d40") {
+            Any::Number(Number::Float(z)) => assert!(z == 0.0 && z.is_sign_negative()),
+            other => panic!("{:?}", other),
+        }
+        assert_eq!(decode_hex("7d00"), Any::Number(Number::Int(0)));
+        match Number::try_i64(-0.0) {
+            Number::Float(z) => assert!(z.is_sign_negative()),
+            other => panic!("{:?}", other),
+        }
+        let mut buf = Vec::new();
+        Any::Number(Number::Float(-0.0)).encode(&mut buf);
+        match Any::decode(&mut Cursor::new(&buf)).unwrap() {
+            Any::Number(Number::Float(z)) => assert!(z.is_sign_negative()),
+            other => panic!("{:?}", other),
+        }
     }
 }

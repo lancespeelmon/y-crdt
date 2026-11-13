@@ -70,6 +70,8 @@ impl YDoc {
             .map_err(|_| JsValue::from_str("invalid document options"))?;
         let mut options = Options::default();
         options.offset_kind = OffsetKind::Utf16;
+        // Weak links are a yrs extension that Yjs peers reject; opt in with `weakLinks: true`.
+        options.weak_links = false;
         if let Some(o) = js_options {
             o.fill(&mut options);
         }
@@ -495,6 +497,9 @@ pub struct DocOptions {
 
     #[serde(alias = "isSuggestionDoc", default)]
     pub is_suggestion_doc: Option<bool>,
+
+    #[serde(alias = "weakLinks", default)]
+    pub weak_links: Option<bool>,
 }
 
 impl DocOptions {
@@ -519,6 +524,9 @@ impl DocOptions {
         }
         if let Some(value) = self.is_suggestion_doc {
             options.cleanup_formatting = !value;
+        }
+        if let Some(value) = self.weak_links {
+            options.weak_links = value;
         }
     }
 }

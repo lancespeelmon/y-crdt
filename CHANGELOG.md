@@ -11,6 +11,33 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking (yffi, ywasm):** weak links are off by default in documents created through the
+  bindings, because Yjs peers reject every update that contains one. Opt in with yffi's new
+  `Y_WEAK_LINKS` option flag or ywasm's `weakLinks: true`. While off, `ymap_link`,
+  `ytext_quote` and `yarray_quote` return NULL, and ywasm's `link` and `quote` throw. Weak
+  links received from other yrs peers are still read. In Rust the new `Options::weak_links`
+  defaults to `true` (the `weak` feature is already opt-in); with it off, `link` returns `None`
+  and `quote` returns the new `QuoteError::Disabled`.
+- **Breaking:** `Number` has a new `BigInt(i64)` variant for JavaScript `BigInt`s (lib0 tag 122).
+  They used to decode as `Number::Int` and go back out as JS numbers, losing their type and
+  precision. `Number::BigInt` compares equal to a `Number::Int` of the same value. ywasm
+  converts JS `BigInt`s to and from it.
+- **Breaking:** `undo::Options` has four new fields, Yjs' `deleteFilter` (`delete_filter`) and
+  `ignoreRemoteMapChanges` (`ignore_remote_map_changes`), plus `track_null_origin` and
+  `max_stack_len` (a bound Yjs doesn't have: the oldest items are dropped and what they kept
+  becomes collectable). ywasm's `YUndoManager` accepts `ignoreRemoteMapChanges`, and `null`
+  in `trackedOrigins`.
+- **Breaking:** the UndoManager tracks transactions without an origin as Yjs does: when it is
+  created with no tracked origins (Yjs' default `{null}`), and still after
+  `include_origin`. They used to stop being tracked once any origin was included. Code that
+  relied on that (the crate docs used to show it), for example to keep remote updates applied
+  without an origin out of the undo stack, should pass its origins in `Options::tracked_origins`,
+  set `Options::track_null_origin` to `Some(false)`, or call the new
+  `UndoManager::set_track_null_origin(false)`. yffi's `yundo_manager_add_origin` does the
+  latter, keeping its documented behavior.
+- **Breaking:** `Options` has a new `gc_filter: Option<GcFilter>` field, Yjs' `gcFilter`:
+  garbage collection skips the deleted items it returns `false` for. Struct literals of
+  `Options` need the field, or `..Default::default()`.
 - **Breaking:** `TransactionAcqError` is `#[non_exhaustive]` and has a new variant, `Reentrant`.
   A transaction that would wait forever on one the same thread already holds on the same
   document (any transaction, for a read-write one; a read-write one, for a read-only one) is
@@ -41,6 +68,21 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `PermanentUserData` (Yjs' class of the same name): maps client IDs to users and records who
+  deleted what, in the same document layout as Yjs, so both read each other's data.
+  Recording is explicit (`record_deletions`, `record_local_deletions`), since yrs has no timers.
+- `Item::content`, `Item::parent_sub` and `Item::parent_id`, for inspecting items, for example
+  from a `GcFilter`.
+- Byte-level update utilities from Yjs, which need no `Doc`: `parse_update_meta_v1/_v2`
+  (`parseUpdateMeta`), `convert_update_v1_to_v2` and `convert_update_v2_to_v1`
+  (`convertUpdateFormat*`; the bytes match Yjs' for updates laid out as Yjs writes them), `snapshot_contains_update_v1/_v2`
+  (`snapshotContainsUpdate`) and `obfuscate_update_v1/_v2` with `ObfuscateOptions`
+  (`obfuscateUpdate`, for sharing an update that reproduces a bug without its content).
+- Awareness parity with Yjs for servers (yrs has no timers, so these are methods to call
+  periodically): `Awareness::check_timeouts` renews the local state every 15 s and removes
+  remote states not updated for `OUTDATED_TIMEOUT` (30 s) with origin `"timeout"`, and
+  `Awareness::remove_states` removes the states of a closed connection's clients, like Yjs'
+  `removeAwarenessStates`.
 - `Update::decode_v2_with_block_limit`, which decodes a v2 update from untrusted input while
   refusing ones that would decode into more than a given number of blocks.
 - `Any::MAX_DECODE_DEPTH`: decoding an `Any` value nested deeper than this returns an error.
@@ -52,6 +94,12 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
+  decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
+  2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a
+  `Float`.
+- `Awareness::remove_state` no longer notifies `on_change` observers when the client had no
+  state (an operator-precedence slip).
 - Dropping an `UndoManager` while one of its documents is in a transaction no longer panics.
   Its callbacks can't be removed at that moment, so they turn inert and remove themselves at
   their next call; before, the panic also freed the state they point to.

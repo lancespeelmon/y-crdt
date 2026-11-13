@@ -273,6 +273,7 @@ pub struct YOptions {
     /// - `Y_AUTO_LOAD`: all subdocuments should be loaded automatically.
     /// - `Y_SHOULD_LOAD`: should current document be synced with its provider immediatelly?
     /// - `Y_CLEANUP_TEXT_FMT`: automatically remove dangling formatting attributes.
+    /// - `Y_WEAK_LINKS`: allow creating weak links (`ymap_link`, `ytext_quote`, `yarray_quote`).
     pub flags: u8,
 }
 
@@ -302,6 +303,12 @@ pub const Y_SHOULD_LOAD: u8 = 1 << 3;
 /// This flag orders cleanup of dangling formatting attributes.
 pub const Y_CLEANUP_FMT: u8 = 1 << 4;
 
+/// Boolean flag that allows creating weak links in the document. Off by default: weak links are
+/// a yrs extension, and Yjs peers reject every update that contains one. While it is off,
+/// `ymap_link`, `ytext_quote` and `yarray_quote` return NULL. Weak links received from other yrs
+/// peers are still read.
+pub const Y_WEAK_LINKS: u8 = 1 << 5;
+
 impl Into<Options> for YOptions {
     fn into(self) -> Options {
         let mut offset_kind = OffsetKind::Bytes;
@@ -312,6 +319,7 @@ impl Into<Options> for YOptions {
         let auto_load = self.flags & Y_AUTO_LOAD != 0;
         let should_load = self.flags & Y_SHOULD_LOAD != 0;
         let cleanup_formatting = self.flags & Y_CLEANUP_FMT != 0;
+        let weak_links = self.flags & Y_WEAK_LINKS != 0;
         let guid = if self.guid.is_null() {
             uuid_v4()
         } else {
@@ -336,6 +344,8 @@ impl Into<Options> for YOptions {
             offset_kind,
             cleanup_formatting,
             meta: None,
+            gc_filter: None,
+            weak_links,
         }
     }
 }
@@ -358,6 +368,9 @@ impl From<Options> for YOptions {
         if o.cleanup_formatting {
             flags |= Y_CLEANUP_FMT;
         }
+        if o.weak_links {
+            flags |= Y_WEAK_LINKS;
+        }
 
         YOptions {
             id: o.client_id.get(),
@@ -375,7 +388,15 @@ impl From<Options> for YOptions {
 /// Returns default ceonfiguration for `YOptions`.
 #[no_mangle]
 pub unsafe extern "C" fn yoptions() -> YOptions {
-    Options::default().into()
+    ffi_default_options().into()
+}
+
+/// The defaults of a document created through this API: weak links off.
+fn ffi_default_options() -> Options {
+    Options {
+        weak_links: false,
+        ..Options::default()
+    }
 }
 
 /// Releases all memory-allocated resources bound to given document.
@@ -427,7 +448,7 @@ pub unsafe extern "C" fn ybinary_destroy(ptr: *mut c_char, len: u32) {
 /// Use [ydoc_destroy] in order to release created [Doc] resources.
 #[no_mangle]
 pub extern "C" fn ydoc_new() -> *mut Doc {
-    Box::into_raw(Box::new(Doc::new()))
+    Box::into_raw(Box::new(Doc::with_options(ffi_default_options())))
 }
 
 /// Creates a shallow clone of a provided `doc` - it's realized by increasing the ref-count
@@ -3223,7 +3244,7 @@ impl From<Number> for YOutput {
     #[inline]
     fn from(value: Number) -> Self {
         match value {
-            Number::Int(value) => YOutput::from(value),
+            Number::Int(value) | Number::BigInt(value) => YOutput::from(value),
             Number::Float(value) => YOutput::from(value),
         }
     }
@@ -4882,6 +4903,9 @@ pub unsafe extern "C" fn yundo_manager_add_origin(
     let mgr = mgr.as_mut().unwrap();
     let bytes = std::slice::from_raw_parts(origin as *const u8, origin_len as usize);
     mgr.include_origin(Origin::from(bytes));
+    // As documented above, only the added origins are tracked from now on, not transactions
+    // without an origin (which a Rust or Yjs undo manager keeps tracking).
+    mgr.set_track_null_origin(false);
 }
 
 /// Removes an origin previously added to undo manager via `yundo_manager_add_origin`.

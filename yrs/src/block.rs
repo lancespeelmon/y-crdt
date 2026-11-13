@@ -1,5 +1,5 @@
 use crate::block_store::BlockStore;
-use crate::branch::{Branch, BranchPtr};
+use crate::branch::{Branch, BranchID, BranchPtr};
 use crate::doc::{DocAddr, OffsetKind};
 use crate::encoding::read::Error;
 use crate::gc::GCCollector;
@@ -450,6 +450,7 @@ impl ItemPtr {
         items_to_delete: &IdSet,
         s1: &UndoStack<M>,
         s2: &UndoStack<M>,
+        ignore_remote_map_changes: bool,
     ) -> Option<ItemPtr> {
         let self_ptr = self.clone();
         let item = self.deref_mut();
@@ -466,7 +467,14 @@ impl ItemPtr {
                 if parent.redone.is_none()
                     && (!redo_items.contains(&parent)
                         || parent
-                            .redo(txn, redo_items, items_to_delete, s1, s2)
+                            .redo(
+                                txn,
+                                redo_items,
+                                items_to_delete,
+                                s1,
+                                s2,
+                                ignore_remote_map_changes,
+                            )
                             .is_none())
                 {
                     return None;
@@ -495,7 +503,7 @@ impl ItemPtr {
         let mut left = None;
         let mut right = None;
         if let Some(sub) = item.parent_sub.as_ref() {
-            if item.right.is_some() {
+            if item.right.is_some() && !ignore_remote_map_changes {
                 left = Some(self_ptr);
                 // Iterate right while is in itemsToDelete
                 // If it is intended to delete right while item is redone,
@@ -1536,6 +1544,28 @@ impl Item {
     /// erased from memory, but just marked as deleted.
     pub fn is_deleted(&self) -> bool {
         self.info.is_deleted()
+    }
+
+    /// What this item holds.
+    pub fn content(&self) -> &ItemContent {
+        &self.content
+    }
+
+    /// The map key this item is stored under, if its parent is a map (or an XML element's
+    /// attributes).
+    pub fn parent_sub(&self) -> Option<&str> {
+        self.parent_sub.as_deref()
+    }
+
+    /// The shared type this item belongs to: its name if it is a root type, otherwise the ID of
+    /// the item that holds it. `None` for an item not yet integrated whose parent is unknown.
+    pub fn parent_id(&self) -> Option<BranchID> {
+        match &self.parent {
+            TypePtr::Branch(branch) => Some(branch.id()),
+            TypePtr::Named(name) => Some(BranchID::Root(name.clone())),
+            TypePtr::ID(id) => Some(BranchID::Nested(*id)),
+            TypePtr::Unknown => None,
+        }
     }
 
     /// Checks if item content can be considered countable. Countable elements can be split

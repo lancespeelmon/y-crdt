@@ -315,9 +315,13 @@
 //!
 //! let local = Doc::with_client_id(123);
 //! let text1 = local.get_or_insert_text("article");
-//! let mut mgr = UndoManager::with_options(Options::default());
+//! // Only track changes made with the local peer's origin. As in Yjs, an undo manager created
+//! // without tracked origins tracks changes made without one, such as `apply_update` below.
+//! let mut mgr = UndoManager::with_options(Options {
+//!     tracked_origins: std::collections::HashSet::from([local.client_id().into()]),
+//!     ..Options::default()
+//! });
 //! mgr.expand_scope(&local, &text1);
-//! mgr.include_origin(local.client_id()); // only track changes originating from local peer
 //!
 //! let remote = Doc::with_client_id(321);
 //! let text2 = remote.get_or_insert_text("article");
@@ -639,6 +643,7 @@ pub mod iter;
 pub mod json_path;
 pub mod observer;
 mod out;
+pub mod permanent_user_data;
 mod slice;
 mod state_vector;
 mod sticky_index;
@@ -651,8 +656,11 @@ mod transact;
 pub mod undo;
 
 pub use crate::alt::{
-    diff_updates_v1, diff_updates_v2, encode_state_vector_from_update_v1,
-    encode_state_vector_from_update_v2, merge_updates_v1, merge_updates_v2,
+    convert_update_v1_to_v2, convert_update_v2_to_v1, diff_updates_v1, diff_updates_v2,
+    encode_state_vector_from_update_v1, encode_state_vector_from_update_v2, merge_updates_v1,
+    merge_updates_v2, obfuscate_update_v1, obfuscate_update_v2, parse_update_meta_v1,
+    parse_update_meta_v2, snapshot_contains_update_v1, snapshot_contains_update_v2,
+    ObfuscateOptions, UpdateMeta,
 };
 pub use crate::any::{Any, Number};
 pub use crate::block::ClientID;
@@ -662,6 +670,7 @@ pub use crate::branch::Hook;
 pub use crate::branch::Nested;
 pub use crate::branch::Root;
 pub use crate::doc::Doc;
+pub use crate::doc::GcFilter;
 pub use crate::doc::OffsetKind;
 pub use crate::doc::Options;
 pub use crate::event::{SubdocsEvent, SubdocsEventIter, TransactionCleanupEvent, UpdateEvent};
@@ -671,6 +680,7 @@ pub use crate::input::In;
 pub use crate::json_path::{JsonPath, JsonPathEval};
 pub use crate::observer::Observer;
 pub use crate::out::Out;
+pub use crate::permanent_user_data::PermanentUserData;
 pub use crate::state_vector::Snapshot;
 pub use crate::state_vector::StateVector;
 pub use crate::sticky_index::Assoc;
