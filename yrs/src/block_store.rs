@@ -100,6 +100,11 @@ impl ClientBlockList {
         self.inner.push(UnsafeCell::new(cell));
     }
 
+    /// How many blocks the list has room for without growing.
+    pub(crate) fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
     /// Returns a number of blocks stored within this list.
     pub fn len(&self) -> usize {
         self.inner.len()
