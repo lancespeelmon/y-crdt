@@ -272,6 +272,9 @@ repository and its release notes.
   instead of as an object with numbered keys.
 
 ### Removed
+- **Breaking:** `yrs::atomic::AtomicRef` is gone. Nothing in yrs or its bindings used it, and it
+  was `Send` and `Sync` for every `T`, which let a non-thread-safe value cross threads. Use the
+  `arc-swap` crate (`ArcSwap`), which is what yrs uses internally.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
