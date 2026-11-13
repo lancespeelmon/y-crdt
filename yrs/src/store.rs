@@ -6,6 +6,7 @@ use crate::error::Error;
 use crate::event::SubdocsEvent;
 use crate::id_set::DeleteSet;
 use crate::slice::ItemSlice;
+use crate::transact::TransactionAcqError;
 use crate::types::{Path, PathSegment, TypeRef};
 use crate::update::PendingUpdate;
 use crate::updates::encoder::{Encode, Encoder};
@@ -443,7 +444,37 @@ impl DocStore {
         DocStore(Arc::new(StoreInner {
             options,
             store: RwLock::new(store),
+            holders: Default::default(),
         }))
+    }
+
+    /// Fails if the current thread already holds a transaction that a new one (read-write if
+    /// `write`) would wait on forever: any transaction, for a read-write one, or a read-write
+    /// one, for a read-only one.
+    pub(crate) fn check_reentrant(&self, write: bool) -> Result<(), TransactionAcqError> {
+        let me = std::thread::current().id();
+        let h = self.0.holders.lock().unwrap_or_else(|e| e.into_inner());
+        if h.writer == Some(me) || (write && h.readers.contains(&me)) {
+            Err(TransactionAcqError::Reentrant)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Records that the current thread now holds a transaction on this document.
+    pub(crate) fn hold(&self, write: bool) -> Held<'_> {
+        let thread = std::thread::current().id();
+        let mut h = self.0.holders.lock().unwrap_or_else(|e| e.into_inner());
+        if write {
+            h.writer = Some(thread);
+        } else {
+            h.readers.push(thread);
+        }
+        Held {
+            holders: &self.0.holders,
+            thread,
+            write,
+        }
     }
 
     pub(crate) fn try_read(&self) -> Option<RwLockReadGuard<Store>> {
@@ -514,6 +545,36 @@ impl DocStore {
 pub(crate) struct StoreInner {
     options: ArcSwap<Options>,
     store: RwLock<Store>,
+    /// Threads that hold a blocking transaction on this document, to refuse one that would
+    /// deadlock (see [DocStore::hold]).
+    holders: std::sync::Mutex<Holders>,
+}
+
+#[derive(Default, Debug)]
+struct Holders {
+    writer: Option<std::thread::ThreadId>,
+    readers: Vec<std::thread::ThreadId>,
+}
+
+/// Records that the current thread holds a transaction, until dropped.
+#[derive(Debug)]
+pub(crate) struct Held<'a> {
+    holders: &'a std::sync::Mutex<Holders>,
+    thread: std::thread::ThreadId,
+    write: bool,
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        let mut h = self.holders.lock().unwrap_or_else(|e| e.into_inner());
+        if self.write {
+            if h.writer == Some(self.thread) {
+                h.writer = None;
+            }
+        } else if let Some(i) = h.readers.iter().position(|t| *t == self.thread) {
+            h.readers.swap_remove(i);
+        }
+    }
 }
 
 #[repr(transparent)]

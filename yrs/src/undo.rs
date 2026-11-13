@@ -11,7 +11,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::Arc;
 
 macro_rules! define_undo_observer {
@@ -72,6 +72,10 @@ macro_rules! define_undo_observer {
 ///    manager as a result of calling either [UndoManager::undo] or [UndoManager::redo] method.
 pub struct UndoManager<M> {
     state: Arc<Inner<M>>,
+    /// Shared with the document callbacks. Cleared when the manager is dropped while one of its
+    /// documents is in a transaction (so the callbacks couldn't be removed): the callbacks then
+    /// do nothing, and remove themselves at their next call.
+    alive: Arc<AtomicBool>,
 }
 
 #[cfg(feature = "sync")]
@@ -145,7 +149,10 @@ where
             docs: HashMap::new(),
         });
 
-        UndoManager { state }
+        UndoManager {
+            state,
+            alive: Arc::new(AtomicBool::new(true)),
+        }
     }
 
     /// Extends a list of shared types tracked by current undo manager by a given `scope`.
@@ -157,18 +164,28 @@ where
         let inner_mut = Arc::get_mut(&mut self.state).unwrap();
         let ptr1 = AtomicPtr::new(inner_mut as *mut Inner<M>);
         let ptr2 = AtomicPtr::new(inner_mut as *mut Inner<M>);
+        let (alive1, alive2) = (self.alive.clone(), self.alive.clone());
 
         if let Entry::Vacant(e) = inner_mut.docs.entry(doc.guid()) {
             inner_mut.options.tracked_origins.insert(origin.clone());
 
             doc.observe_destroy(origin.clone(), move |txn, _| {
+                if !alive1.load(Ordering::Acquire) {
+                    return;
+                }
                 let ptr = ptr1.load(Ordering::Acquire);
                 let inner = unsafe { ptr.as_mut().unwrap() };
                 Self::handle_destroy(txn, inner)
             })
             .unwrap();
 
+            let own = origin.clone();
             doc.observe_after_transaction(origin, move |txn| {
+                if !alive2.load(Ordering::Acquire) {
+                    // The manager is gone; see `UndoManager::alive`.
+                    txn.unobserve_after_transaction(own.clone());
+                    return;
+                }
                 let ptr = ptr2.load(Ordering::Acquire);
                 let inner = unsafe { ptr.as_mut().unwrap() };
                 Self::handle_after_transaction(inner, txn);
@@ -743,11 +760,20 @@ impl<M: std::fmt::Debug> std::fmt::Debug for UndoManager<M> {
 }
 
 impl<M> Drop for UndoManager<M> {
+    /// Never panics. Removing the manager's callbacks needs a transaction on each of its
+    /// documents; if one is in a transaction (the manager is dropped inside a callback, say), its
+    /// callbacks can't be removed now. They hold the manager's state by pointer, so the state is
+    /// then leaked rather than freed, and the callbacks turn inert and remove themselves later.
     fn drop(&mut self) {
         let origin = Origin::from(Arc::as_ptr(&self.state) as usize);
+        let mut removed = true;
         for doc in self.state.docs.values() {
-            doc.unobserve_destroy(origin.clone()).unwrap();
-            doc.unobserve_after_transaction(origin.clone()).unwrap();
+            removed &= doc.unobserve_destroy(origin.clone()).is_ok();
+            removed &= doc.unobserve_after_transaction(origin.clone()).is_ok();
+        }
+        if !removed {
+            self.alive.store(false, Ordering::Release);
+            std::mem::forget(self.state.clone());
         }
     }
 }
