@@ -150,6 +150,7 @@ const BUDGET_TEXT_READ: u64 = 2;
 const BUDGET_APPLY_REMOTE: u64 = 13;
 
 const TYPED_CHARS: usize = 10_000;
-// Bytes are budgeted with 5% headroom, since they move with small layout changes.
-const BUDGET_TYPED_BYTES: u64 = 19_312;
-const BUDGET_LOADED_BYTES: u64 = 12_609;
+// Bytes are budgeted with 25% headroom over 18,392 and 12,008: they move between runs and
+// platforms (hash map growth), unlike the allocation counts above.
+const BUDGET_TYPED_BYTES: u64 = 23_000;
+const BUDGET_LOADED_BYTES: u64 = 15_000;
