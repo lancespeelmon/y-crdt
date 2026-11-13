@@ -537,6 +537,8 @@ pub struct TransactionMut<'doc> {
     /// New types are not included in this Set.
     pub(crate) changed: HashMap<TypePtr, HashSet<Option<Arc<str>>>>,
     pub(crate) changed_parent_types: Vec<BranchPtr>,
+    /// Emptied key sets for `changed`, recycled from earlier transactions.
+    key_sets: Vec<HashSet<Option<Arc<str>>>>,
     pub(crate) subdocs: Option<Box<Subdocs>>,
     pub(crate) origin: Option<Origin>,
     doc: Doc,
@@ -565,29 +567,39 @@ impl<'doc> WriteTxn for TransactionMut<'doc> {
 
 impl<'doc> Drop for TransactionMut<'doc> {
     fn drop(&mut self) {
-        self.commit()
+        self.commit();
+        // Hand the collections back, empty, for the next transaction.
+        let scratch = crate::store::TxnScratch {
+            changed: std::mem::take(&mut self.changed),
+            changed_parent_types: std::mem::take(&mut self.changed_parent_types),
+            merge_blocks: std::mem::take(&mut self.merge_blocks),
+            key_sets: std::mem::take(&mut self.key_sets),
+        };
+        self.store.scratch = scratch.recycle();
     }
 }
 
 impl<'doc> TransactionMut<'doc> {
     pub(crate) fn new(
         doc: Doc,
-        store: RwLockWriteGuard<'doc, Store>,
+        mut store: RwLockWriteGuard<'doc, Store>,
         origin: Option<Origin>,
     ) -> Self {
+        let scratch = std::mem::take(&mut store.scratch);
         TransactionMut {
             store,
             doc,
             origin,
             before_state: OnceCell::new(),
-            merge_blocks: Vec::default(),
+            merge_blocks: scratch.merge_blocks,
             held: None,
             delete_set: IdSet::new(),
             insert_set: IdSet::new(),
             cleanups: IdSet::new(),
             after_state: OnceCell::new(),
-            changed: HashMap::default(),
-            changed_parent_types: Vec::default(),
+            changed: scratch.changed,
+            changed_parent_types: scratch.changed_parent_types,
+            key_sets: scratch.key_sets,
             subdocs: None,
             local: true,
             committed: false,
@@ -1077,20 +1089,33 @@ impl<'doc> TransactionMut<'doc> {
         block_ptr
     }
 
+    /// Drops the deep-observer entries recorded for the event at `index` when it couldn't be
+    /// built after all.
+    fn forget_event(changed_parents: &mut HashMap<BranchPtr, Vec<usize>>, index: usize) {
+        changed_parents.retain(|_, events| {
+            events.retain(|&i| i != index);
+            !events.is_empty()
+        });
+    }
+
+    /// Records `branch` and its ancestors (and the types linking to them) as changed, and the
+    /// event at `index` for those of them with deep observers. Returns whether there were any.
     fn call_type_observers(
         changed_parent_types: &mut Vec<BranchPtr>,
         all_links: &HashMap<ItemPtr, HashSet<BranchPtr>>,
         branch: BranchPtr,
         changed_parents: &mut HashMap<BranchPtr, Vec<usize>>,
-        event_cache: &Vec<Event>,
+        index: usize,
         visited: &mut HashSet<BranchPtr>,
-    ) {
+    ) -> bool {
+        let mut deep_observed = false;
         let mut current = branch;
         loop {
             changed_parent_types.push(current);
             if current.deep_observers.has_subscribers() {
                 let entries = changed_parents.entry(current).or_default();
-                entries.push(event_cache.len() - 1);
+                entries.push(index);
+                deep_observed = true;
             }
 
             if let Some(item) = current.item {
@@ -1098,14 +1123,14 @@ impl<'doc> TransactionMut<'doc> {
                     if let Some(linked_by) = all_links.get(&item) {
                         for &link in linked_by.iter() {
                             if visited.insert(link) {
-                                Self::call_type_observers(
+                                deep_observed |= Self::call_type_observers(
                                     changed_parent_types,
                                     all_links,
                                     link,
                                     changed_parents,
-                                    event_cache,
+                                    index,
                                     visited,
-                                )
+                                );
                             }
                         }
                     }
@@ -1116,7 +1141,7 @@ impl<'doc> TransactionMut<'doc> {
                 }
             }
 
-            break;
+            break deep_observed;
         }
     }
 
@@ -1130,16 +1155,23 @@ impl<'doc> TransactionMut<'doc> {
                     self.needs_cleanup = true;
                 }
                 let mut branch = *branch;
-                if let Some(e) = branch.trigger(self, subs.clone()) {
-                    event_cache.push(e);
-                    Self::call_type_observers(
-                        &mut self.changed_parent_types,
-                        &self.store.linked_by,
-                        branch,
-                        &mut changed_parents,
-                        &event_cache,
-                        &mut HashSet::default(),
-                    );
+                // Record the changed types first, under the index this type's event would get,
+                // so the event is only built when someone observes it: the type itself, or an
+                // ancestor's deep observers.
+                let index = event_cache.len();
+                let deep_observed = Self::call_type_observers(
+                    &mut self.changed_parent_types,
+                    &self.store.linked_by,
+                    branch,
+                    &mut changed_parents,
+                    index,
+                    &mut HashSet::default(),
+                );
+                if deep_observed || branch.observers.has_subscribers() {
+                    match branch.trigger(self, subs.clone()) {
+                        Some(e) => event_cache.push(e),
+                        None => Self::forget_event(&mut changed_parents, index),
+                    }
                 }
             }
         }
@@ -1476,7 +1508,11 @@ impl<'doc> TransactionMut<'doc> {
             true
         };
         if trigger {
-            let e = self.changed.entry(parent.into()).or_default();
+            let key_sets = &mut self.key_sets;
+            let e = self
+                .changed
+                .entry(parent.into())
+                .or_insert_with(|| key_sets.pop().unwrap_or_default());
             e.insert(parent_sub.clone());
         }
     }

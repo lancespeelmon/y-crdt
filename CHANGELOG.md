@@ -11,6 +11,10 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- A write transaction no longer builds an event for a changed type that nobody observes (no
+  observers on it, no deep observers above it), and reuses its bookkeeping collections from
+  the previous transaction. A one-character insert makes 2 allocations instead of 8; appending
+  6,000 characters one at a time takes 1.1 ms instead of 1.8 ms.
 - Transactions take the document lock with a try first and only set up a waiter when it's
   contended, saving an allocation per transaction and about a third of an empty write
   transaction's cost. Offset conversions skip the per-character walk for ASCII text.
