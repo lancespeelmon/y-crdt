@@ -11,6 +11,9 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- A transaction merges its new blocks with their neighbours in one pass over each client's
+  block list, instead of shifting the rest of the list once per merged run. Applying 80,000
+  edits merged into one update takes 6 ms instead of 95 ms.
 - Finding the block that holds a clock starts its search at an interpolated guess, as Yjs does.
   The guess was computed with integer division, so it was always the first block; applying a
   B4.2 update set takes 2.08 ms instead of 2.29 ms.
