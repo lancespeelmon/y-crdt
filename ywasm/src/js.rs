@@ -394,6 +394,34 @@ pub enum Shared {
     Doc(RcRefMut<YDoc>),
 }
 
+/// Checks that `value` can be inserted into a document: a value convertible to `Any`, or a
+/// shared type that isn't integrated yet, all the way down a preliminary collection's contents.
+/// The insert methods call it first, so a bad value throws before anything changes instead of
+/// panicking inside the transaction.
+pub fn validate(value: &JsValue) -> Result<()> {
+    validate_nested(value, 0)
+}
+
+/// How deep preliminary collections may nest. A collection that contains itself would
+/// otherwise be followed forever.
+const MAX_PRELIM_DEPTH: usize = 512;
+
+fn validate_nested(value: &JsValue, depth: usize) -> Result<()> {
+    if depth > MAX_PRELIM_DEPTH {
+        return Err(JsValue::from_str(errors::PRELIM_TOO_DEEP));
+    }
+    match Js::new(value.clone()).as_value()? {
+        ValueRef::Any(_) => Ok(()),
+        ValueRef::Shared(shared) => {
+            let contents = shared.validate()?;
+            drop(shared);
+            contents
+                .iter()
+                .try_for_each(|v| validate_nested(v, depth + 1))
+        }
+    }
+}
+
 impl Shared {
     pub fn from_ref(js: &JsValue) -> Result<Self> {
         let tag = Js::get_type(js)?;
@@ -412,6 +440,35 @@ impl Shared {
             TYPE_REFS_DOC => Ok(Shared::Doc(convert::mut_from_js::<YDoc>(js)?)),
             _ => Err(js.clone()),
         }
+    }
+
+    /// Checks that this type can be inserted, and returns the values a preliminary collection
+    /// holds, which are inserted with it.
+    fn validate(&self) -> Result<Vec<JsValue>> {
+        match self {
+            Shared::Weak(_) => return Ok(Vec::new()), // weak links can always be integrated
+            _ if !self.prelim() => return Err(JsValue::from_str(errors::NOT_PRELIM)),
+            _ => {}
+        }
+        Ok(match self {
+            Shared::Array(v) => match &v.0 {
+                SharedCollection::Prelim(items) => items.clone(),
+                _ => Vec::new(),
+            },
+            Shared::Map(v) => match &v.0 {
+                SharedCollection::Prelim(entries) => entries.values().cloned().collect(),
+                _ => Vec::new(),
+            },
+            Shared::XmlFragment(v) => match &v.0 {
+                SharedCollection::Prelim(children) => children.clone(),
+                _ => Vec::new(),
+            },
+            Shared::XmlElement(v) => match &v.0 {
+                SharedCollection::Prelim(prelim) => prelim.children.clone(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        })
     }
 
     pub fn prelim(&self) -> bool {
@@ -906,6 +963,8 @@ pub(crate) mod errors {
     pub const ANOTHER_TX: &'static str = "another transaction is in progress";
     pub const ANOTHER_RW_TX: &'static str = "another read-write transaction is in progress";
     pub const OUT_OF_BOUNDS: &'static str = "index outside of the bounds of an array";
+    pub const PRELIM_TOO_DEEP: &'static str =
+        "preliminary types are nested too deeply (does one contain itself?)";
     pub const KEY_NOT_FOUND: &'static str = "key was not found in a map";
     pub const WEAK_LINKS_DISABLED: &'static str =
         "weak links are disabled for this document: create it with `weakLinks: true`";

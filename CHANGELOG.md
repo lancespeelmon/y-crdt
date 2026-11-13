@@ -191,6 +191,10 @@ repository and its release notes.
   `.github/coverage/floor.json`.
 
 ### Fixed
+- ywasm throws instead of panicking when asked to insert a value it can't: a shared type
+  that's already in a document (directly or inside a preliminary array, map or XML node), or
+  a value with no CRDT representation. The check runs before anything changes, so the
+  document stays usable; a panic used to leave it locked.
 - `Any` numbers: `-0` keeps its sign (Yjs writes it as a var int with the sign bit, which
   decoded as `0`), and `Number::Int(i64::MAX)` is written as a `BigInt` rather than the float32
   2^63, as is any other `Int` a JS number can't hold exactly. `Number::try_i64(-0.0)` returns a
