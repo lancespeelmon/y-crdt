@@ -10,14 +10,17 @@ It exposes a small, document-level API:
   `array`, encode its state vector and state as an update, apply updates, and observe the
   updates it produces (`observeUpdates(key:observer:)` / `unobserveUpdates(key:)`).
 - `YText`, `YMap`, `YArray`: edit and read the root shared types. Values are `YValue`:
-  null, bool, `Int` (i64), `Number` (f64), `BigInt`, string, bytes, or `Shared` for a nested
-  shared type (read-only; nested types aren't exposed yet).
+  null, bool, `Int` (i64), `Number` (f64), `BigInt`, string, bytes, `Json` (a JSON array or
+  object as text, parsed when written), or `Shared` for a nested shared type (read-only;
+  nested types aren't exposed yet).
 - Free functions on V1 updates: `mergeUpdates`, `diffUpdate`, `stateVectorFromUpdate` and
   `validateUpdate`.
 
 Errors are thrown as `YError`: an invalid or unapplicable update, an index out of range, a
-client ID above 2^53 − 1 (Yjs's limit), or a value the binding can't represent (for example a
-non-finite number).
+client ID above 2^53 − 1 (Yjs's limit), a value the binding can't represent (for example a
+non-finite number), or a call made while this thread is already inside a transaction on the
+document (`TransactionOpen`, see [Observers](#observers)). Every call that reads or edits a
+document can throw, for that last reason.
 
 Text indices and lengths count UTF-16 code units, as in Yjs (Swift's `utf16` view, Kotlin's
 `String` indices). Updates use the V1 encoding, so they interoperate with Yjs and the other bindings.
@@ -39,13 +42,13 @@ Text indices and lengths count UTF-16 code units, as in Yjs (Swift's `utf16` vie
 
 ```swift
 let doc = try YDoc.withClientId(clientId: 1)
-let text = doc.text(name: "content")
+let text = try doc.text(name: "content")
 try text.insert(index: 0, chunk: "hello")
-let update = doc.encodeStateAsUpdate(stateVector: nil)
+let update = try doc.encodeStateAsUpdate(stateVector: nil)
 
 let other = YDoc()
 try other.applyUpdate(update: update)
-print(other.text(name: "content").getString())  // "hello"
+print(try other.text(name: "content").getString())  // "hello"
 ```
 
 ## Kotlin (Android)
@@ -67,9 +70,14 @@ It needs the Rust targets `aarch64-linux-android`, `armv7-linux-androideabi`,
 ## Observers
 
 `observeUpdates` calls the observer on the thread that commits the transaction, with the V1
-update the transaction produced. The observer must not edit the same document from inside the
-callback. On Swift, an observer that may be called from several threads should guard its state
+update the transaction produced. The transaction is still open during the callback, so reading
+or editing the same document from inside it throws `YError.TransactionOpen` instead of
+deadlocking; send the update on, or defer the work. Calls from other threads wait until the
+transaction ends. On Swift, an observer that may be called from several threads should guard its state
 (see `tests/swift/main.swift`).
+
+The document keeps its observers alive until they are removed. An observer that holds the
+document (or one of its types) forms a reference cycle, so call `unobserveUpdates` when done.
 
 ## Bindings generator
 
