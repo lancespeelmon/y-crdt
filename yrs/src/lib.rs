@@ -627,6 +627,8 @@ pub mod doc;
 mod event;
 mod id_map;
 mod id_set;
+mod json;
+mod small_str;
 mod store;
 mod transaction;
 /// Shared types: collections that sync between peers, their events and their prelim values.
@@ -703,6 +705,7 @@ pub use crate::event::{SubdocsEvent, SubdocsEventIter, TransactionCleanupEvent, 
 pub use crate::id_map::{AttrRange, ContentAttribute, ContentAttributes, Diff, IdMap};
 pub use crate::id_set::IdSet;
 pub use crate::input::In;
+pub use crate::json::JsonError;
 pub use crate::json_path::{JsonPath, JsonPathEval};
 pub use crate::observer::Observer;
 pub use crate::out::{Out, UndefinedRef};

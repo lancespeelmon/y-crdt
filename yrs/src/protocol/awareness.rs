@@ -145,6 +145,7 @@ impl Awareness {
     }
 
     /// Returns a JSON string state representation of a current [Awareness] instance.
+    #[cfg(feature = "json")]
     pub fn local_state<S: DeserializeOwned>(&self) -> Option<S> {
         let json_str = self.local_state_raw()?;
         serde_json::from_str(&json_str).ok()
@@ -256,6 +257,7 @@ impl Awareness {
     }
 
     /// Gets the state of a particular client.
+    #[cfg(feature = "json")]
     pub fn state<D: DeserializeOwned>(&self, client_id: ClientID) -> Option<D> {
         let state = self.states.get(&client_id)?;
         let json = state.data.clone()?;
@@ -278,6 +280,7 @@ impl Awareness {
     /// Sets a current [Awareness] instance state to a corresponding JSON string. This state will
     /// be replicated to other clients as part of the [AwarenessUpdate] and it will trigger an event
     /// to be emitted to the observers registered with [Awareness::on_update] and [Awareness::on_change].
+    #[cfg(feature = "json")]
     pub fn set_local_state<S: Serialize>(&mut self, state: S) -> Result<(), Error> {
         let json = serde_json::to_string(&state)?;
         self.set_local_state_raw(json);
@@ -648,6 +651,7 @@ pub enum AwarenessError {
     #[error("client ID `{0}` not found")]
     ClientNotFound(ClientID),
     /// The state couldn't be serialized to JSON.
+    #[cfg(feature = "json")]
     #[error("couldn't serialize awareness state: {0}")]
     Serde(#[from] serde_json::Error),
 }

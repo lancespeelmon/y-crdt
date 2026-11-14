@@ -26,7 +26,7 @@ pub enum DecodeError {
 
     /// A JSON string couldn't be parsed.
     #[error("JSON parsing error: {0}")]
-    InvalidJSON(#[from] serde_json::Error),
+    InvalidJSON(#[from] crate::json::JsonError),
 
     /// The data couldn't be deserialized into the named target type.
     #[error("couldn't deserialize to target type of {0}")]

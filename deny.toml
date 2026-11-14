@@ -8,9 +8,6 @@ all-features = true
 version = 2
 yanked = "deny"
 ignore = [
-    # smallstr is unmaintained. It is only used for SplittableString in yrs/src/block.rs and has
-    # no known vulnerability. Remove this entry once it is replaced.
-    { id = "RUSTSEC-2026-0215", reason = "unmaintained, no known vulnerability; replacement planned" },
     # basic-toml is unmaintained. It is only reached through askama in uniffi_bindgen, i.e. the
     # yuniffi bindings generator (`cli` feature), and is never linked into a library.
     { id = "RUSTSEC-2026-0374", reason = "unmaintained, generator-only via uniffi_bindgen; no known vulnerability" },

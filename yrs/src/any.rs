@@ -278,21 +278,21 @@ impl Any {
         }
     }
 
-    /// Parses a value from a JSON string.
+    /// Parses a value from a JSON string. An integer that fits an `i64` is read as one; other
+    /// numbers are read as floats, except integers from 2^63 to 2^64 − 1, which are an error.
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidJSON] when `src` isn't valid JSON, nests more than 127 levels deep, or
+    /// holds an integer from 2^63 to 2^64 − 1.
     pub fn from_json(src: &str) -> Result<Self, Error> {
-        Ok(serde_json::from_str(src)?)
+        Ok(crate::json::parse(src, crate::json::Integers::Strict)?)
     }
 
-    /// Appends this value, serialized as JSON, to `buf`.
+    /// Appends this value, serialized as JSON, to `buf`. Null and undefined are written as
+    /// `null`, as are non-finite floats; buffers as arrays of byte values.
     pub fn to_json(&self, buf: &mut String) {
-        use serde::Serialize;
-        use serde_json::Serializer;
-
-        let buf = unsafe { buf.as_mut_vec() };
-        let cursor = std::io::Cursor::new(buf);
-
-        let mut s = Serializer::new(cursor);
-        self.serialize(&mut s).unwrap();
+        crate::json::write(self, buf);
     }
 
     /// Returns an iterator over an inner values of an array or a map, current reference represents.
