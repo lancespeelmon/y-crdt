@@ -92,6 +92,10 @@ jobs:
       - name: check
         run: cargo check -p yrs -p yffi ${{ matrix.features }}
 
+      # yuniffi's `cli` feature builds the bindings generator, which needs a newer Rust.
+      - name: check yuniffi
+        run: cargo check -p yuniffi
+
       - name: check ywasm
         run: cargo check -p ywasm --target wasm32-unknown-unknown ${{ matrix.features }}
 
@@ -355,3 +359,22 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: ./tests-ffi/yrs-ffi-tests
+
+  swift:
+    # Generates the yuniffi Swift bindings and runs a smoke test against the macOS dylib.
+    runs-on: macos-latest
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: swift smoke test
+        run: ./yuniffi/test-swift.sh

@@ -141,6 +141,11 @@ repository and its release notes.
   `ERR_CUSTOM`, so callers couldn't tell the two errors apart.
 
 ### Added
+- `yuniffi`, Swift and Kotlin bindings generated with UniFFI 0.32 (7.7): documents with root
+  text, map and array, V1 update encoding, application and observation, and the update
+  utilities from `ybindings-core`. `build-apple.sh` builds an XCFramework for iOS, the iOS
+  simulator and macOS; `build-android.sh` builds the Kotlin bindings and per-ABI libraries.
+  A Swift smoke test (`test-swift.sh`) runs on macOS. The crate isn't published.
 - `ybindings-core`, a crate with the rules yffi and ywasm share (7.7): the update utilities
   (`merge_updates`, `diff_update`, `state_vector_from_update`, `apply_updates`) behind one
   `Encoding` enum, `UndoSettings` for building undo options from a binding's settings, and the
