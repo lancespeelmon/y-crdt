@@ -11,6 +11,9 @@ ignore = [
     # smallstr is unmaintained. It is only used for SplittableString in yrs/src/block.rs and has
     # no known vulnerability. Remove this entry once it is replaced.
     { id = "RUSTSEC-2026-0215", reason = "unmaintained, no known vulnerability; replacement planned" },
+    # basic-toml is unmaintained. It is only reached through askama in uniffi_bindgen, i.e. the
+    # yuniffi bindings generator (`cli` feature), and is never linked into a library.
+    { id = "RUSTSEC-2026-0374", reason = "unmaintained, generator-only via uniffi_bindgen; no known vulnerability" },
 ]
 
 [licenses]
@@ -22,6 +25,18 @@ allow = [
     "Apache-2.0",
     "CC0-1.0",
     "Unicode-3.0",
+]
+# UniFFI is MPL-2.0 (file-level copyleft: its own files stay MPL, linking is unrestricted). It is
+# allowed for the UniFFI crates only, which yuniffi uses.
+exceptions = [
+    { name = "uniffi", allow = ["MPL-2.0"] },
+    { name = "uniffi_bindgen", allow = ["MPL-2.0"] },
+    { name = "uniffi_core", allow = ["MPL-2.0"] },
+    { name = "uniffi_internal_macros", allow = ["MPL-2.0"] },
+    { name = "uniffi_macros", allow = ["MPL-2.0"] },
+    { name = "uniffi_meta", allow = ["MPL-2.0"] },
+    { name = "uniffi_pipeline", allow = ["MPL-2.0"] },
+    { name = "uniffi_udl", allow = ["MPL-2.0"] },
 ]
 
 [bans]

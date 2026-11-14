@@ -1,0 +1,34 @@
+[package]
+name = "yuniffi"
+version = "0.28.1"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "Swift and Kotlin bindings for yrs, generated with UniFFI"
+repository = "https://github.com/y-crdt/y-crdt/"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+name = "yuniffi"
+
+[[bin]]
+# The bindings generator, built from the same UniFFI version as the library:
+# `cargo run -p yuniffi --features cli --bin uniffi-bindgen -- generate ...`
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+# The generator reads crate metadata through cargo_metadata, which needs a newer Rust than the
+# library's rust-version, so it is only enabled for the generator.
+cli = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+[dependencies]
+yrs = { path = "../yrs", version = "0.28.1" }
+ybindings-core = { path = "../ybindings-core", version = "0.28.1" }
+uniffi = { version = "0.32.2", default-features = false }
+thiserror = "2"
+
+[lints]
+workspace = true

@@ -4,7 +4,8 @@ members = [
   "yrs",
   "ywasm",
   "yffi",
-  "ybindings-core"
+  "ybindings-core",
+  "yuniffi"
 ]
 
 
