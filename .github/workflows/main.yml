@@ -378,3 +378,23 @@ jobs:
 
       - name: swift smoke test
         run: ./yuniffi/test-swift.sh
+
+  semver:
+    # Plan 5.10: report API breaks against the PR's base branch. Breaking changes are allowed on
+    # `next` (each gets a **Breaking** CHANGELOG entry), so the job reports without failing the
+    # PR. Once releases resume, compare against the last release with `baseline-version`.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: cargo semver-checks
+        uses: obi1kenobi/cargo-semver-checks-action@6b69fcf40e9b5fb17adeb57e4b6ecd020649a239 # v2.9
+        with:
+          package: yrs, ybindings-core
+          baseline-rev: ${{ github.event.pull_request.base.sha }}

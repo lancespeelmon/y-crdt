@@ -334,6 +334,9 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- CI runs cargo-semver-checks on `yrs` and `ybindings-core` for each pull request, against its
+  base branch (5.10). Breaking changes are allowed on `next`, so the job reports them without
+  failing; each needs a **Breaking** entry here.
 - `benchmarks/compare/compare.mjs` runs B1/B4 workloads against Yjs and ywasm and checks they
   agree; results in `benchmarks/COMPARISON.md` (ywasm 0.08–0.29× Yjs's time).
 - `yrs/tests/relay.rs`: a reference relay (a per-document actor speaking y-protocols, with
