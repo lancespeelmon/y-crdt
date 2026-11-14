@@ -39,8 +39,9 @@ the machine.
 ywasm is built with `wasm-opt -Oz`, and CI fails if `ywasm_bg.wasm` grows past the budget in
 `.github/workflows/main.yml`. Raise the budget deliberately, in the same change that needs it.
 
-## Against Yjs
+## Against other CRDT libraries
 
-`benchmarks/compare/compare.mjs` runs B1 and B4 workloads against Yjs and ywasm in Node. See
-[COMPARISON.md](COMPARISON.md) for how to run it and the last results. Loro, Automerge and
-y-octo aren't in it yet, and neither is peak memory per document size.
+`benchmarks/compare/compare.mjs` runs B1 and B4 workloads against Yjs, ywasm, Loro and
+Automerge in Node, and `benchmarks/compare-native` runs them against native yrs and y-octo. See
+[COMPARISON.md](COMPARISON.md) for how to run them and the last results. Peak memory per
+document size isn't covered yet.
