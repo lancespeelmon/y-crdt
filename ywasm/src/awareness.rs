@@ -197,13 +197,19 @@ pub fn remove_states(awareness: &Awareness, clients: Vec<u64>) -> crate::Result<
 
 #[wasm_bindgen(js_name = encodeAwarenessUpdate)]
 pub fn encode_update(awareness: &Awareness, clients: JsValue) -> crate::Result<Uint8Array> {
-    let inner = awareness.inner()?;
-    let res = if clients.is_null() || clients.is_undefined() {
-        inner.update()
+    // Read `clients` before borrowing the state: converting it can run JS getters.
+    let client_ids: Option<Vec<u64>> = if clients.is_null() || clients.is_undefined() {
+        None
     } else {
-        let client_ids: Vec<u64> = serde_wasm_bindgen::from_value(clients)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        inner.update_with_clients(client_ids.into_iter().map(ClientID::new))
+        Some(
+            serde_wasm_bindgen::from_value(clients)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?,
+        )
+    };
+    let inner = awareness.inner()?;
+    let res = match client_ids {
+        None => inner.update(),
+        Some(ids) => inner.update_with_clients(ids.into_iter().map(ClientID::new)),
     };
 
     let update = res.map_err(|e| JsValue::from_str(&e.to_string()))?;

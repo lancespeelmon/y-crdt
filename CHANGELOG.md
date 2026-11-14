@@ -342,8 +342,9 @@ repository and its release notes.
 
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
-  changing the state. Handlers now run once the change is complete, in the order yrs raised the
-  events, so they see the new state and can change it again. A handler that throws no longer
+  changing the state. Handlers now run once the change is complete, so they see the new state
+  and can change it again; the events of a change made from a handler are delivered before that
+  handler returns, as in Yjs. A handler that throws no longer
   traps the module: the other handlers still run and the call that triggered them throws its
   error. `removeAwarenessStates` and `applyAwarenessUpdate` no longer throw when called from a
   handler of the same awareness.
