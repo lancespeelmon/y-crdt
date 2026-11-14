@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bab6a2914f435d39e94be6f3a88e67cb479c35b94f8ca6295ffe6954769e68d2 # shrinks to any = Map({"": Number(Float(-3.974679356054954e-191))})
+cc 31de30226e8d685764bd7eca7e875f4778531f3c0af5fd05a59ded76a9de7ed5 # shrinks to any = Array([Number(Float(2.0225896306524798e-165))])

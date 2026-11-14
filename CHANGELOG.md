@@ -11,6 +11,20 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** `yrs::encoding::read::Error::InvalidJSON` holds a `yrs::JsonError` instead of a
+  `serde_json::Error` (5.9). yrs reads and writes the JSON in updates (embeds, format
+  attributes) and `Any::from_json`/`to_json` itself, producing the same text as before, so
+  encoded updates are unchanged. Floats are now read with correct rounding, as `JSON.parse`
+  does; serde_json's default parser could be a few units off in the last place.
+- **Breaking:** serde_json is behind a new `json` feature (on by default), needed only for
+  `Awareness::set_local_state`, `local_state` and `state`, which convert typed values; the
+  `_raw` variants don't need it. `AwarenessError::Serde` exists only with the feature.
+- **Breaking:** fastrand's `js` feature is behind a new yrs `js` feature (on by default), which
+  ywasm enables. Code built for `wasm32-unknown-unknown` with `default-features = false` must
+  enable `js`, or fastrand uses a fixed seed and every document gets the same client ID.
+- smallstr is no longer a dependency: short text is kept inline by a small internal string over
+  `smallvec`, the same size as before. This drops the unmaintained-crate advisory
+  (RUSTSEC-2026-0215) ignored in `deny.toml`.
 - An item takes 144 bytes instead of 160 (part of 6.4): what undo redid an item as moved from a
   field of every item to a table on the store, which only redone items use. Undo and redo behave
   identically (checked against the previous version on 300 random two-peer edit, undo and redo

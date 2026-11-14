@@ -7,6 +7,7 @@ use crate::doc::{DocAddr, OffsetKind};
 use crate::encoding::read::Error;
 use crate::gc::GCCollector;
 use crate::slice::{BlockSlice, ItemSlice};
+use crate::small_str::SmallStr;
 use crate::store::Store;
 use crate::transaction::TransactionMut;
 use crate::types::text::update_current_attributes;
@@ -17,7 +18,6 @@ use crate::updates::encoder::{Encode, Encoder};
 use crate::utils::OptionExt;
 use crate::{Any, Doc, IdSet, Options, Out, Transact};
 use serde::{Deserialize, Serialize};
-use smallstr::SmallString;
 use std::borrow::Cow;
 use std::cell::UnsafeCell;
 use std::collections::HashSet;
@@ -1668,7 +1668,7 @@ impl Item {
 
 #[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Clone)]
 pub struct SplittableString {
-    content: SmallString<[u8; 8]>,
+    content: SmallStr,
 }
 
 impl SplittableString {
@@ -1756,9 +1756,9 @@ impl std::fmt::Display for SplittableString {
     }
 }
 
-impl Into<SmallString<[u8; 8]>> for SplittableString {
+impl Into<SmallStr> for SplittableString {
     #[inline(always)]
-    fn into(self) -> SmallString<[u8; 8]> {
+    fn into(self) -> SmallStr {
         self.content
     }
 }
@@ -1770,15 +1770,15 @@ impl Into<Box<str>> for SplittableString {
     }
 }
 
-impl From<SmallString<[u8; 8]>> for SplittableString {
-    fn from(content: SmallString<[u8; 8]>) -> Self {
+impl From<SmallStr> for SplittableString {
+    fn from(content: SmallStr) -> Self {
         SplittableString { content }
     }
 }
 
 impl<'a> From<&'a str> for SplittableString {
     fn from(str: &'a str) -> Self {
-        Self::from(SmallString::from_str(str))
+        Self::from(SmallStr::from_str(str))
     }
 }
 
@@ -2467,7 +2467,7 @@ where
 }
 
 #[derive(Debug)]
-pub(crate) struct PrelimString(pub SmallString<[u8; 8]>);
+pub(crate) struct PrelimString(pub SmallStr);
 
 impl Prelim for PrelimString {
     type Return = Unused;
