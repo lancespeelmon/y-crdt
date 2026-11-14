@@ -77,6 +77,11 @@ macro_rules! define_doc_observer {
         $field:ident, $($bound:tt)+
     ) => {
         $(#[doc = $doc])*
+        ///
+        /// # Errors
+        ///
+        /// [TransactionAcqError] if a transaction is open on this document: subscribing takes a
+        /// read-write transaction, and doesn't wait for one.
         #[cfg(feature = "sync")]
         pub fn $observe<K, F>(&self, key: K, f: F) -> Result<(), TransactionAcqError>
         where
@@ -89,6 +94,11 @@ macro_rules! define_doc_observer {
         }
 
         $(#[doc = $doc])*
+        ///
+        /// # Errors
+        ///
+        /// [TransactionAcqError] if a transaction is open on this document: subscribing takes a
+        /// read-write transaction, and doesn't wait for one.
         #[cfg(not(feature = "sync"))]
         pub fn $observe<K, F>(&self, key: K, f: F) -> Result<(), TransactionAcqError>
         where
@@ -101,6 +111,11 @@ macro_rules! define_doc_observer {
         }
 
         #[doc = concat!("Removes a callback that was subscribed under the given `key` via [`", stringify!($observe), "`](Self::", stringify!($observe), "). Returns `true` if there was one.")]
+        ///
+        /// # Errors
+        ///
+        /// [TransactionAcqError] if a transaction is open on this document: unsubscribing takes a
+        /// read-write transaction, and doesn't wait for one.
         pub fn $unobserve<K>(&self, key: K) -> Result<bool, TransactionAcqError>
         where
             K: Into<Origin>,
@@ -344,6 +359,11 @@ impl Doc {
     /// # Panics
     ///
     /// Like `get_or_insert_*`, if another transaction is in progress.
+    ///
+    /// # Errors
+    ///
+    /// [RootTypeMismatch] if the document already has a root type with this name and a different
+    /// type.
     pub fn try_get_or_insert<S: RootRef>(
         &self,
         name: impl Into<Arc<str>>,
@@ -757,6 +777,7 @@ impl Decode for Options {
 /// Determines how string length and offsets of [TextRef]/[XmlTextRef](crate::XmlTextRef) are being determined.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OffsetKind {
     /// Compute editable strings length and offset using UTF-8 byte count.
     Bytes,

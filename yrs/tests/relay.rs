@@ -301,7 +301,8 @@ mod relay {
                             self.send_to(id, Message::Awareness(update).encode_v1());
                         }
                     }
-                    Message::Auth(_) | Message::Custom(_, _) => {}
+                    // Auth, custom and any newer messages aren't relayed.
+                    _ => {}
                 }
             }
             Ok(())

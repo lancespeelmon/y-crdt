@@ -6,15 +6,27 @@ use std::sync::Arc;
 /// A trait that can be implemented by any other type in order to support lib0 decoding capability.
 pub trait Decode: Sized {
     /// Decodes a value of this type from the `decoder`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input isn't a valid encoding of `Self`.
     fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, Error>;
 
     /// Helper function for decoding 1st version of lib0 encoding.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if `data` isn't a valid lib0 v1 encoding of `Self`.
     fn decode_v1(data: &[u8]) -> Result<Self, Error> {
         let mut decoder = DecoderV1::from(data);
         Self::decode(&mut decoder)
     }
 
     /// Helper function for decoding 2nd version of lib0 encoding.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if `data` isn't a valid lib0 v2 encoding of `Self`.
     fn decode_v2(data: &[u8]) -> Result<Self, Error> {
         let mut decoder = DecoderV2::new(Cursor::new(data))?;
         Self::decode(&mut decoder)
@@ -32,44 +44,96 @@ pub trait Decoder: Read {
     fn reset_ds_cur_val(&mut self);
 
     /// Read next `DeleteSet` clock value.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_ds_clock(&mut self) -> Result<u32, Error>;
 
     /// Read the number of clients stored in encoded `DeleteSet`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_ds_len(&mut self) -> Result<u32, Error>;
 
     /// Read left origin of a currently decoded `Block`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_left_id(&mut self) -> Result<ID, Error>;
 
     /// Read right origin of a currently decoded `Block`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_right_id(&mut self) -> Result<ID, Error>;
 
     /// Read currently decoded client identifier.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_client(&mut self) -> Result<ClientID, Error>;
 
     /// Read info bit flags of a currently decoded `Block`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_info(&mut self) -> Result<u8, Error>;
 
     /// Read bit flags determining type of parent of a currently decoded `Block`.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_parent_info(&mut self) -> Result<bool, Error>;
 
     /// Read type ref info of a currently decoded `Block` parent.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_type_ref(&mut self) -> Result<u8, Error>;
 
     /// Read length parameter.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_len(&mut self) -> Result<u32, Error>;
 
     /// Decode a JSON-like data type. It's a complex type which is an extension of native JavaScript
     /// Object Notation.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_any(&mut self) -> Result<Any, Error>;
 
     /// Decode an embedded JSON string into [Any] struct. It's a complex type which is an extension
     /// of native JavaScript Object Notation.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early, or [Error::InvalidJSON] if the string isn't valid JSON.
     fn read_json(&mut self) -> Result<Any, Error>;
 
     /// Read key string.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_key(&mut self) -> Result<Arc<str>, Error>;
 
     /// Consume a rest of the decoded buffer data and return it without parsing.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold a valid value here.
     fn read_to_end(&mut self) -> Result<&[u8], Error>;
 }
 
@@ -241,6 +305,11 @@ impl<'a> DecoderV2<'a> {
     }
 
     /// Creates a decoder that reads from the given `cursor`. Fails if the data is malformed.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if `cursor` doesn't start with a valid v2 header (the column lengths and their
+    /// contents).
     pub fn new(mut cursor: Cursor<'a>) -> Result<Self, Error> {
         if cursor.has_content() {
             // read feature flag - currently unused

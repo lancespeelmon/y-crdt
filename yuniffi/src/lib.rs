@@ -163,13 +163,17 @@ impl From<Any> for YValue {
             Any::Number(Number::Int(value)) => YValue::Int { value },
             Any::Number(Number::Float(value)) => YValue::Number { value },
             Any::Number(Number::BigInt(value)) => YValue::BigInt { value },
+            Any::Number(other) => YValue::Number {
+                value: other.as_f64().unwrap_or(f64::NAN),
+            },
             Any::String(value) => YValue::String {
                 value: value.to_string(),
             },
             Any::Buffer(value) => YValue::Bytes {
                 value: value.to_vec(),
             },
-            Any::Array(_) | Any::Map(_) => {
+            // Arrays, objects, and any kind of value added later: their JSON text.
+            _ => {
                 let mut value = String::new();
                 any.to_json(&mut value);
                 YValue::Json { value }

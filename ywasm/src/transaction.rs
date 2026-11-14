@@ -250,6 +250,7 @@ impl YTransaction {
                     Some(doc) => YDoc(doc).into(),
                 },
                 TypeRef::XmlHook(_) | TypeRef::Undefined => JsValue::UNDEFINED,
+                _ => JsValue::UNDEFINED,
             },
         })
     }

@@ -10,6 +10,11 @@ use std::fmt::Display;
 use thiserror::Error;
 
 /// Serializes a `value` into an [Any].
+///
+/// # Errors
+///
+/// An error if `value` has no [Any] counterpart: an integer above `i64::MAX`, a map key
+/// that isn't a string, or an error `value`'s own `Serialize` raises.
 pub fn to_any<T: Serialize>(value: &T) -> Result<Any, AnySerializeError> {
     value.serialize(AnySerializer)
 }

@@ -287,6 +287,11 @@ jobs:
           echo "ywasm_bg.wasm: $size bytes (budget 1250000)"
           test "$size" -le 1250000
 
+      # wasm-bindgen registers every exported class with a FinalizationRegistry, so an object
+      # JS no longer references is freed without a `free()` call (7.8). Fail if a build stops.
+      - name: objects are freed on garbage collection
+        run: grep -q "new FinalizationRegistry" ywasm/pkg/ywasm.js
+
       - name: test web assembly
         run: cd ./tests-wasm && npm i && npm test
 

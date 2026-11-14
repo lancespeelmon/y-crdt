@@ -131,6 +131,10 @@ impl<'a> Read for Cursor<'a> {
 /// A source of bytes that primitive values are read from, in the lib0 encoding.
 pub trait Read: Sized {
     /// Takes the next `len` bytes and advances by that many. Fails with [DecodeError::EndOfBuffer] if fewer remain.
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than `len` bytes are left.
     fn read_exact(&mut self, len: usize) -> Result<&[u8], Error>;
 
     /// Returns the number of bytes this reader can still produce.
@@ -147,24 +151,41 @@ pub trait Read: Sized {
     }
 
     /// Read a single byte.
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if no byte is left.
     fn read_u8(&mut self) -> Result<u8, Error> {
         let buf = self.read_exact(1)?;
         Ok(buf[0])
     }
 
     /// Read a variable length buffer.
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the length prefix is malformed, [Error::EndOfBuffer] if fewer
+    /// bytes are left than it says.
     fn read_buf(&mut self) -> Result<&[u8], Error> {
         let len: u32 = self.read_var()?;
         self.read_exact(len as usize)
     }
 
     /// Read 2 bytes as unsigned integer
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 2 bytes are left.
     fn read_u16(&mut self) -> Result<u16, Error> {
         let buf = self.read_exact(2)?;
         Ok(buf[0] as u16 | ((buf[1] as u16) << 8))
     }
 
     /// Read 4 bytes as unsigned integer
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 4 bytes are left.
     fn read_u32(&mut self) -> Result<u32, Error> {
         let buf = self.read_exact(4)?;
         Ok(buf[0] as u32 | (buf[1] as u32) << 8 | (buf[2] as u32) << 16 | (buf[3] as u32) << 24)
@@ -172,6 +193,10 @@ pub trait Read: Sized {
 
     /// Read 4 bytes as unsigned integer in big endian order.
     /// (most significant byte first)
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 4 bytes are left.
     fn read_u32_be(&mut self) -> Result<u32, Error> {
         let buf = self.read_exact(4)?;
         Ok((buf[0] as u32) << 24 | (buf[1] as u32) << 16 | (buf[2] as u32) << 8 | buf[3] as u32)
@@ -180,6 +205,11 @@ pub trait Read: Sized {
     /// Read unsigned integer with variable length.
     /// * numbers < 2^7 are stored in one byte
     /// * numbers < 2^14 are stored in two bytes
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the integer doesn't fit `T` or isn't terminated,
+    /// [Error::EndOfBuffer] if the input ends inside it.
     #[inline]
     fn read_var<T: VarInt>(&mut self) -> Result<T, Error> {
         T::read(self)
@@ -188,12 +218,22 @@ pub trait Read: Sized {
     /// Read unsigned integer with variable length.
     /// * numbers < 2^7 are stored in one byte
     /// * numbers < 2^14 are stored in two bytes
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the integer doesn't fit `T` or isn't terminated,
+    /// [Error::EndOfBuffer] if the input ends inside it.
     #[inline]
     fn read_var_signed<T: SignedVarInt>(&mut self) -> Result<Signed<T>, Error> {
         T::read_signed(self)
     }
 
     /// Read string of variable length.
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the length prefix is malformed, [Error::EndOfBuffer] if fewer
+    /// bytes are left than it says, [Error::Malformed] if they aren't valid UTF-8.
     fn read_string(&mut self) -> Result<&str, Error> {
         let buf = self.read_buf()?;
         // Wire bytes must be valid UTF-8.
@@ -201,6 +241,10 @@ pub trait Read: Sized {
     }
 
     /// Read float32 in big endian order
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 4 bytes are left.
     fn read_f32(&mut self) -> Result<f32, Error> {
         let mut buf = [0; 4];
         let slice = self.read_exact(4)?;
@@ -210,6 +254,9 @@ pub trait Read: Sized {
 
     /// Read float64 in big endian order
     // @todo there must be a more elegant way to convert a slice to a fixed-length buffer.
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 8 bytes are left.
     fn read_f64(&mut self) -> Result<f64, Error> {
         let mut buf = [0; 8];
         let slice = self.read_exact(8)?;
@@ -218,6 +265,10 @@ pub trait Read: Sized {
     }
 
     /// Read BigInt64 in big endian order
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 8 bytes are left.
     fn read_i64(&mut self) -> Result<i64, Error> {
         let mut buf = [0; 8];
         let slice = self.read_exact(8)?;
@@ -226,6 +277,10 @@ pub trait Read: Sized {
     }
 
     /// read BigUInt64 in big endian order
+    ///
+    /// # Errors
+    ///
+    /// [Error::EndOfBuffer] if fewer than 8 bytes are left.
     fn read_u64(&mut self) -> Result<u64, Error> {
         let mut buf = [0; 8];
         let slice = self.read_exact(8)?;

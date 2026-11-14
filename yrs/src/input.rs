@@ -12,6 +12,7 @@ use crate::{
 /// copy of the original type: therefore none of the changes applied to the original type will
 /// affect the deep copy.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum In {
     /// A value that is stored as it is.
     Any(Any),

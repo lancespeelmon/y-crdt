@@ -3,6 +3,8 @@
     html_favicon_url = "https://raw.githubusercontent.com/y-crdt/y-crdt/main/logo-yrs.svg"
 )]
 #![deny(missing_docs)]
+// Every public function documents how it fails and when it panics (plan item 5.2).
+#![warn(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 // The crate docs link to the `protocol` module, which only exists with its feature.
 #![cfg_attr(not(feature = "protocol"), allow(rustdoc::broken_intra_doc_links))]
 #![cfg_attr(docsrs, feature(doc_cfg))]

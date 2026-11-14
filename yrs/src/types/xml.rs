@@ -27,6 +27,7 @@ pub trait XmlPrelim: Prelim {}
 /// A preliminary XML node: an [XmlElementPrelim], an [XmlFragmentPrelim] or a text, which become
 /// an [XmlOut] when integrated.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum XmlIn {
     /// A preliminary XML text node.
     Text(XmlDeltaPrelim),
@@ -91,6 +92,7 @@ impl Prelim for XmlIn {
 /// can be nested inside [XmlElementRef]. These are other [XmlElementRef]s, [XmlFragmentRef]s
 /// or [XmlTextRef] values.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum XmlOut {
     /// An XML element.
     Element(XmlElementRef),
@@ -287,6 +289,11 @@ impl XmlElementRef {
     }
 
     /// A tag name of a current top-level XML node, eg. node `<p></p>` has "p" as it's tag name.
+    ///
+    /// # Panics
+    ///
+    /// If this handle doesn't point to an XML element (a root type read as one), which has no
+    /// tag. [XmlElementRef::try_tag] returns `None` then.
     pub fn tag(&self) -> &Arc<str> {
         self.try_tag().expect("XmlElement tag was not defined")
     }
@@ -1444,7 +1451,7 @@ impl XmlTextEvent {
     /// Returns a summary of text changes made over corresponding [XmlTextRef] collection within
     /// bounds of current transaction.
     pub fn delta(&self, txn: &TransactionMut) -> &[Delta] {
-        let delta = unsafe { self.delta.get().as_mut().unwrap() };
+        let delta = unsafe { &mut *self.delta.get() };
         delta
             .get_or_insert_with(|| TextEvent::get_delta(self.target.0, txn))
             .as_slice()
@@ -1453,7 +1460,7 @@ impl XmlTextEvent {
     /// Returns a summary of attribute changes made over corresponding [XmlTextRef] collection within
     /// bounds of current transaction.
     pub fn keys(&self, txn: &TransactionMut) -> &HashMap<Arc<str>, EntryChange> {
-        let keys = unsafe { self.keys.get().as_mut().unwrap() };
+        let keys = unsafe { &mut *self.keys.get() };
 
         match keys {
             Ok(keys) => {
@@ -1465,7 +1472,7 @@ impl XmlTextEvent {
                 if let Ok(keys) = keys {
                     keys
                 } else {
-                    panic!("Defect: should not happen");
+                    unreachable!("the keys were computed just above");
                 }
             }
         }
@@ -1580,7 +1587,7 @@ impl XmlEvent {
     /// Returns a summary of attribute changes made over corresponding [XmlElementRef] collection
     /// within bounds of current transaction.
     pub fn keys(&self, txn: &TransactionMut) -> &HashMap<Arc<str>, EntryChange> {
-        let keys = unsafe { self.keys.get().as_mut().unwrap() };
+        let keys = unsafe { &mut *self.keys.get() };
 
         match keys {
             Ok(keys) => keys,
@@ -1590,7 +1597,7 @@ impl XmlEvent {
                 if let Ok(keys) = keys {
                     keys
                 } else {
-                    panic!("Defect: should not happen");
+                    unreachable!("the keys were computed just above");
                 }
             }
         }

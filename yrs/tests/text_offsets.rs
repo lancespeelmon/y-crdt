@@ -47,6 +47,7 @@ fn typed_offsets_resolve_to_the_documents_units() {
             let native = match kind {
                 OffsetKind::Utf16 => utf16,
                 OffsetKind::Bytes => utf8,
+                _ => unreachable!("the test only builds documents with these kinds"),
             };
             assert_eq!(
                 text.offset(&txn, CharOffset(chars)),

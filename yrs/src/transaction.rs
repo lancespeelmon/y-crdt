@@ -50,6 +50,11 @@ pub trait ReadTxn: Sized {
 
     /// Encodes all changes from current transaction block store up to a given `snapshot`.
     /// This enables to encode state of a document at some specific point in the past.
+    ///
+    /// # Errors
+    ///
+    /// [Error::Gc] if the document collects garbage (`Options::skip_gc` is false): the deleted
+    /// content a past state needs may be gone.
     fn encode_state_from_snapshot<E: Encoder>(
         &self,
         snapshot: &Snapshot,
@@ -395,6 +400,11 @@ pub trait WriteTxn: Sized {
     /// Returns the root type `name` as an `S`, creating it if needed, or
     /// [RootTypeMismatch](crate::RootTypeMismatch) if it exists with another type. See
     /// [Doc::try_get_or_insert](crate::Doc::try_get_or_insert).
+    ///
+    /// # Errors
+    ///
+    /// [crate::RootTypeMismatch] if the document already has a root type with this name and a different
+    /// type.
     fn try_get_or_insert<S: crate::types::RootRef>(
         &mut self,
         name: impl Into<Arc<str>>,
@@ -961,6 +971,11 @@ impl<'doc> TransactionMut<'doc> {
     /// Remote update integration requires that all to-be-integrated blocks must have their direct
     /// predecessors already in place. Out of order updates from the same peer will be stashed
     /// internally and their integration will be postponed until missing blocks arrive first.
+    ///
+    /// # Errors
+    ///
+    /// [UpdateError::InvalidParent] if a block names, as its parent, an item that holds neither
+    /// a shared type nor deleted content. The update may then be partly applied.
     pub fn apply_update(&mut self, update: Update) -> Result<(), UpdateError> {
         // Counting walks the update and the pending state, so only when something listens.
         #[cfg(feature = "tracing")]

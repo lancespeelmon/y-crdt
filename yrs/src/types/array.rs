@@ -373,6 +373,10 @@ pub trait Array: AsRef<Branch> + Sized {
     /// let bob: Option<Person> = array.get_as(&txn, 1).unwrap();
     /// assert_eq!(bob, None);
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// [Error] if there is no element at `index`, or it can't be deserialized into `V`.
     fn get_as<T, V>(&self, txn: &T, index: u32) -> Result<V, Error>
     where
         T: ReadTxn,
