@@ -216,6 +216,11 @@ impl Store {
 
     /// Encodes all changes from current transaction block store up to a given `snapshot`.
     /// This enables to encode state of a document at some specific point in the past.
+    ///
+    /// # Errors
+    ///
+    /// [Error::Gc] if the document collects garbage (`Options::skip_gc` is false): the deleted
+    /// content a past state needs may be gone.
     pub fn encode_state_from_snapshot<E: Encoder>(
         &self,
         snapshot: &Snapshot,

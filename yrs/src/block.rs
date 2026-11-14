@@ -824,6 +824,11 @@ impl Item {
     }
 
     /// Writes this item into an `encoder`: its info byte, origins, parent reference and content.
+    ///
+    /// # Panics
+    ///
+    /// If the item has no origins and no parent reference, which only an item that was never
+    /// integrated lacks.
     pub fn encode<E: Encoder>(&self, encoder: &mut E) {
         let info = self.info();
         let cant_copy_parent_info = info & (HAS_ORIGIN | HAS_RIGHT_ORIGIN) == 0;
@@ -1851,6 +1856,7 @@ fn split_surrogate(str: &str, off: usize, c: char) -> (Cow<'_, str>, Cow<'_, str
 /// An enum describing the type of a user data content stored as part of one or more
 /// (if items were squashed) insert operations.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum ItemContent {
     /// Collection of consecutively inserted JSON-like primitive values.
     Any(Vec<Any>),
@@ -2144,6 +2150,10 @@ impl ItemContent {
     }
 
     /// Reads the content identified by `ref_num` from a `decoder`. Fails if the data is malformed or the content type is unknown.
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends early or doesn't hold valid content of the kind `ref_num` names.
     pub fn decode<D: Decoder>(decoder: &mut D, ref_num: u8) -> Result<Self, Error> {
         match ref_num & 0b1111 {
             BLOCK_ITEM_DELETED_REF_NUMBER => Ok(ItemContent::Deleted(decoder.read_len()?)),
@@ -2495,6 +2505,7 @@ impl TryFrom<ItemPtr> for Unused {
 
 /// Prelim container for types passed over to [TextRef::insert_embed](crate::Text::insert_embed) and [TextRef::insert_embed_with_attributes](crate::Text::insert_embed_with_attributes) methods.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EmbedPrelim<T> {
     /// A primitive value that is embedded as-is.
     Primitive(Any),

@@ -280,6 +280,10 @@ impl Awareness {
     /// Sets a current [Awareness] instance state to a corresponding JSON string. This state will
     /// be replicated to other clients as part of the [AwarenessUpdate] and it will trigger an event
     /// to be emitted to the observers registered with [Awareness::on_update] and [Awareness::on_change].
+    ///
+    /// # Errors
+    ///
+    /// [Error::Serde] if `state` can't be serialized to JSON.
     #[cfg(feature = "json")]
     pub fn set_local_state<S: Serialize>(&mut self, state: S) -> Result<(), Error> {
         let json = serde_json::to_string(&state)?;
@@ -345,6 +349,11 @@ impl Awareness {
 
     /// Returns a serializable update object which is representation of a current Awareness state.
     /// This doesn't include states that have been removed in the past.
+    ///
+    /// # Errors
+    ///
+    /// None today: every client it lists is one this awareness knows. The `Result` is kept for
+    /// compatibility.
     pub fn update(&self) -> Result<AwarenessUpdate, Error> {
         let clients: Vec<_> = self
             .states
@@ -364,6 +373,10 @@ impl Awareness {
     /// Unlike [Awareness::update], this method variant allows to prepare update only for a subset
     /// of known clients. These clients must all be known to a current [Awareness] instance,
     /// otherwise a [Error::ClientNotFound] error will be returned.
+    ///
+    /// # Errors
+    ///
+    /// [Error::ClientNotFound] if one of `clients` isn't known to this awareness.
     pub fn update_with_clients<I: IntoIterator<Item = ClientID>>(
         &self,
         clients: I,
@@ -386,6 +399,10 @@ impl Awareness {
     ///
     /// If current instance has an observer channel (see: [Awareness::on_update]), applied
     /// changes will also be emitted as events.
+    ///
+    /// # Errors
+    ///
+    /// None today. The `Result` is kept for compatibility.
     pub fn apply_update(&mut self, update: AwarenessUpdate) -> Result<(), Error> {
         let gen_summary = self.on_update.has_subscribers() || self.on_change.has_subscribers();
         self.apply_update_internal(update, None, gen_summary)?;
@@ -397,6 +414,10 @@ impl Awareness {
     ///
     /// If current instance has an observer channel (see: [Awareness::on_update]), applied
     /// changes will also be emitted as events.
+    ///
+    /// # Errors
+    ///
+    /// None today. The `Result` is kept for compatibility.
     pub fn apply_update_with<O: Into<Origin>>(
         &mut self,
         update: AwarenessUpdate,
@@ -413,6 +434,10 @@ impl Awareness {
     ///
     /// If current instance has an observer channel (see: [Awareness::on_update]), applied
     /// changes will also be emitted as events.
+    ///
+    /// # Errors
+    ///
+    /// None today. The `Result` is kept for compatibility.
     pub fn apply_update_summary(
         &mut self,
         update: AwarenessUpdate,
@@ -426,6 +451,10 @@ impl Awareness {
     ///
     /// If current instance has an observer channel (see: [Awareness::on_update]), applied
     /// changes will also be emitted as events.
+    ///
+    /// # Errors
+    ///
+    /// None today. The `Result` is kept for compatibility.
     pub fn apply_update_summary_with<O: Into<Origin>>(
         &mut self,
         update: AwarenessUpdate,

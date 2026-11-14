@@ -3,6 +3,10 @@ use std::str::FromStr;
 
 impl<'a> JsonPath<'a> {
     /// Parses a JSON path from a string.
+    ///
+    /// # Errors
+    ///
+    /// [ParseError] if `path` isn't valid JSON path syntax.
     pub fn parse(path: &'a str) -> Result<Self, ParseError> {
         let mut tokens = Vec::new();
         let mut i = 0;

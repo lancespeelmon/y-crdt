@@ -165,12 +165,18 @@ where
     }
 
     /// Extends a list of shared types tracked by current undo manager by a given `scope`.
+    ///
+    /// # Panics
+    ///
+    /// If a transaction is open on `doc`, the first time the manager sees `doc`: it then
+    /// subscribes to the document's events, which takes a read-write transaction.
     pub fn expand_scope<T>(&mut self, doc: &Doc, scope: &T)
     where
         T: AsRef<Branch>,
     {
         let origin = Origin::from(Arc::as_ptr(&self.state) as usize);
-        let inner_mut = Arc::get_mut(&mut self.state).unwrap();
+        let inner_mut = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
         let ptr1 = AtomicPtr::new(inner_mut as *mut Inner<M>);
         let ptr2 = AtomicPtr::new(inner_mut as *mut Inner<M>);
         let (alive1, alive2) = (self.alive.clone(), self.alive.clone());
@@ -204,7 +210,8 @@ where
             e.insert(doc.clone());
         }
         let ptr = BranchPtr::from(scope.as_ref());
-        let inner = Arc::get_mut(&mut self.state).unwrap();
+        let inner = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
         inner.scope.insert(ptr);
     }
 
@@ -214,7 +221,8 @@ where
     }
 
     fn inner_mut(&mut self) -> &mut Inner<M> {
-        Arc::get_mut(&mut self.state).unwrap()
+        Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"))
     }
 
     fn should_skip(inner: &Inner<M>, txn: &TransactionMut) -> bool {
@@ -392,7 +400,8 @@ where
     where
         O: Into<Origin>,
     {
-        let inner = Arc::get_mut(&mut self.state).unwrap();
+        let inner = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
         inner.options.tracked_origins.insert(origin.into());
     }
 
@@ -407,7 +416,8 @@ where
     where
         O: Into<Origin>,
     {
-        let inner = Arc::get_mut(&mut self.state).unwrap();
+        let inner = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
         inner.options.tracked_origins.remove(&origin.into());
     }
 
@@ -426,7 +436,8 @@ where
     }
 
     fn clear_internal(&mut self, clear_undo: bool, clear_redo: bool) {
-        let inner = Arc::get_mut(&mut self.state).unwrap();
+        let inner = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
 
         let undo_cleared =
             clear_undo && Self::clear_stack(&inner.scope, &inner.docs, &mut inner.undo_stack);
@@ -529,7 +540,8 @@ where
     /// txt.get_string(&doc.transact()); // => "a" (note that only 'b' was removed)
     /// ```
     pub fn reset(&mut self) {
-        let inner = Arc::get_mut(&mut self.state).unwrap();
+        let inner = Arc::get_mut(&mut self.state)
+            .unwrap_or_else(|| unreachable!("the manager is the only owner of its state"));
         inner.last_change = 0;
     }
 

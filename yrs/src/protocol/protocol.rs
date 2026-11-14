@@ -50,6 +50,10 @@ pub trait Protocol {
     /// To be called whenever a new connection has been accepted. Returns an encoded list of
     /// messages to be sent back to initiator. This binary may contain multiple messages inside,
     /// stored one after another.
+    ///
+    /// # Errors
+    ///
+    /// What the implementation returns. The default never fails.
     fn start<E>(&self, awareness: &Awareness, encoder: &mut E) -> Result<(), Error>
     where
         E: Encoder,
@@ -66,6 +70,11 @@ pub trait Protocol {
     }
 
     /// Y-sync protocol message handler.
+    ///
+    /// # Errors
+    ///
+    /// [Error::DecodingError] if `data` isn't a valid message, and whatever
+    /// [Protocol::handle_message] returns for one.
     fn handle(
         &self,
         awareness: &mut Awareness,
@@ -85,6 +94,10 @@ pub trait Protocol {
 
     /// Handles incoming y-sync [Message] within the context of current awareness structure.
     /// Returns an optional reply message that should be sent back to message sender.
+    ///
+    /// # Errors
+    ///
+    /// What the handler for the message's kind returns; see the other `handle_*` methods.
     fn handle_message(
         &self,
         awareness: &mut Awareness,
@@ -111,6 +124,10 @@ pub trait Protocol {
 
     /// Y-sync protocol sync-step-1 - given a [StateVector] of a remote side, calculate missing
     /// updates. Returns a sync-step-2 message containing a calculated update.
+    ///
+    /// # Errors
+    ///
+    /// What the implementation returns. The default never fails.
     fn handle_sync_step1(
         &self,
         awareness: &mut Awareness,
@@ -123,6 +140,11 @@ pub trait Protocol {
 
     /// Handle reply for a sync-step-1 send from this replica previously. By default just apply
     /// an update to current `awareness` document instance.
+    ///
+    /// # Errors
+    ///
+    /// [Error::DecodingError] if the update isn't valid, [Error::Update] if it can't be
+    /// applied (the default implementation).
     fn handle_sync_step2(
         &self,
         awareness: &mut Awareness,
@@ -136,6 +158,10 @@ pub trait Protocol {
 
     /// Handle continuous update send from the client. By default just apply an update to a current
     /// `awareness` document instance.
+    ///
+    /// # Errors
+    ///
+    /// As for [Protocol::handle_sync_step2], which the default implementation calls.
     fn handle_update(
         &self,
         awareness: &mut Awareness,
@@ -146,6 +172,11 @@ pub trait Protocol {
 
     /// Handle authorization message. By default if reason for auth denial has been provided,
     /// send back [Error::PermissionDenied].
+    ///
+    /// # Errors
+    ///
+    /// [Error::PermissionDenied] when the peer reports that access was denied (the default
+    /// implementation).
     fn handle_auth(
         &self,
         _awareness: &mut Awareness,
@@ -160,6 +191,10 @@ pub trait Protocol {
 
     /// Returns an [AwarenessUpdate] which is a serializable representation of a current `awareness`
     /// instance.
+    ///
+    /// # Errors
+    ///
+    /// What the implementation returns. The default never fails.
     fn handle_awareness_query(&self, awareness: &mut Awareness) -> Result<Option<Message>, Error> {
         let update = awareness.update()?;
         Ok(Some(Message::Awareness(update)))
@@ -167,6 +202,10 @@ pub trait Protocol {
 
     /// Reply to awareness query or just incoming [AwarenessUpdate], where current `awareness`
     /// instance is being updated with incoming data.
+    ///
+    /// # Errors
+    ///
+    /// [Error::AwarenessEncoding] if the update can't be applied (the default implementation).
     fn handle_awareness_update(
         &self,
         awareness: &mut Awareness,
@@ -178,6 +217,10 @@ pub trait Protocol {
 
     /// Y-sync protocol enables to extend its own settings with custom handles. These can be
     /// implemented here. By default, it returns an [Error::Unsupported].
+    ///
+    /// # Errors
+    ///
+    /// [Error::Unsupported] with the message's tag (the default implementation).
     fn missing_handle(
         &self,
         _awareness: &mut Awareness,
@@ -356,6 +399,7 @@ pub const PERMISSION_GRANTED: u8 = 1;
 
 /// A message of the y-sync protocol.
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Message {
     /// A document synchronization message.
     Sync(SyncMessage),
@@ -439,6 +483,7 @@ pub const MSG_SYNC_UPDATE: u8 = 2;
 
 /// A document synchronization message, sent as part of a [Message::Sync].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SyncMessage {
     /// The first step of the sync: carries the sender's state vector, to ask for the updates that it's missing.
     SyncStep1(StateVector),

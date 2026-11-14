@@ -12,6 +12,7 @@ use std::sync::Arc;
 /// Value that can be returned by Yrs data types. This includes [Any] which is an extension
 /// representation of JSON, but also nested complex collaborative structures specific to Yrs.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Out {
     /// Any value that it treated as a single element in its entirety.
     Any(Any),
@@ -76,6 +77,10 @@ impl Default for Out {
 impl Out {
     /// Attempts to convert current [Out] value directly onto a different type, as along as it
     /// implements [TryFrom] trait. If conversion is not possible, the original value is returned.
+    ///
+    /// # Errors
+    ///
+    /// `self`, unchanged, if it can't be converted to `T`.
     #[inline]
     pub fn cast<T>(self) -> Result<T, Self>
     where

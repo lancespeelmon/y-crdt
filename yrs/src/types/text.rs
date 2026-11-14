@@ -1391,6 +1391,7 @@ impl YChange {
 
 /// The kind of a [YChange].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ChangeKind {
     /// The chunk has been added.
     Added,
@@ -1429,7 +1430,7 @@ impl TextEvent {
     /// Returns a summary of text changes made over corresponding [Text] collection within
     /// bounds of current transaction.
     pub fn delta(&self, txn: &TransactionMut) -> &[Delta] {
-        let delta = unsafe { self.delta.get().as_mut().unwrap() };
+        let delta = unsafe { &mut *self.delta.get() };
         delta
             .get_or_insert_with(|| Self::get_delta(self.target.0, txn))
             .as_slice()

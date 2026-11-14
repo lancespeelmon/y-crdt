@@ -368,6 +368,10 @@ pub trait Map: AsRef<Branch> + Sized {
     /// let bob: Option<Person> = map.get_as(&txn, "Bob").unwrap();
     /// assert_eq!(bob, None);
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// [Error] if there is no entry under `key`, or it can't be deserialized into `V`.
     fn get_as<T, V>(&self, txn: &T, key: &str) -> Result<V, Error>
     where
         T: ReadTxn,
@@ -635,7 +639,7 @@ impl MapEvent {
     /// Returns a summary of key-value changes made over corresponding [Map] collection within
     /// bounds of current transaction.
     pub fn keys(&self, txn: &TransactionMut) -> &HashMap<Arc<str>, EntryChange> {
-        let keys = unsafe { self.keys.get().as_mut().unwrap() };
+        let keys = unsafe { &mut *self.keys.get() };
 
         match keys {
             Ok(keys) => {
@@ -647,7 +651,7 @@ impl MapEvent {
                 if let Ok(keys) = keys {
                     keys
                 } else {
-                    panic!("Defect: should not happen");
+                    unreachable!("the keys were computed just above");
                 }
             }
         }

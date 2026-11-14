@@ -17,6 +17,10 @@ use std::sync::Arc;
 /// `updates`, compressed.
 ///
 /// Returns an error whenever any of the input updates couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if one of `updates` isn't a valid lib0 v1 update.
 pub fn merge_updates_v1<I, B>(updates: I) -> Result<Vec<u8>, Error>
 where
     I: IntoIterator<Item = B>,
@@ -173,6 +177,10 @@ impl UpdateAccumulator {
 /// `updates`, compressed.
 ///
 /// Returns an error whenever any of the input updates couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if one of `updates` isn't a valid lib0 v2 update.
 pub fn merge_updates_v2<I, B>(updates: I) -> Result<Vec<u8>, Error>
 where
     I: IntoIterator<Item = B>,
@@ -192,6 +200,10 @@ where
 /// of that update.
 ///
 /// Returns an error whenever any of the input update couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update.
 pub fn encode_state_vector_from_update_v1(update: &[u8]) -> Result<Vec<u8>, Error> {
     let update = Update::decode_v1(update)?;
     Ok(update.state_vector().encode_v1())
@@ -201,6 +213,10 @@ pub fn encode_state_vector_from_update_v1(update: &[u8]) -> Result<Vec<u8>, Erro
 /// of that update.
 ///
 /// Returns an error whenever any of the input update couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update.
 pub fn encode_state_vector_from_update_v2(update: &[u8]) -> Result<Vec<u8>, Error> {
     let update = Update::decode_v2(update)?;
     Ok(update.state_vector().encode_v2())
@@ -211,6 +227,10 @@ pub fn encode_state_vector_from_update_v2(update: &[u8]) -> Result<Vec<u8>, Erro
 /// from **A** which have not been observed by **B** (based on its state vector).
 ///
 /// Returns an error whenever any of the input arguments couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update or `state_vector` a valid v1 state vector.
 pub fn diff_updates_v1(update: &[u8], state_vector: &[u8]) -> Result<Vec<u8>, Error> {
     let sv = StateVector::decode_v1(state_vector)?;
     let update = Update::decode_v1(update)?;
@@ -226,6 +246,10 @@ pub fn diff_updates_v1(update: &[u8], state_vector: &[u8]) -> Result<Vec<u8>, Er
 /// from **A** which have not been observed by **B** (based on its state vector).
 ///
 /// Returns an error whenever any of the input arguments couldn't be decoded.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update or `state_vector` a valid v2 state vector.
 pub fn diff_updates_v2(update: &[u8], state_vector: &[u8]) -> Result<Vec<u8>, Error> {
     let sv = StateVector::decode_v2(state_vector)?;
     let cursor = Cursor::new(update);
@@ -263,21 +287,37 @@ impl UpdateMeta {
 
 /// [UpdateMeta] of a lib0 v1 encoded update, without applying it to a document. Like Yjs, it
 /// counts skipped ranges (gaps in a merged update) as covered.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update.
 pub fn parse_update_meta_v1(update: &[u8]) -> Result<UpdateMeta, Error> {
     Ok(UpdateMeta::of(&Update::decode_v1(update)?))
 }
 
 /// [UpdateMeta] of a lib0 v2 encoded update. See [parse_update_meta_v1].
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update.
 pub fn parse_update_meta_v2(update: &[u8]) -> Result<UpdateMeta, Error> {
     Ok(UpdateMeta::of(&Update::decode_v2(update)?))
 }
 
 /// Re-encodes a lib0 v1 update in the v2 format, like Yjs' `convertUpdateFormatV1ToV2`.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update.
 pub fn convert_update_v1_to_v2(update: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(Update::decode_v1(update)?.encode_v2())
 }
 
 /// Re-encodes a lib0 v2 update in the v1 format, like Yjs' `convertUpdateFormatV2ToV1`.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update.
 pub fn convert_update_v2_to_v1(update: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(Update::decode_v2(update)?.encode_v1())
 }
@@ -285,11 +325,19 @@ pub fn convert_update_v2_to_v1(update: &[u8]) -> Result<Vec<u8>, Error> {
 /// Whether `snapshot` already contains everything `update` adds, like Yjs'
 /// `snapshotContainsUpdate`: every block of the update is within the snapshot's state vector,
 /// and every deletion is in its delete set. Skipped ranges count, as in Yjs.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update.
 pub fn snapshot_contains_update_v1(snapshot: &Snapshot, update: &[u8]) -> Result<bool, Error> {
     Ok(snapshot_contains(snapshot, &Update::decode_v1(update)?))
 }
 
 /// [snapshot_contains_update_v1] for a lib0 v2 encoded update.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update.
 pub fn snapshot_contains_update_v2(snapshot: &Snapshot, update: &[u8]) -> Result<bool, Error> {
     Ok(snapshot_contains(snapshot, &Update::decode_v2(update)?))
 }
@@ -330,6 +378,10 @@ impl Default for ObfuscateOptions {
 /// formatting, subdocument GUIDs and XML names) with placeholders of the same size, keeping its
 /// structure. Like Yjs' `obfuscateUpdate`, it is for sharing an update that triggers a bug
 /// without sharing the document. Root type names and IDs are kept.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v1 update.
 pub fn obfuscate_update_v1(update: &[u8], options: ObfuscateOptions) -> Result<Vec<u8>, Error> {
     let mut update = Update::decode_v1(update)?;
     obfuscate(&mut update, options);
@@ -337,6 +389,10 @@ pub fn obfuscate_update_v1(update: &[u8], options: ObfuscateOptions) -> Result<V
 }
 
 /// [obfuscate_update_v1] for a lib0 v2 encoded update.
+///
+/// # Errors
+///
+/// [Error] if `update` isn't a valid lib0 v2 update.
 pub fn obfuscate_update_v2(update: &[u8], options: ObfuscateOptions) -> Result<Vec<u8>, Error> {
     let mut update = Update::decode_v2(update)?;
     obfuscate(&mut update, options);

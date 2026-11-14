@@ -69,7 +69,8 @@ impl<F> Observer<F> {
             if let Some(cb) = guard.as_ref() {
                 // observer triggers requires &mut self and internal ArcSwap(Some) is assigned
                 // only once, so it should never be at risk of multiple concurrent calls
-                let callback = unsafe { cb.as_raw().as_mut().unwrap() };
+                // SAFETY: `guard` keeps the `Arc` (and so the pointer) alive for the call.
+                let callback = unsafe { &mut *cb.as_raw() };
                 each(callback);
             }
         }

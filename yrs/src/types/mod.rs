@@ -73,6 +73,7 @@ pub const TYPE_REFS_UNDEFINED: u8 = 15;
 /// The kind of a shared collection. Written to the update to tell peers which type to create. See the `TYPE_REFS_*` constants for the tags used on the wire.
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum TypeRef {
     /// An [ArrayRef].
     Array = TYPE_REFS_ARRAY,
@@ -672,6 +673,7 @@ pub type Path = VecDeque<PathSegment>;
 
 /// A single segment of a [Path].
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum PathSegment {
     /// Key segments are used to inform how to access child shared collections within a [Map] types.
     Key(Arc<str>),
@@ -711,6 +713,7 @@ impl<D> ChangeSet<D> {
 
 /// A single change done over an array-component of shared data type.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Change {
     /// Determines a change that resulted in adding a consecutive number of new elements:
     /// - For [Array] it's a range of inserted elements.
@@ -728,6 +731,7 @@ pub enum Change {
 
 /// A single change done over a map-component of shared data type.
 #[derive(Clone, PartialEq)]
+#[non_exhaustive]
 pub enum EntryChange {
     /// Informs about a new value inserted under specified entry.
     Inserted(Out),
@@ -769,6 +773,7 @@ impl std::fmt::Debug for EntryChange {
 
 /// A single change done over a text-like types: [Text] or [XmlTextRef].
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Delta<T = Out> {
     /// Determines a change that resulted in insertion of a piece of text, which optionally could
     /// have been formatted with provided set of attributes.
@@ -984,6 +989,7 @@ impl<'a> ExactSizeIterator for EventsIter<'a> {
 }
 
 /// Generalized wrapper around events fired by specialized shared data types.
+#[non_exhaustive]
 pub enum Event {
     /// An event of a [TextRef].
     Text(TextEvent),

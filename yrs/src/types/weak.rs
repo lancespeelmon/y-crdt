@@ -245,6 +245,10 @@ where
     /// returned.
     ///
     /// Use [WeakRef::try_deref_value] if conversion is not possible or desired at the current moment.
+    ///
+    /// # Errors
+    ///
+    /// `Err(None)` if the linked value is gone, `Err(Some(e))` if it can't be converted into `V`.
     pub fn try_deref<T, V>(&self, txn: &T) -> Result<V, Option<V::Error>>
     where
         T: ReadTxn,
@@ -380,6 +384,10 @@ where
     }
 
     /// Returns the value that this link quotes, converted into `V`. Fails with `None` if there's no such value, or with the error of the conversion.
+    ///
+    /// # Errors
+    ///
+    /// `Err(None)` if the linked value is gone, `Err(Some(e))` if it can't be converted into `V`.
     pub fn try_deref<T, V>(&self, txn: &T) -> Result<V, Option<V::Error>>
     where
         T: ReadTxn,

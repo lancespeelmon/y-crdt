@@ -945,6 +945,10 @@ impl Update {
     /// let target = Doc::new();
     /// target.transact_mut().apply_update(update).unwrap();
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// [Error] if `data` isn't a valid lib0 v2 update, or holds more than `max_blocks` blocks.
     pub fn decode_v2_with_block_limit(data: &[u8], max_blocks: usize) -> Result<Self, Error> {
         let mut decoder = DecoderV2::new(Cursor::new(data))?;
         Self::decode_with_block_limit(&mut decoder, max_blocks)

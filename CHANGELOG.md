@@ -11,6 +11,17 @@ repository and its release notes.
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** the public data enums are `#[non_exhaustive]` too (5.2), not only the error
+  enums: `Any`, `Number`, `Out`, `In`, `ItemContent`, `TypeRef`, `XmlIn`, `XmlOut`, `Event`,
+  `Delta`, `Change`, `EntryChange`, `PathSegment`, `BranchID`, `OffsetKind`, `IndexScope`,
+  `EmbedPrelim`, `ChangeKind`, `protocol::Message` and `SyncMessage`, and the `Any` iterators.
+  Several have feature-gated variants (`weak`), so an exhaustive match outside yrs depended on
+  the features enabled. Matches need a wildcard arm. `Assoc` and `undo::EventKind` stay
+  exhaustive: they are closed by definition (a side; undo or redo). yffi and ywasm map an
+  unknown variant to their undefined value, a null pointer, or an empty change.
+- Every public function that returns a `Result` documents its errors, and every one that can
+  panic documents when (5.2). Clippy's `missing_errors_doc` and `missing_panics_doc` are on for
+  yrs, so CI keeps it that way. Internal invariants that couldn't fail are no longer `unwrap`s.
 - **Breaking:** `yrs::encoding::read::Error::InvalidJSON` holds a `yrs::JsonError` instead of a
   `serde_json::Error` (5.9). yrs reads and writes the JSON in updates (embeds, format
   attributes) and `Any::from_json`/`to_json` itself, producing the same text as before, so
@@ -348,6 +359,8 @@ repository and its release notes.
 - ywasm: the unused, unmaintained optional `wee_alloc` dependency (and its implicit feature).
 
 ### Development
+- CI checks that the ywasm build registers its classes with a `FinalizationRegistry`, so objects
+  JS no longer references are freed without `free()` (7.8; wasm-bindgen does this by default).
 - CI runs cargo-semver-checks on `yrs` and `ybindings-core` for each pull request, against its
   base branch (5.10). Breaking changes are allowed on `next`, so the job reports them without
   failing; each needs a **Breaking** entry here.

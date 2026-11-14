@@ -16,6 +16,7 @@ pub const F64_MIN_SAFE_INTEGER: f64 = -F64_MAX_SAFE_INTEGER;
 /// Any is an enum with a potentially associated value that is used to represent JSON values
 /// and supports efficient encoding of those values.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Any {
     /// JavaScript `null`.
     Null,
@@ -50,6 +51,10 @@ impl Any {
     pub const MAX_DECODE_DEPTH: usize = 256;
 
     /// Converts this value into `T`. Returns the value back as the error if it can't be converted.
+    ///
+    /// # Errors
+    ///
+    /// `self`, unchanged, if it can't be converted to `T`.
     #[inline]
     pub fn cast<T>(self) -> Result<T, Self>
     where
@@ -61,6 +66,11 @@ impl Any {
     }
 
     /// Reads a value from a `decoder`, in the lib0 "any" encoding. Fails if the data is malformed or nested deeper than [Any::MAX_DECODE_DEPTH].
+    ///
+    /// # Errors
+    ///
+    /// [Error] if the input ends before a whole value, holds an unknown type tag, or nests too
+    /// deeply.
     pub fn decode<R: Read>(decoder: &mut R) -> Result<Self, Error> {
         Self::decode_nested(decoder, 0)
     }
@@ -365,6 +375,7 @@ fn exact_f64(n: i64) -> Option<f64> {
 
 /// A number in an [Any]: what a JavaScript number holds, plus `BigInt`.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum Number {
     /// An integer. On the wire it is a JS number when one holds it exactly (always within
     /// ±2^53, see [Number::I64_MAX_SAFE_INTEGER]), and a `BigInt` otherwise, so every peer
@@ -547,6 +558,7 @@ impl std::fmt::Display for Number {
 }
 
 /// Iterator over the inner values of an [Any] array or map, created by [Any::try_iter]. Items are the entry's key (`None` for arrays) and its value.
+#[non_exhaustive]
 pub enum AnyIter<'a> {
     /// Iterates over the elements of an array.
     Array(std::slice::Iter<'a, Any>),
@@ -599,6 +611,7 @@ impl Iterator for AnyArrayIter {
 }
 
 /// Iterator created by [Any::try_into_iter], over the inner values of an [Any] array or map.
+#[non_exhaustive]
 pub enum AnyIntoIter {
     /// Iterates over the elements of an array.
     Array(AnyArrayIter),

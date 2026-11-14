@@ -932,7 +932,7 @@ pub unsafe extern "C" fn ytransaction_root_refs(
                 Out::YWeakLink(v) => v.into_raw_branch(),
                 Out::UndefinedRef(v) => v.as_ref() as *const Branch as *mut Branch,
                 // root types are always branches
-                Out::Any(_) | Out::YDoc(_) => return None,
+                _ => return None,
             };
             Some(YRootRef {
                 name: CString::new(name).unwrap().into_raw(),
@@ -2447,6 +2447,7 @@ pub unsafe extern "C" fn yxml_next_sibling(
             XmlOut::Element(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlElement(v)))),
             XmlOut::Text(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlText(v)))),
             XmlOut::Fragment(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlFragment(v)))),
+            _ => std::ptr::null_mut(),
         }
     } else {
         null_mut()
@@ -2475,6 +2476,7 @@ pub unsafe extern "C" fn yxml_prev_sibling(
             XmlOut::Element(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlElement(v)))),
             XmlOut::Text(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlText(v)))),
             XmlOut::Fragment(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlFragment(v)))),
+            _ => std::ptr::null_mut(),
         }
     } else {
         null_mut()
@@ -2525,6 +2527,7 @@ pub unsafe extern "C" fn yxmlelem_first_child(xml: *const Branch) -> *mut YOutpu
             XmlOut::Element(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlElement(v)))),
             XmlOut::Text(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlText(v)))),
             XmlOut::Fragment(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlFragment(v)))),
+            _ => std::ptr::null_mut(),
         }
     } else {
         std::ptr::null_mut()
@@ -2579,6 +2582,7 @@ pub unsafe extern "C" fn yxmlelem_tree_walker_next(iterator: *mut TreeWalker) ->
             XmlOut::Element(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlElement(v)))),
             XmlOut::Text(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlText(v)))),
             XmlOut::Fragment(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlFragment(v)))),
+            _ => std::ptr::null_mut(),
         }
     } else {
         std::ptr::null_mut()
@@ -2682,6 +2686,7 @@ pub unsafe extern "C" fn yxmlelem_get(
             XmlOut::Element(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlElement(v)))),
             XmlOut::Text(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlText(v)))),
             XmlOut::Fragment(v) => Box::into_raw(Box::new(YOutput::from(Out::YXmlFragment(v)))),
+            _ => std::ptr::null_mut(),
         }
     } else {
         std::ptr::null()
@@ -3420,6 +3425,7 @@ impl From<Out> for YOutput {
             Out::YDoc(v) => Self::from(v),
             Out::YWeakLink(v) => Self::from(v),
             Out::UndefinedRef(v) => Self::from(v.branch_ptr()),
+            _ => unsafe { YOutput::undefined() },
         }
     }
 }
@@ -3454,6 +3460,7 @@ impl From<Number> for YOutput {
         match value {
             Number::Int(value) | Number::BigInt(value) => YOutput::from(value),
             Number::Float(value) => YOutput::from(value),
+            _ => YOutput::from(value.as_f64().unwrap_or(f64::NAN)),
         }
     }
 }
@@ -3542,6 +3549,7 @@ impl<'a> From<&'a Any> for YOutput {
                 Any::Buffer(v) => YOutput::from(v.as_ref()),
                 Any::Array(v) => YOutput::from(v.as_ref()),
                 Any::Map(v) => YOutput::from(v.as_ref()),
+                _ => YOutput::undefined(),
             }
         }
     }
@@ -3559,6 +3567,7 @@ impl From<Any> for YOutput {
                 Any::Buffer(v) => YOutput::from(v.as_ref()),
                 Any::Array(v) => YOutput::from(v.as_ref()),
                 Any::Map(v) => YOutput::from(v.as_ref()),
+                _ => YOutput::undefined(),
             }
         }
     }
@@ -4549,6 +4558,10 @@ impl YEvent {
                     weak: YWeakLinkEvent::new(e, txn),
                 },
             },
+            _ => YEvent {
+                tag: Y_UNDEFINED,
+                content: unsafe { std::mem::zeroed() },
+            },
         }
     }
 }
@@ -4779,6 +4792,7 @@ pub unsafe extern "C" fn yxmlelem_event_target(e: *const YXmlEvent) -> *mut Bran
         XmlOut::Element(e) => e.into_raw_branch(),
         XmlOut::Fragment(e) => e.into_raw_branch(),
         XmlOut::Text(e) => e.into_raw_branch(),
+        _ => std::ptr::null_mut(),
     }
 }
 
@@ -5379,6 +5393,7 @@ pub unsafe extern "C" fn ytype_kind(branch: *const Branch) -> i8 {
             TypeRef::WeakLink(_) => Y_WEAK_LINK,
             TypeRef::XmlHook(_) => 0,
             TypeRef::Undefined => 0,
+            _ => Y_UNDEFINED,
         }
     } else {
         0
@@ -5429,6 +5444,10 @@ impl From<PathSegment> for YPathSegment {
                 value: YPathSegmentCase {
                     index: index as u32,
                 },
+            },
+            _ => YPathSegment {
+                tag: 0,
+                value: YPathSegmentCase { index: 0 },
             },
         }
     }
@@ -5526,6 +5545,11 @@ impl<'a> From<&'a Change> for YEventChange {
                 tag: Y_EVENT_CHANGE_RETAIN,
                 len: *len as u32,
                 values: null(),
+            },
+            _ => YEventChange {
+                tag: 0,
+                len: 0,
+                values: std::ptr::null(),
             },
         }
     }
@@ -5646,6 +5670,7 @@ impl<'a> From<&'a Delta> for YDeltaOut {
             Delta::Inserted(value, attrs) => YDeltaOut::insert(value, attrs),
             Delta::Retain(len, attrs) => YDeltaOut::retain(*len, attrs),
             Delta::Deleted(len) => YDeltaOut::delete(*len),
+            _ => YDeltaOut::delete(0),
         }
     }
 }
@@ -5822,6 +5847,12 @@ impl YEventKeyChange {
                 tag: Y_EVENT_KEY_CHANGE_DELETE,
                 old_value: Box::into_raw(Box::new(YOutput::from(old.clone()))),
                 new_value: null(),
+            },
+            _ => YEventKeyChange {
+                key,
+                tag: 0,
+                old_value: std::ptr::null(),
+                new_value: std::ptr::null(),
             },
         }
     }
@@ -6324,6 +6355,10 @@ pub unsafe extern "C" fn ybranch_id(branch: *const Branch) -> YBranchId {
                 },
             }
         }
+        _ => YBranchId {
+            client_or_len: 0,
+            variant: YBranchIdVariant { clock: 0 },
+        },
     }
 }
 
@@ -6405,6 +6440,7 @@ pub unsafe extern "C" fn ybranch_json(branch: *mut Branch, txn: *mut Transaction
             TypeRef::SubDoc | TypeRef::XmlHook(_) | TypeRef::WeakLink(_) | TypeRef::Undefined => {
                 return std::ptr::null_mut()
             }
+            _ => Any::Undefined,
         };
         let json = match serde_json::to_string(&any) {
             Ok(json) => json,

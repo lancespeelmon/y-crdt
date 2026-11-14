@@ -744,6 +744,11 @@ impl<S: RootRef> Root<S> {
     /// Like [Root::get_or_create], but fails if the root already exists with another type,
     /// where [Root::get_or_create] reinterprets it. Yjs throws in that case. A root whose type is
     /// still unknown (created by a remote update that only referenced it) takes on `S`'s type.
+    ///
+    /// # Errors
+    ///
+    /// [RootTypeMismatch] if the document already has a root type with this name and a different
+    /// type.
     pub fn try_get_or_create<T: WriteTxn>(&self, txn: &mut T) -> Result<S, RootTypeMismatch> {
         let requested = S::type_ref();
         if let Some(existing) = txn.store_mut().get_type(self.name.clone()) {
@@ -989,6 +994,7 @@ impl<S> Into<BranchID> for Hook<S> {
 /// An unique logical identifier of a shared collection. Can be shared across document boundaries
 /// to reference to the same logical entity across different replicas of a document.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum BranchID {
     /// A collection nested in another collection, identified by the ID of the block that contains it.
     Nested(ID),

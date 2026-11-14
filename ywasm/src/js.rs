@@ -96,6 +96,7 @@ impl Js {
                 }
                 Js(m.into())
             }
+            _ => Js(JsValue::UNDEFINED),
         }
     }
 
@@ -104,6 +105,7 @@ impl Js {
             XmlOut::Element(v) => YXmlElement(SharedCollection::integrated(v, doc)).into(),
             XmlOut::Fragment(v) => YXmlFragment(SharedCollection::integrated(v, doc)).into(),
             XmlOut::Text(v) => YXmlText(SharedCollection::integrated(v, doc)).into(),
+            _ => JsValue::UNDEFINED,
         })
     }
 
@@ -129,6 +131,7 @@ impl Js {
                 Js(YXmlText(SharedCollection::integrated(c.clone(), doc.clone())).into())
             }
             Out::UndefinedRef(_) => Js(JsValue::UNDEFINED),
+            _ => Js(JsValue::UNDEFINED),
         }
     }
 
@@ -781,6 +784,7 @@ pub(crate) mod convert {
                 let value = JsValue::from(*len);
                 js_sys::Reflect::set(&result, &JsValue::from("retain"), &value).unwrap();
             }
+            _ => {}
         }
         result.into()
     }
@@ -806,6 +810,7 @@ pub(crate) mod convert {
                 js_sys::Reflect::set(&result, &action, &JsValue::from("delete"))?;
                 js_sys::Reflect::set(&result, &JsValue::from("oldValue"), &old_value)?;
             }
+            _ => {}
         }
         Ok(result.into())
     }
@@ -838,6 +843,7 @@ pub(crate) mod convert {
                 let value = JsValue::from(*len);
                 js_sys::Reflect::set(&result, &JsValue::from("delete"), &value)?;
             }
+            _ => {}
         }
         Ok(result.into())
     }
@@ -852,6 +858,7 @@ pub(crate) mod convert {
                 PathSegment::Index(idx) => {
                     result.push(&JsValue::from(idx));
                 }
+                _ => {}
             }
         }
         result.into()
@@ -867,6 +874,7 @@ pub(crate) mod convert {
                 Event::Weak(e) => YWeakLinkEvent::new(e, txn).into(),
                 Event::XmlFragment(e) => YXmlEvent::new(e, txn).into(),
                 Event::XmlText(e) => YXmlTextEvent::new(e, txn).into(),
+                _ => JsValue::UNDEFINED,
             };
             js
         });
@@ -922,6 +930,7 @@ pub(crate) mod convert {
         let kind = match change.kind {
             ChangeKind::Added => JsValue::from("added"),
             ChangeKind::Removed => JsValue::from("removed"),
+            _ => JsValue::UNDEFINED,
         };
         let result = if let Some(func) = compute_ychange {
             let id = to_js(&change.id).map_err(|e| JsValue::from_str(&e.to_string()))?;

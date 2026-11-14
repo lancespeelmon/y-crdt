@@ -480,6 +480,7 @@ impl std::fmt::Display for StickyIndex {
 /// Using [ID]s guarantees that corresponding [StickyIndex] doesn't shift under incoming
 /// concurrent updates.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum IndexScope {
     /// [StickyIndex] is relative to a given block [ID]. This happens whenever we set [StickyIndex]
     /// somewhere inside the non-empty shared collection.

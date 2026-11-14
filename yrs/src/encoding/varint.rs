@@ -7,6 +7,11 @@ pub trait VarInt: Sized + Copy {
     /// Writes this number into `w` as a variable-length integer.
     fn write<W: Write>(&self, w: &mut W);
     /// Reads a variable-length integer from `r`.
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the integer doesn't fit `Self` or isn't terminated,
+    /// [Error::EndOfBuffer] if the input ends inside it.
     fn read<R: Read>(r: &mut R) -> Result<Self, Error>;
 }
 
@@ -288,6 +293,11 @@ pub trait SignedVarInt: Sized + Copy {
     /// Writes `value` into `w` as a variable-length integer.
     fn write_signed<W: Write>(value: &Signed<Self>, w: &mut W);
     /// Reads a signed variable-length integer from `r`.
+    ///
+    /// # Errors
+    ///
+    /// [Error::InvalidVarInt] if the integer doesn't fit `Self` or isn't terminated,
+    /// [Error::EndOfBuffer] if the input ends inside it.
     fn read_signed<R: Read>(r: &mut R) -> Result<Signed<Self>, Error>;
 }
 
