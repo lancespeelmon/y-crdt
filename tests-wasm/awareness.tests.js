@@ -46,3 +46,48 @@ export const testAwareness = tc => {
     t.compare(aw1.getStates().get(0), undefined)
     t.compare(lastChangeLocal, lastChange)
 }
+/**
+ * Handlers run after the change is complete, so they can read and change the awareness again.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testAwarenessReentrantHandlers = tc => {
+    const doc = new Y.YDoc({clientID: 7})
+    const aw = new Y.Awareness(doc)
+    const seen = /** @type {any[]} */ ([])
+    aw.on('change', () => {
+        seen.push(aw.getStates().get(7))
+        const enc = Y.encodeAwarenessUpdate(aw, [7])
+        t.assert(enc.length > 0)
+        if (aw.getLocalState().x === 1) {
+            aw.setLocalState({x: 2})
+        }
+    })
+    aw.setLocalState({x: 1})
+    t.compare(seen, [{x: 1}, {x: 2}])
+    t.compare(aw.getLocalState(), {x: 2})
+
+    const other = new Y.Awareness(new Y.YDoc({clientID: 8}))
+    other.on('update', ({added, updated}) => {
+        if (added.length + updated.length === 0) return
+        t.compare(other.getStates().get(7), {x: 2})
+        Y.removeAwarenessStates(other, added.concat(updated).map(BigInt))
+    })
+    Y.applyAwarenessUpdate(other, Y.encodeAwarenessUpdate(aw, [7]), 'test')
+    t.assert(other.getStates().get(7) === undefined)
+}
+
+/**
+ * A throwing handler doesn't stop the others, and the change it observed stays applied.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testAwarenessThrowingHandler = tc => {
+    const aw = new Y.Awareness(new Y.YDoc({clientID: 9}))
+    let called = 0
+    aw.on('change', () => { throw new Error('boom') })
+    aw.on('update', () => { called++ })
+    t.fails(() => aw.setLocalState({x: 1}))
+    t.compare(aw.getLocalState(), {x: 1})
+    t.assert(called === 1)
+}

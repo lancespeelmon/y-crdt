@@ -340,6 +340,13 @@ repository and its release notes.
 - yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
   as UTF-8 unchecked (undefined behaviour).
 
+- ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
+  `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
+  changing the state. Handlers now run once the change is complete, in the order yrs raised the
+  events, so they see the new state and can change it again. A handler that throws no longer
+  traps the module: the other handlers still run and the call that triggered them throws its
+  error. `removeAwarenessStates` and `applyAwarenessUpdate` no longer throw when called from a
+  handler of the same awareness.
 - ywasm: transaction origins that aren't strings (objects, numbers, `null`) were stored as raw
   wasm-bindgen heap slot indices: a second read got a freed slot, some transactions threw, and
   `trackedOrigins` never matched an object. They are now kept in a registry and compared with
