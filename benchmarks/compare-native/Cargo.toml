@@ -1,0 +1,22 @@
+[package]
+name = "compare-native"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Plan item 6.9: native yrs against y-octo on the B1/B4 workloads"
+
+# Not part of the main workspace, so y-octo stays out of its dependency tree.
+[workspace]
+
+[dependencies]
+yrs = { path = "../../yrs" }
+# `large_refs` widens y-octo's per-item reference count from u16 to u32; without it, documents
+# past 65,535 references to one item (the B4 trace) panic.
+y-octo = { version = "=0.1.1", features = ["large_refs"] }
+
+# The main workspace's release settings, for both libraries. Panics unwind, so a library that
+# panics on a workload is reported instead of ending the run.
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = true
