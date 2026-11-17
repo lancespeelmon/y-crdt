@@ -50,7 +50,8 @@ pub(crate) fn observed(result: Result<JsValue, JsValue>) {
 }
 
 /// Runs `f`, which may commit a transaction, and throws the first error an observer raised
-/// during it. An error `f` returns itself takes precedence.
+/// during it. An error `f` returns itself takes precedence, and the observer's error then goes
+/// to `console.error`.
 pub(crate) fn committing<T>(f: impl FnOnce() -> crate::Result<T>) -> crate::Result<T> {
     let outer = SCOPE.with(|s| {
         let mut s = s.borrow_mut();
@@ -58,10 +59,10 @@ pub(crate) fn committing<T>(f: impl FnOnce() -> crate::Result<T>) -> crate::Resu
         s.first.take()
     });
     // Restores the outer scope even if `f` unwinds.
-    struct Restore(Option<Option<JsValue>>);
+    struct Restore(Option<JsValue>);
     impl Drop for Restore {
         fn drop(&mut self) {
-            let outer = self.0.take().flatten();
+            let outer = self.0.take();
             SCOPE.with(|s| {
                 let mut s = s.borrow_mut();
                 s.depth -= 1;
@@ -69,12 +70,17 @@ pub(crate) fn committing<T>(f: impl FnOnce() -> crate::Result<T>) -> crate::Resu
             });
         }
     }
-    let restore = Restore(Some(outer));
+    let restore = Restore(outer);
     let result = f();
     let mine = SCOPE.with(|s| s.borrow_mut().first.take());
     drop(restore);
     match (result, mine) {
         (Ok(_), Some(e)) => Err(e),
-        (result, _) => result,
+        // The call's own error is thrown; the observer's still gets reported.
+        (Err(e), Some(observer)) => {
+            console_error(&observer);
+            Err(e)
+        }
+        (result, None) => result,
     }
 }

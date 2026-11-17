@@ -342,10 +342,11 @@ repository and its release notes.
 
 - ywasm: a JS observer that threw panicked inside the commit and trapped the module, leaving the
   document unusable. As in Yjs, every observer now runs, the transaction finishes, and the call
-  that committed (an edit, `applyUpdate`, `YTransaction.commit`, or the undo manager's `undo`,
-  `redo` and `clear`) throws the first error. A commit made from inside an observer reports its
+  that committed (an edit, `applyUpdate`, `YTransaction.commit`, `YDoc.load` and `destroy`, or
+  the undo manager's `undo`, `redo` and `clear`) throws the first error. A commit made from inside an observer reports its
   own observers' errors to that observer. An error with no call to throw from, such as one raised
-  by a transaction committed by `free()`, goes to `console.error`. A transaction whose `commit()`
+  by a transaction committed by `free()` or one yrs opens internally (creating a root type, say),
+  goes to `console.error`. A transaction whose `commit()`
   threw must still be freed.
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
