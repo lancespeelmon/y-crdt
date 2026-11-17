@@ -340,14 +340,23 @@ repository and its release notes.
 - yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
   as UTF-8 unchecked (undefined behaviour).
 
+- Undoing an attribute or map-entry change together with the deletion of its parent lost the
+  change on remote peers: the redone entry kept an origin under the deleted parent, so peers
+  attached it there (Yjs #757, fixed in Yjs 13.6.31). The local document was right; the update it
+  sent was not.
+- Observers ran in hash order across types: which type's `observe` and `observe_deep` callbacks
+  ran first could change from one run to the next. They now run in the order the types first
+  changed in the transaction, as in Yjs, so an outer type's deep observer runs before an inner
+  one's (Yjs #768).
 - ywasm: a JS observer that threw panicked inside the commit and trapped the module, leaving the
   document unusable. As in Yjs, every observer now runs, the transaction finishes, and the call
-  that committed (an edit, `applyUpdate`, `YTransaction.commit`, `YDoc.load` and `destroy`, or
-  the undo manager's `undo`, `redo` and `clear`) throws the first error. A commit made from inside an observer reports its
-  own observers' errors to that observer. An error with no call to throw from, such as one raised
-  by a transaction committed by `free()` or one yrs opens internally (creating a root type, say),
-  goes to `console.error`. A transaction whose `commit()`
-  threw must still be freed.
+  that committed throws the first error: an edit, `applyUpdate`, `YTransaction.commit`,
+  `YDoc.load` and `destroy`, the undo manager's `undo`, `redo`, `clear` and `addToScope`, and
+  calls that commit inside yrs (`getText`, `getMap`, `getArray` and `getXmlFragment` creating a
+  root type, and `YDoc.on`/`off`, which subscribe in a transaction). A commit made from inside an
+  observer reports its own observers' errors to that observer. An error with no call to throw
+  from, such as one raised by a transaction committed by `free()` or the garbage collector, goes
+  to `console.error`. A transaction whose `commit()` threw must still be freed.
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
   changing the state. Handlers now run once the change is complete, so they see the new state

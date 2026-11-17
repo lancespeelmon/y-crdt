@@ -18,6 +18,7 @@ use crate::{
     XmlFragmentRef, XmlTextRef,
 };
 use async_lock::{RwLockReadGuard, RwLockWriteGuard};
+use indexmap::IndexMap;
 use smallvec::SmallVec;
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -26,6 +27,10 @@ use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::Arc;
+
+/// The types a transaction changed, with the map keys changed in each, in the order they first
+/// changed.
+pub(crate) type ChangedTypes = IndexMap<TypePtr, HashSet<Option<Arc<str>>>>;
 
 /// Trait defining read capabilities present in a transaction. Implemented by both lightweight
 /// [read-only](Transaction) and [read-write](TransactionMut) transactions.
@@ -571,8 +576,9 @@ pub struct TransactionMut<'doc> {
     pub(crate) insert_set: IdSet,
     pub(crate) cleanups: IdSet,
     /// All types that were directly modified (property added or child inserted/deleted).
-    /// New types are not included in this Set.
-    pub(crate) changed: HashMap<TypePtr, HashSet<Option<Arc<str>>>>,
+    /// New types are not included in this Set. In the order they first changed, so observers
+    /// run in that order, as in Yjs.
+    pub(crate) changed: ChangedTypes,
     pub(crate) changed_parent_types: Vec<BranchPtr>,
     /// Emptied key sets for `changed`, recycled from earlier transactions.
     key_sets: Vec<HashSet<Option<Arc<str>>>>,
@@ -930,7 +936,7 @@ impl<'doc> TransactionMut<'doc> {
                         source.unlink_all(self, branch_ptr);
                     }
                     let mut ptr = branch_ptr.start;
-                    self.changed.remove(&TypePtr::Branch(branch_ptr));
+                    self.changed.shift_remove(&TypePtr::Branch(branch_ptr));
 
                     while let Some(item) = ptr.as_deref() {
                         if !item.is_deleted() {
@@ -1134,7 +1140,7 @@ impl<'doc> TransactionMut<'doc> {
 
     /// Drops the deep-observer entries recorded for the event at `index` when it couldn't be
     /// built after all.
-    fn forget_event(changed_parents: &mut HashMap<BranchPtr, Vec<usize>>, index: usize) {
+    fn forget_event(changed_parents: &mut IndexMap<BranchPtr, Vec<usize>>, index: usize) {
         changed_parents.retain(|_, events| {
             events.retain(|&i| i != index);
             !events.is_empty()
@@ -1147,7 +1153,7 @@ impl<'doc> TransactionMut<'doc> {
         changed_parent_types: &mut Vec<BranchPtr>,
         all_links: &HashMap<ItemPtr, HashSet<BranchPtr>>,
         branch: BranchPtr,
-        changed_parents: &mut HashMap<BranchPtr, Vec<usize>>,
+        changed_parents: &mut IndexMap<BranchPtr, Vec<usize>>,
         index: usize,
         visited: &mut HashSet<BranchPtr>,
     ) -> bool {
@@ -1189,7 +1195,9 @@ impl<'doc> TransactionMut<'doc> {
     }
 
     fn call_observers(&mut self) {
-        let mut changed_parents: HashMap<BranchPtr, Vec<usize>> = HashMap::new();
+        // The types with deep observers, in the order they were first reached, so their
+        // observers run in that order, as in Yjs.
+        let mut changed_parents: IndexMap<BranchPtr, Vec<usize>> = IndexMap::new();
         let mut event_cache = Vec::new();
 
         for (ptr, subs) in self.changed.iter() {

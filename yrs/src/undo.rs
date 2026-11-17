@@ -2641,4 +2641,88 @@ mod test {
         let offset = pos.get_offset(&doc.transact()).unwrap();
         assert_eq!(offset.index, 5, "Yjs resolves the same position to 5");
     }
+
+    /// Yjs #757: undoing an attribute change together with the delete of its element redoes the
+    /// element, and the redone attributes must reach a remote peer under the redone element.
+    #[test]
+    fn undoing_an_attribute_change_and_a_delete_syncs_the_attributes() {
+        use crate::{Out, XmlTextRef};
+
+        fn embed(root: &TextRef, txn: &impl ReadTxn) -> XmlTextRef {
+            let diff = root.diff(txn, YChange::identity);
+            match &diff[0].insert {
+                Out::YXmlText(t) => t.clone(),
+                other => panic!("expected an embedded XmlText, got {other:?}"),
+            }
+        }
+        fn attrs(t: &XmlTextRef, txn: &impl ReadTxn) -> Vec<(String, String)> {
+            let mut attrs: Vec<_> = t
+                .attributes(txn)
+                .map(|(k, v)| (k.to_string(), v.to_string(txn)))
+                .collect();
+            attrs.sort();
+            attrs
+        }
+
+        let doc = Doc::with_client_id(1);
+        let root = doc.get_or_insert_text("sharedRoot");
+        {
+            let mut txn = doc.transact_mut();
+            let button = root.insert_embed(&mut txn, 0, XmlTextPrelim::new(""));
+            button.insert_attribute(&mut txn, "type", "button");
+            button.insert_attribute(&mut txn, "test", "true");
+            button.insert(&mut txn, 0, "Click me");
+        }
+        let mut mgr = UndoManager::new();
+        mgr.expand_scope(&doc, &root);
+
+        let button = embed(&root, &doc.transact());
+        button.insert_attribute(&mut doc.transact_mut(), "type", "paragraph");
+        root.remove_range(&mut doc.transact_mut(), 0, 1);
+        mgr.undo_blocking();
+
+        let expected = vec![
+            ("test".to_string(), "true".to_string()),
+            ("type".to_string(), "button".to_string()),
+        ];
+        {
+            let txn = doc.transact();
+            let button = embed(&root, &txn);
+            assert_eq!(attrs(&button, &txn), expected);
+            assert_eq!(button.get_string(&txn), "Click me");
+        }
+
+        let remote = Doc::with_client_id(2);
+        let update = doc
+            .transact()
+            .encode_state_as_update_v2(&StateVector::default());
+        remote
+            .transact_mut()
+            .apply_update(Update::decode_v2(&update).unwrap())
+            .unwrap();
+        let remote_root = remote.get_or_insert_text("sharedRoot");
+        let txn = remote.transact();
+        let button = embed(&remote_root, &txn);
+        assert_eq!(attrs(&button, &txn), expected);
+        assert_eq!(button.get_string(&txn), "Click me");
+    }
+
+    /// Yjs #797: a dropped manager leaves no callbacks on its document.
+    #[test]
+    fn dropping_a_manager_removes_its_document_callbacks() {
+        let doc = Doc::with_client_id(1);
+        let text = doc.get_or_insert_text("t");
+        for _ in 0..4 {
+            let mut mgr = UndoManager::new();
+            mgr.expand_scope(&doc, &text);
+            text.insert(&mut doc.transact_mut(), 0, "a");
+            drop(mgr);
+        }
+        // Unsubscribed callbacks leave the map at the observer's next run.
+        text.insert(&mut doc.transact_mut(), 0, "a");
+        let txn = doc.transact_mut();
+        let events = txn.events().expect("the managers subscribed");
+        assert!(!events.destroy_events.has_subscribers());
+        assert!(!events.after_transaction_events.has_subscribers());
+    }
 }
