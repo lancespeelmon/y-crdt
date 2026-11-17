@@ -1210,6 +1210,75 @@ mod test {
         );
     }
 
+    /// Yjs #768: each deep observer sees paths relative to the type it observes, outer types'
+    /// deep observers run first, and after-transaction callbacks run after all of them.
+    #[test]
+    fn deep_event_paths_with_deep_observers_at_several_levels() {
+        let doc = Doc::with_client_id(1);
+        let a = doc.get_or_insert_map("a");
+        let (b, c) = {
+            let mut txn = doc.transact_mut();
+            let b = a.insert(&mut txn, "b", MapPrelim::default());
+            let c = a.insert(&mut txn, "c", MapPrelim::default());
+            (b, c)
+        };
+        let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let paths_a = Arc::new(Mutex::new(Vec::<Path>::new()));
+        let paths_c = Arc::new(Mutex::new(Vec::<Path>::new()));
+        {
+            let (calls, paths) = (calls.clone(), paths_a.clone());
+            a.observe_deep("a", move |_, events| {
+                calls.lock().unwrap().push("observeDeep a".into());
+                paths.lock().unwrap().extend(events.iter().map(Event::path));
+            });
+        }
+        {
+            let (calls, paths) = (calls.clone(), paths_c.clone());
+            c.observe_deep("c", move |_, events| {
+                calls.lock().unwrap().push("observeDeep c".into());
+                paths.lock().unwrap().extend(events.iter().map(Event::path));
+            });
+        }
+        {
+            let calls = calls.clone();
+            c.observe("c", move |_, _| {
+                calls.lock().unwrap().push("observe c".into())
+            });
+        }
+        {
+            let calls = calls.clone();
+            doc.observe_after_transaction("after", move |_| {
+                calls.lock().unwrap().push("afterTransaction".into())
+            })
+            .unwrap();
+        }
+        // Subscribing opens a transaction of its own, which already calls the new callback.
+        calls.lock().unwrap().clear();
+        {
+            let mut txn = doc.transact_mut();
+            b.insert(&mut txn, "foo", "bar");
+            c.insert(&mut txn, "foo", "bar");
+        }
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            [
+                "observe c",
+                "observeDeep a",
+                "observeDeep c",
+                "afterTransaction"
+            ]
+        );
+        // In the order the types changed: b first.
+        assert_eq!(
+            paths_a.lock().unwrap().as_slice(),
+            &[
+                Path::from(vec![PathSegment::Key("b".into())]),
+                Path::from(vec![PathSegment::Key("c".into())]),
+            ]
+        );
+        assert_eq!(paths_c.lock().unwrap().as_slice(), &[Path::from(vec![])]);
+    }
+
     #[test]
     fn get_or_init() {
         let doc = Doc::with_client_id(1);
