@@ -82,7 +82,7 @@ pub struct Store {
 /// A write transaction's per-transaction collections, recycled through [Store::scratch].
 #[derive(Default)]
 pub(crate) struct TxnScratch {
-    pub(crate) changed: HashMap<crate::types::TypePtr, HashSet<Option<Arc<str>>>>,
+    pub(crate) changed: crate::transaction::ChangedTypes,
     pub(crate) changed_parent_types: Vec<BranchPtr>,
     pub(crate) merge_blocks: Vec<crate::ID>,
     /// Emptied key sets from `changed`, so a transaction that changes a type reuses one.
@@ -105,7 +105,7 @@ impl TxnScratch {
                 c
             }
         }
-        for (_, mut keys) in self.changed.drain() {
+        for (_, mut keys) in self.changed.drain(..) {
             if self.key_sets.len() < Self::KEEP_KEY_SETS && keys.capacity() <= Self::KEEP_KEY_SETS {
                 keys.clear();
                 self.key_sets.push(keys);

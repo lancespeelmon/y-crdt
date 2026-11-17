@@ -340,6 +340,14 @@ repository and its release notes.
 - yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
   as UTF-8 unchecked (undefined behaviour).
 
+- Undoing an attribute or map-entry change together with the deletion of its parent lost the
+  change on remote peers: the redone entry kept an origin under the deleted parent, so peers
+  attached it there (Yjs #757, fixed in Yjs 13.6.31). The local document was right; the update it
+  sent was not.
+- Observers ran in hash order across types: which type's `observe` and `observe_deep` callbacks
+  ran first could change from one run to the next. They now run in the order the types first
+  changed in the transaction, as in Yjs, so an outer type's deep observer runs before an inner
+  one's (Yjs #768).
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
   changing the state. Handlers now run once the change is complete, so they see the new state

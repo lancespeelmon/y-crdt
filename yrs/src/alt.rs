@@ -619,6 +619,34 @@ mod test {
             assert!(snapshot_contains_update_v1(&later, &before).unwrap());
         }
 
+        /// Yjs #767: checking an update whose deletions merge with the snapshot's must not
+        /// extend the snapshot's delete set.
+        #[test]
+        fn a_snapshot_does_not_contain_a_later_adjacent_deletion() {
+            let local = Doc::with_client_id(1);
+            let remote = Doc::with_client_id(2);
+            let text = local.get_or_insert_text("t");
+            text.insert(&mut local.transact_mut(), 0, "abcdefghij");
+            text.remove_range(&mut local.transact_mut(), 0, 3);
+            let update = local
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            remote
+                .transact_mut()
+                .apply_update(Update::decode_v1(&update).unwrap())
+                .unwrap();
+            let snapshot = remote.transact().snapshot();
+            let snapshot_before = snapshot.clone();
+
+            text.remove_range(&mut local.transact_mut(), 0, 3);
+            let update = local
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            assert!(!snapshot_contains_update_v1(&snapshot, &update).unwrap());
+            assert!(!snapshot_contains_update_v1(&snapshot, &update).unwrap());
+            assert_eq!(snapshot, snapshot_before);
+        }
+
         #[test]
         fn obfuscation_keeps_the_structure_and_drops_the_content() {
             let doc = Doc::with_client_id(1);

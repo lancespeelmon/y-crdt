@@ -555,6 +555,15 @@ impl ItemPtr {
                     break;
                 }
 
+                // When the parent was redone, `left` may still be an entry of the old, deleted
+                // parent. As an origin it would make remote peers attach this entry to that
+                // parent, so take the redone parent's current entry instead (Yjs #757).
+                if let Some(left_item) = left.as_deref() {
+                    if left_item.parent.as_branch().and_then(|b| b.item) != parent_block {
+                        left = parent_branch.map.get(sub).cloned();
+                    }
+                }
+
                 if let Some(left_item) = left.as_deref() {
                     if left_item.right.is_some() {
                         // It is not possible to redo this item because it conflicts with a
