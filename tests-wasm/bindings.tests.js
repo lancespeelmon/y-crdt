@@ -198,3 +198,28 @@ export const testThrowingUndoObserver = tc => {
     text.insert(0, 'z')
     t.compareStrings(text.toString(), 'z')
 }
+
+/**
+ * Getting a root type, subscribing and adding to an undo scope run no observers, as in Yjs, so a
+ * throwing `afterTransaction` handler doesn't make them throw.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testBookkeepingCallsRunNoObservers = tc => {
+    const doc = new Y.YDoc({clientID: 1})
+    let after = 0
+    doc.on('afterTransaction', () => {
+        after++
+        throw new Error('afterTransaction')
+    })
+    const text = doc.getText('new text')
+    doc.getMap('new map')
+    const onUpdate = () => {}
+    doc.on('update', onUpdate)
+    doc.off('update', onUpdate)
+    const undoManager = new Y.YUndoManager()
+    undoManager.addToScope([text])
+    t.assert(after === 0, 'no observer ran')
+    t.fails(() => text.insert(0, 'a'))
+    t.assert(after === 1)
+}

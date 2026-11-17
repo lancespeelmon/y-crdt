@@ -1252,8 +1252,8 @@ mod test {
             })
             .unwrap();
         }
-        // Subscribing opens a transaction of its own, which already calls the new callback.
-        calls.lock().unwrap().clear();
+        // Subscribing runs no observers, as in Yjs.
+        assert!(calls.lock().unwrap().is_empty());
         {
             let mut txn = doc.transact_mut();
             b.insert(&mut txn, "foo", "bar");
