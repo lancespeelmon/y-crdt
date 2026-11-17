@@ -1268,11 +1268,10 @@ mod test {
                 "afterTransaction"
             ]
         );
-        let mut paths_a = paths_a.lock().unwrap().clone();
-        paths_a.sort_by_key(|p| format!("{p:?}"));
+        // In the order the types changed: b first.
         assert_eq!(
-            paths_a,
-            vec![
+            paths_a.lock().unwrap().as_slice(),
+            &[
                 Path::from(vec![PathSegment::Key("b".into())]),
                 Path::from(vec![PathSegment::Key("c".into())]),
             ]

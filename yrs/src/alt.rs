@@ -643,8 +643,10 @@ mod test {
                 .transact()
                 .encode_state_as_update_v1(&StateVector::default());
             assert!(!snapshot_contains_update_v1(&snapshot, &update).unwrap());
-            assert!(!snapshot_contains_update_v1(&snapshot, &update).unwrap());
-            assert_eq!(snapshot, snapshot_before);
+            assert_eq!(
+                snapshot, snapshot_before,
+                "checking must not change the snapshot"
+            );
         }
 
         #[test]
