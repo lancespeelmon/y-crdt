@@ -355,7 +355,7 @@ repository and its release notes.
   an observer reports its own observers' errors to that observer. An error with no call to throw
   from, such as one raised by a transaction committed by `free()` or the garbage collector, goes
   to `console.error`. A transaction whose `commit()` threw must still be freed.
-- Subscribing, unsubscribing and creating a root type (`Doc::get_or_insert_*`,
+- **Breaking:** subscribing, unsubscribing and creating a root type (`Doc::get_or_insert_*`,
   `Doc::try_get_or_insert`, `Doc::observe_*` and `unobserve_*`, and so `UndoManager` scopes) open
   transactions that change nothing. Their commit no longer calls the document's observers
   (`after_transaction`, `transaction_cleanup`, `update`): Yjs runs no transaction for these.

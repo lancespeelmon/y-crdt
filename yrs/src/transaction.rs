@@ -1274,6 +1274,14 @@ impl<'doc> TransactionMut<'doc> {
                 .transaction_committed(ranges(&self.insert_set), ranges(&self.delete_set));
         }
 
+        // A quiet transaction emits no events, so it must have nothing to report.
+        debug_assert!(
+            !self.quiet
+                || (self.changed.is_empty()
+                    && self.insert_set.is_empty()
+                    && self.delete_set.is_empty()),
+            "a quiet transaction changed the document"
+        );
         // 2. emit 'beforeObserverCalls'
         let events = if self.quiet {
             None
