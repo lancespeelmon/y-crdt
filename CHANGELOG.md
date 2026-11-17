@@ -340,6 +340,13 @@ repository and its release notes.
 - yffi: `ybranch_get` with a root name that isn't valid UTF-8 returns NULL instead of reading it
   as UTF-8 unchecked (undefined behaviour).
 
+- ywasm: a JS observer that threw panicked inside the commit and trapped the module, leaving the
+  document unusable. As in Yjs, every observer now runs, the transaction finishes, and the call
+  that committed (an edit, `applyUpdate`, `YTransaction.commit`, or the undo manager's `undo`,
+  `redo` and `clear`) throws the first error. A commit made from inside an observer reports its
+  own observers' errors to that observer. An error with no call to throw from, such as one raised
+  by a transaction committed by `free()`, goes to `console.error`. A transaction whose `commit()`
+  threw must still be freed.
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
   changing the state. Handlers now run once the change is complete, so they see the new state

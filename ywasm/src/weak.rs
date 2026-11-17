@@ -198,9 +198,11 @@ impl YWeakLink {
                 weak.observe(abi, move |txn, e| {
                     let e = YWeakLinkEvent::new(e, txn).into();
                     let txn = YTransaction::from_ref(txn);
-                    callback
-                        .call2(&JsValue::UNDEFINED, &e, &txn.into())
-                        .unwrap();
+                    crate::observer_errors::observed(callback.call2(
+                        &JsValue::UNDEFINED,
+                        &e,
+                        &txn.into(),
+                    ));
                 });
                 Ok(())
             }
@@ -239,9 +241,11 @@ impl YWeakLink {
                 weak.observe_deep(abi, move |txn, e| {
                     let e = crate::js::convert::events_into_js(txn, e);
                     let txn = YTransaction::from_ref(txn);
-                    callback
-                        .call2(&JsValue::UNDEFINED, &e, &txn.into())
-                        .unwrap();
+                    crate::observer_errors::observed(callback.call2(
+                        &JsValue::UNDEFINED,
+                        &e,
+                        &txn.into(),
+                    ));
                 });
                 Ok(())
             }

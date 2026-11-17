@@ -93,11 +93,12 @@ impl<S: SharedRef + 'static> Integrated<S> {
                 let shared_ref = self.resolve(txn)?;
                 f(&shared_ref, txn)
             }
-            None => {
+            // The transaction commits when it drops, at the end of the closure.
+            None => crate::observer_errors::committing(|| {
                 let txn = self.transact_mut()?;
                 let shared_ref = self.resolve(&txn)?;
                 f(&shared_ref, &txn)
-            }
+            }),
         }
     }
 
@@ -111,11 +112,12 @@ impl<S: SharedRef + 'static> Integrated<S> {
                 let shared_ref = self.resolve(txn)?;
                 f(&shared_ref, txn)
             }
-            None => {
+            // The transaction commits when it drops, at the end of the closure.
+            None => crate::observer_errors::committing(|| {
                 let mut txn = self.transact_mut()?;
                 let shared_ref = self.resolve(&mut txn)?;
                 f(&shared_ref, &mut txn)
-            }
+            }),
         }
     }
 

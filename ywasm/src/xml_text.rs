@@ -492,9 +492,11 @@ impl YXmlText {
                 array.observe(abi, move |txn, e| {
                     let e = YXmlTextEvent::new(e, txn);
                     let txn = YTransaction::from_ref(txn);
-                    callback
-                        .call2(&JsValue::UNDEFINED, &e.into(), &txn.into())
-                        .unwrap();
+                    crate::observer_errors::observed(callback.call2(
+                        &JsValue::UNDEFINED,
+                        &e.into(),
+                        &txn.into(),
+                    ));
                 });
                 Ok(())
             }
@@ -533,9 +535,11 @@ impl YXmlText {
                 array.observe_deep(abi, move |txn, e| {
                     let e = crate::js::convert::events_into_js(txn, e);
                     let txn = YTransaction::from_ref(txn);
-                    callback
-                        .call2(&JsValue::UNDEFINED, &e, &txn.into())
-                        .unwrap();
+                    crate::observer_errors::observed(callback.call2(
+                        &JsValue::UNDEFINED,
+                        &e,
+                        &txn.into(),
+                    ));
                 });
                 Ok(())
             }

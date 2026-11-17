@@ -263,8 +263,10 @@ impl YTransaction {
         let txn = self
             .as_mut()
             .map_err(|_| crate::js::errors::INVALID_TRANSACTION_CTX)?;
-        txn.commit();
-        Ok(())
+        crate::observer_errors::committing(|| {
+            txn.commit();
+            Ok(())
+        })
     }
 
     /// Encodes a state vector of a given transaction document into its binary representation using
