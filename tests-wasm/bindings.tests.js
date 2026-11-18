@@ -112,3 +112,114 @@ export const testUndoManagerTracksObjectOrigins = tc => {
     undoManager.undo()
     t.compareStrings(text.toString(), 'other ')
 }
+
+/**
+ * An observer that throws no longer traps the module: every observer still runs, the change is
+ * applied, and the call that committed throws the first error, as in Yjs.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testThrowingObserversDontTrap = tc => {
+    const doc = new Y.YDoc({clientID: 1})
+    const text = doc.getText('text')
+    const map = doc.getMap('map')
+    let observed = 0
+    let afterTransaction = 0
+    text.observe(() => { throw new Error('observe') })
+    text.observe(() => { observed++ })
+    map.observeDeep(() => { throw new Error('observeDeep') })
+    doc.on('afterTransaction', () => { afterTransaction++ })
+
+    const before = afterTransaction
+    t.fails(() => text.insert(0, 'abc'))
+    t.assert(observed === 1, 'the other observer ran')
+    t.assert(afterTransaction === before + 1, 'the transaction finished')
+    t.compareStrings(text.toString(), 'abc')
+
+    // the document stays usable, and the first error of a transaction is the one thrown
+    let message = null
+    try {
+        doc.transact(txn => {
+            text.insert(3, 'd', undefined, txn)
+            map.set('k', 1, txn)
+        })
+    } catch (e) {
+        message = e.message
+    }
+    t.compareStrings(message, 'observe')
+    t.compareStrings(text.toString(), 'abcd')
+    t.compare(map.get('k'), 1)
+
+    // applying an update commits too
+    const other = new Y.YDoc({clientID: 2})
+    other.on('update', () => { throw new Error('update') })
+    t.fails(() => Y.applyUpdate(other, Y.encodeStateAsUpdate(doc)))
+    t.compareStrings(other.getText('text').toString(), 'abcd')
+}
+
+/**
+ * A commit made from inside an observer reports its own observers' errors to that observer,
+ * not to the outer call.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testNestedCommitsReportTheirOwnObserverErrors = tc => {
+    const a = new Y.YDoc({clientID: 1})
+    const b = new Y.YDoc({clientID: 2})
+    const textB = b.getText('text')
+    textB.observe(() => { throw new Error('b') })
+    let caught = null
+    a.getText('text').observe(() => {
+        try {
+            textB.insert(0, 'x')
+        } catch (e) {
+            caught = e.message
+        }
+    })
+    a.getText('text').insert(0, 'y')
+    t.compareStrings(caught, 'b')
+    t.compareStrings(textB.toString(), 'x')
+}
+
+/**
+ * UndoManager observers that throw don't trap: undo applies and throws the error.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testThrowingUndoObserver = tc => {
+    const doc = new Y.YDoc({clientID: 1})
+    const text = doc.getText('text')
+    const undoManager = new Y.YUndoManager()
+    undoManager.addToScope([text])
+    text.insert(0, 'abc')
+    undoManager.on('stack-item-popped', () => { throw new Error('popped') })
+    t.fails(() => undoManager.undo())
+    t.compareStrings(text.toString(), '')
+    text.insert(0, 'z')
+    t.compareStrings(text.toString(), 'z')
+}
+
+/**
+ * Getting a root type, subscribing and adding to an undo scope run no observers, as in Yjs, so a
+ * throwing `afterTransaction` handler doesn't make them throw.
+ *
+ * @param {t.TestCase} tc
+ */
+export const testBookkeepingCallsRunNoObservers = tc => {
+    const doc = new Y.YDoc({clientID: 1})
+    let after = 0
+    doc.on('afterTransaction', () => {
+        after++
+        throw new Error('afterTransaction')
+    })
+    const text = doc.getText('new text')
+    doc.getMap('new map')
+    const onUpdate = () => {}
+    doc.on('update', onUpdate)
+    doc.off('update', onUpdate)
+    const undoManager = new Y.YUndoManager()
+    undoManager.addToScope([text])
+    t.assert(after === 0, 'no observer ran')
+    t.fails(() => text.insert(0, 'a'))
+    t.assert(after === 1)
+}

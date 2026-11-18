@@ -89,6 +89,7 @@ macro_rules! define_doc_observer {
             F: $($bound)+ + Send + Sync + 'static,
         {
             let mut txn = self.try_transact_mut()?;
+            txn.quiet = true;
             txn.$observe(key, f);
             Ok(())
         }
@@ -106,6 +107,7 @@ macro_rules! define_doc_observer {
             F: $($bound)+ + 'static,
         {
             let mut txn = self.try_transact_mut()?;
+            txn.quiet = true;
             txn.$observe(key, f);
             Ok(())
         }
@@ -120,13 +122,22 @@ macro_rules! define_doc_observer {
         where
             K: Into<Origin>,
         {
-            let txn = self.try_transact_mut()?;
+            let mut txn = self.try_transact_mut()?;
+            txn.quiet = true;
             Ok(txn.$unobserve(key))
         }
     };
 }
 
 impl Doc {
+    /// A read-write transaction whose commit calls no document observers, for the bookkeeping
+    /// transactions of subscribing and creating root types.
+    fn transact_quiet(&self) -> TransactionMut<'_> {
+        let mut txn = self.transact_mut();
+        txn.quiet = true;
+        txn
+    }
+
     /// Creates a new document with a randomized client identifier.
     pub fn new() -> Self {
         Self::with_options(Options::default())
@@ -277,7 +288,7 @@ impl Doc {
     /// is another transaction in process, it will panic. It's advised to define all root shared
     /// types during the document creation.
     pub fn get_or_insert_text<N: Into<Arc<str>>>(&self, name: N) -> TextRef {
-        TextRef::root(name).get_or_create(&mut self.transact_mut())
+        TextRef::root(name).get_or_create(&mut self.transact_quiet())
     }
 
     /// Returns a [MapRef] data structure stored under a given `name`. Maps are used to store key-value
@@ -298,7 +309,7 @@ impl Doc {
     /// is another transaction in process, it will panic. It's advised to define all root shared
     /// types during the document creation.
     pub fn get_or_insert_map<N: Into<Arc<str>>>(&self, name: N) -> MapRef {
-        MapRef::root(name).get_or_create(&mut self.transact_mut())
+        MapRef::root(name).get_or_create(&mut self.transact_quiet())
     }
 
     /// Returns an [ArrayRef] data structure stored under a given `name`. Array structures are used for
@@ -318,7 +329,7 @@ impl Doc {
     /// is another transaction in process, it will panic. It's advised to define all root shared
     /// types during the document creation.
     pub fn get_or_insert_array<N: Into<Arc<str>>>(&self, name: N) -> ArrayRef {
-        ArrayRef::root(name).get_or_create(&mut self.transact_mut())
+        ArrayRef::root(name).get_or_create(&mut self.transact_quiet())
     }
 
     /// Returns a [XmlFragmentRef] data structure stored under a given `name`. XML elements represent
@@ -340,7 +351,7 @@ impl Doc {
     /// is another transaction in process, it will panic. It's advised to define all root shared
     /// types during the document creation.
     pub fn get_or_insert_xml_fragment<N: Into<Arc<str>>>(&self, name: N) -> XmlFragmentRef {
-        XmlFragmentRef::root(name).get_or_create(&mut self.transact_mut())
+        XmlFragmentRef::root(name).get_or_create(&mut self.transact_quiet())
     }
 
     /// Returns the root type `name` as an `S` ([TextRef], [MapRef], [ArrayRef] or
@@ -368,7 +379,7 @@ impl Doc {
         &self,
         name: impl Into<Arc<str>>,
     ) -> Result<S, RootTypeMismatch> {
-        Root::<S>::new(name).try_get_or_create(&mut self.transact_mut())
+        Root::<S>::new(name).try_get_or_create(&mut self.transact_quiet())
     }
 
     define_doc_observer!(
@@ -2475,6 +2486,34 @@ mod test {
             ]),
             Err(crate::encoding::read::Error::EndOfBuffer(_))
         );
+    }
+
+    /// Subscribing, unsubscribing and creating root types open transactions of their own, which
+    /// change nothing. Like Yjs, which runs no transaction for these, they call no observers.
+    #[test]
+    fn bookkeeping_transactions_call_no_observers() {
+        let doc = Doc::with_client_id(1);
+        let calls = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let c = calls.clone();
+        doc.observe_after_transaction("after", move |_| {
+            c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        })
+        .unwrap();
+        let c = calls.clone();
+        doc.observe_transaction_cleanup("cleanup", move |_, _| {
+            c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        })
+        .unwrap();
+        let text = doc.get_or_insert_text("text");
+        let _map = doc.try_get_or_insert::<crate::MapRef>("map").unwrap();
+        doc.observe_update_v1("update", |_, _| {}).unwrap();
+        doc.unobserve_update_v1("update").unwrap();
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+        // A transaction of the caller's own still calls them, even an empty one.
+        text.insert(&mut doc.transact_mut(), 0, "a");
+        drop(doc.transact_mut());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 4);
     }
 
     #[test]

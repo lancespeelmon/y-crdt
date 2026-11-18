@@ -348,6 +348,18 @@ repository and its release notes.
   ran first could change from one run to the next. They now run in the order the types first
   changed in the transaction, as in Yjs, so an outer type's deep observer runs before an inner
   one's (Yjs #768).
+- ywasm: a JS observer that threw panicked inside the commit and trapped the module, leaving the
+  document unusable. As in Yjs, every observer now runs, the transaction finishes, and the call
+  that committed (an edit, `applyUpdate`, `YTransaction.commit`, `YDoc.load` and `destroy`, or
+  the undo manager's `undo`, `redo` and `clear`) throws the first error. A commit made from inside
+  an observer reports its own observers' errors to that observer. An error with no call to throw
+  from, such as one raised by a transaction committed by `free()` or the garbage collector, goes
+  to `console.error`. A transaction whose `commit()` threw must still be freed.
+- **Breaking:** subscribing, unsubscribing and creating a root type (`Doc::get_or_insert_*`,
+  `Doc::try_get_or_insert`, `Doc::observe_*` and `unobserve_*`, and so `UndoManager` scopes) open
+  transactions that change nothing. Their commit no longer calls the document's observers
+  (`after_transaction`, `transaction_cleanup`, `update`): Yjs runs no transaction for these.
+  Subscribing a callback used to call it once right away.
 - ywasm: an `Awareness` handler that read or changed the awareness again (`getStates()`,
   `encodeAwarenessUpdate`, `setLocalState`) ran while the call that triggered it was still
   changing the state. Handlers now run once the change is complete, so they see the new state

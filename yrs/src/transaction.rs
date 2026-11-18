@@ -588,6 +588,10 @@ pub struct TransactionMut<'doc> {
     local: bool,
     committed: bool,
     needs_cleanup: bool,
+    /// Set on the transactions yrs opens only to subscribe, unsubscribe or create a root type.
+    /// They change nothing, and Yjs runs no transaction for these, so their commit calls no
+    /// document observers.
+    pub(crate) quiet: bool,
 }
 
 impl<'doc> ReadTxn for TransactionMut<'doc> {
@@ -647,6 +651,7 @@ impl<'doc> TransactionMut<'doc> {
             local: true,
             committed: false,
             needs_cleanup: false,
+            quiet: false,
         }
     }
 
@@ -1269,8 +1274,21 @@ impl<'doc> TransactionMut<'doc> {
                 .transaction_committed(ranges(&self.insert_set), ranges(&self.delete_set));
         }
 
+        // A quiet transaction emits no events, so it must have nothing to report.
+        debug_assert!(
+            !self.quiet
+                || (self.changed.is_empty()
+                    && self.insert_set.is_empty()
+                    && self.delete_set.is_empty()),
+            "a quiet transaction changed the document"
+        );
         // 2. emit 'beforeObserverCalls'
-        if let Some(mut events) = self.store.events.take() {
+        let events = if self.quiet {
+            None
+        } else {
+            self.store.events.take()
+        };
+        if let Some(mut events) = events {
             events.emit_before_observer_calls(self);
             self.store.events = Some(events);
         }
@@ -1284,7 +1302,12 @@ impl<'doc> TransactionMut<'doc> {
         }
 
         // 4. emit 'afterTransaction'
-        if let Some(mut events) = self.store.events.take() {
+        let events = if self.quiet {
+            None
+        } else {
+            self.store.events.take()
+        };
+        if let Some(mut events) = events {
             events.emit_after_transaction(self);
             self.store.events = Some(events);
         }
@@ -1326,7 +1349,12 @@ impl<'doc> TransactionMut<'doc> {
         }
 
         // 9. emit 'afterTransactionCleanup', 'update', 'updateV2'
-        if let Some(mut events) = self.store.events.take() {
+        let events = if self.quiet {
+            None
+        } else {
+            self.store.events.take()
+        };
+        if let Some(mut events) = events {
             events.emit_transaction_cleanup(self);
             events.emit_update_v1(self);
             events.emit_update_v2(self);

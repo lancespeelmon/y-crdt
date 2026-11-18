@@ -233,30 +233,38 @@ impl YDoc {
             "update" => self.observe_update_v1(abi, move |txn, e| {
                 let update = js_sys::Uint8Array::from(e.update.as_slice());
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &update, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(
+                    &JsValue::UNDEFINED,
+                    &update,
+                    &txn,
+                ));
             }),
             "updateV2" => self.observe_update_v2(abi, move |txn, e| {
                 let update = js_sys::Uint8Array::from(e.update.as_slice());
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &update, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(
+                    &JsValue::UNDEFINED,
+                    &update,
+                    &txn,
+                ));
             }),
             "subdocs" => self.observe_subdocs(abi, move |txn, e| {
                 let event: JsValue = YSubdocsEvent::new(e).into();
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &event, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(&JsValue::UNDEFINED, &event, &txn));
             }),
             "destroy" => self.observe_destroy(abi, move |txn, e| {
                 let event: JsValue = YDoc::from(e.clone()).into();
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &event, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(&JsValue::UNDEFINED, &event, &txn));
             }),
             "afterTransaction" => self.observe_after_transaction(abi, move |txn| {
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call1(&JsValue::UNDEFINED, &txn).unwrap();
+                crate::observer_errors::observed(callback.call1(&JsValue::UNDEFINED, &txn));
             }),
             "cleanup" => self.observe_transaction_cleanup(abi, move |txn, _| {
                 let txn = YTransaction::from_ref(txn).into();
-                callback.call1(&JsValue::UNDEFINED, &txn).unwrap();
+                crate::observer_errors::observed(callback.call1(&JsValue::UNDEFINED, &txn));
             }),
             other => {
                 return Err(JsValue::from_str(&format!("unknown event: '{}'", other)).into());
@@ -297,8 +305,11 @@ impl YDoc {
                 } else {
                     return Ok(());
                 };
-                let mut parent_txn = parent_doc.transact_mut();
-                self.0.load(&mut parent_txn);
+                crate::observer_errors::committing(|| {
+                    let mut parent_txn = parent_doc.transact_mut();
+                    self.0.load(&mut parent_txn);
+                    Ok(())
+                })?;
             }
         }
         Ok(())
@@ -308,14 +319,20 @@ impl YDoc {
     #[wasm_bindgen(js_name = destroy)]
     pub fn destroy(&self, parent_txn: &ImplicitTransaction) -> Result<()> {
         match YTransaction::from_implicit_mut(parent_txn)? {
+            // Destroying runs the document's destroy observers right away.
             Some(mut parent_txn) => {
-                self.0.destroy(Some(parent_txn.as_mut()?));
+                let parent_txn = parent_txn.as_mut()?;
+                crate::observer_errors::committing(|| {
+                    self.0.destroy(Some(parent_txn));
+                    Ok(())
+                })?;
             }
-            None => {
+            None => crate::observer_errors::committing(|| {
                 let parent_doc = self.0.parent_doc();
                 let mut parent_txn = parent_doc.as_ref().map(|doc| doc.transact_mut());
                 self.0.destroy(parent_txn.as_mut());
-            }
+                Ok(())
+            })?,
         }
         Ok(())
     }

@@ -93,15 +93,23 @@ impl YUndoManager {
     }
 
     #[wasm_bindgen(js_name = clear)]
-    pub fn clear(&mut self, clear_undo_stack: Option<bool>, clear_redo_stack: Option<bool>) {
+    pub fn clear(
+        &mut self,
+        clear_undo_stack: Option<bool>,
+        clear_redo_stack: Option<bool>,
+    ) -> crate::Result<()> {
         let clear_undo = clear_undo_stack.unwrap_or(true);
         let clear_redo = clear_redo_stack.unwrap_or(true);
-        match (clear_undo, clear_redo) {
-            (true, true) => self.0.clear_all(),
-            (true, false) => self.0.clear_undo(),
-            (false, true) => self.0.clear_redo(),
-            (false, false) => { /* do nothing */ }
-        }
+        // Clearing calls the 'stack-cleared' observers right away.
+        crate::observer_errors::committing(|| {
+            match (clear_undo, clear_redo) {
+                (true, true) => self.0.clear_all(),
+                (true, false) => self.0.clear_undo(),
+                (false, true) => self.0.clear_redo(),
+                (false, false) => { /* do nothing */ }
+            }
+            Ok(())
+        })
     }
 
     #[wasm_bindgen(js_name = stopCapturing)]
@@ -110,13 +118,19 @@ impl YUndoManager {
     }
 
     #[wasm_bindgen(js_name = undo)]
-    pub fn undo(&mut self) {
-        self.0.undo_blocking();
+    pub fn undo(&mut self) -> crate::Result<()> {
+        crate::observer_errors::committing(|| {
+            self.0.undo_blocking();
+            Ok(())
+        })
     }
 
     #[wasm_bindgen(js_name = redo)]
-    pub fn redo(&mut self) {
-        self.0.redo_blocking();
+    pub fn redo(&mut self) -> crate::Result<()> {
+        crate::observer_errors::committing(|| {
+            self.0.redo_blocking();
+            Ok(())
+        })
     }
 
     #[wasm_bindgen(getter, js_name = canUndo)]
@@ -136,7 +150,7 @@ impl YUndoManager {
             "stack-item-added" => self.0.observe_item_added(abi, move |txn, e| {
                 let event: JsValue = YUndoEvent::new(e).into();
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &event, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(&JsValue::UNDEFINED, &event, &txn));
                 let meta =
                     Reflect::get(&event, &JsValue::from_str("meta")).unwrap_or(JsValue::UNDEFINED);
                 *e.meta_mut() = meta;
@@ -144,7 +158,7 @@ impl YUndoManager {
             "stack-item-popped" => self.0.observe_item_popped(abi, move |txn, e| {
                 let event: JsValue = YUndoEvent::new(e).into();
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &event, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(&JsValue::UNDEFINED, &event, &txn));
                 let meta =
                     Reflect::get(&event, &JsValue::from_str("meta")).unwrap_or(JsValue::UNDEFINED);
                 *e.meta_mut() = meta;
@@ -152,18 +166,16 @@ impl YUndoManager {
             "stack-item-updated" => self.0.observe_item_updated(abi, move |txn, e| {
                 let event: JsValue = YUndoEvent::new(e).into();
                 let txn: JsValue = YTransaction::from_ref(txn).into();
-                callback.call2(&JsValue::UNDEFINED, &event, &txn).unwrap();
+                crate::observer_errors::observed(callback.call2(&JsValue::UNDEFINED, &event, &txn));
                 let meta =
                     Reflect::get(&event, &JsValue::from_str("meta")).unwrap_or(JsValue::UNDEFINED);
                 *e.meta_mut() = meta;
             }),
             "stack-cleared" => self.0.observe_stack_cleared(abi, move |e| {
-                callback
-                    .call1(
-                        &JsValue::UNDEFINED,
-                        &serde_wasm_bindgen::to_value(e).unwrap(),
-                    )
-                    .unwrap();
+                crate::observer_errors::observed(callback.call1(
+                    &JsValue::UNDEFINED,
+                    &serde_wasm_bindgen::to_value(e).unwrap(),
+                ));
             }),
             unknown => return Err(JsValue::from_str(&format!("Unknown event: {}", unknown))),
         }

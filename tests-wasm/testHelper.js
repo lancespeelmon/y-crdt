@@ -8,8 +8,12 @@ Y.YDoc.prototype.transact = function (callback, origin) {
     try {
         return callback(txn)
     } finally {
-        txn.commit()
-        txn.free()
+        // commit() throws what an observer threw; the transaction must still be freed
+        try {
+            txn.commit()
+        } finally {
+            txn.free()
+        }
     }
 };
 

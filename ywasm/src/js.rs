@@ -934,7 +934,7 @@ pub(crate) mod convert {
         };
         let result = if let Some(func) = compute_ychange {
             let id = to_js(&change.id).map_err(|e| JsValue::from_str(&e.to_string()))?;
-            func.call2(&JsValue::UNDEFINED, &kind, &id).unwrap()
+            func.call2(&JsValue::UNDEFINED, &kind, &id)?
         } else {
             let js: JsValue = js_sys::Object::new().into();
             js_sys::Reflect::set(&js, &JsValue::from("type"), &kind).unwrap();
