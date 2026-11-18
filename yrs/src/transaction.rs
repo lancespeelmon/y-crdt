@@ -941,7 +941,14 @@ impl<'doc> TransactionMut<'doc> {
                         source.unlink_all(self, branch_ptr);
                     }
                     let mut ptr = branch_ptr.start;
-                    self.changed.shift_remove(&TypePtr::Branch(branch_ptr));
+                    // A deleted type has no events. Its entry stays as an empty tombstone rather
+                    // than being removed: removing from the ordered map shifts every later entry,
+                    // which made deleting many changed types quadratic. It can't be changed again
+                    // in this transaction (`add_changed_type` skips deleted types), and live
+                    // entries are never empty.
+                    if let Some(keys) = self.changed.get_mut(&TypePtr::Branch(branch_ptr)) {
+                        keys.clear();
+                    }
 
                     while let Some(item) = ptr.as_deref() {
                         if !item.is_deleted() {
@@ -1143,15 +1150,6 @@ impl<'doc> TransactionMut<'doc> {
         block_ptr
     }
 
-    /// Drops the deep-observer entries recorded for the event at `index` when it couldn't be
-    /// built after all.
-    fn forget_event(changed_parents: &mut IndexMap<BranchPtr, Vec<usize>>, index: usize) {
-        changed_parents.retain(|_, events| {
-            events.retain(|&i| i != index);
-            !events.is_empty()
-        });
-    }
-
     /// Records `branch` and its ancestors (and the types linking to them) as changed, and the
     /// event at `index` for those of them with deep observers. Returns whether there were any.
     fn call_type_observers(
@@ -1203,9 +1201,15 @@ impl<'doc> TransactionMut<'doc> {
         // The types with deep observers, in the order they were first reached, so their
         // observers run in that order, as in Yjs.
         let mut changed_parents: IndexMap<BranchPtr, Vec<usize>> = IndexMap::new();
-        let mut event_cache = Vec::new();
+        // One slot per type that may have an event, `None` when it turned out to have none, so
+        // the deep observers' index lists never need fixing up.
+        let mut event_cache: Vec<Option<Event>> = Vec::new();
 
         for (ptr, subs) in self.changed.iter() {
+            if subs.is_empty() {
+                // a type deleted in this transaction
+                continue;
+            }
             if let TypePtr::Branch(branch) = ptr {
                 if branch.has_formatting && !self.local {
                     self.needs_cleanup = true;
@@ -1224,10 +1228,7 @@ impl<'doc> TransactionMut<'doc> {
                     &mut HashSet::default(),
                 );
                 if deep_observed || branch.observers.has_subscribers() {
-                    match branch.trigger(self, subs.clone()) {
-                        Some(e) => event_cache.push(e),
-                        None => Self::forget_event(&mut changed_parents, index),
-                    }
+                    event_cache.push(branch.trigger(self, subs.clone()));
                 }
             }
         }
@@ -1238,16 +1239,21 @@ impl<'doc> TransactionMut<'doc> {
             let mut unsorted: Vec<&Event> = Vec::with_capacity(events.len());
 
             for &i in events.iter() {
-                let e = &mut event_cache[i];
-                e.set_current_target(branch);
+                if let Some(e) = &mut event_cache[i] {
+                    e.set_current_target(branch);
+                }
             }
 
             for &i in events.iter() {
-                unsorted.push(&event_cache[i]);
+                if let Some(e) = &event_cache[i] {
+                    unsorted.push(e);
+                }
             }
 
-            // We don't need to check for events.length
-            // because we know it has at least one element
+            // Types whose changes made no event leave their slots empty.
+            if unsorted.is_empty() {
+                continue;
+            }
             let events = Events::new(&mut unsorted);
             let mut branch = branch;
             branch.trigger_deep(self, &events);

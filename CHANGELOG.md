@@ -348,6 +348,10 @@ repository and its release notes.
   ran first could change from one run to the next. They now run in the order the types first
   changed in the transaction, as in Yjs, so an outer type's deep observer runs before an inner
   one's (Yjs #768).
+  Removing a type deleted in the same transaction from that order shifted the rest of it, so an
+  update that changed and then deleted many types took quadratic time (40,000 nested maps:
+  1.7 s instead of 13 ms). Deleted types are now left as empty entries and skipped, and an
+  event that turns out empty no longer rewrites the deep observers' lists.
 - ywasm: a JS observer that threw panicked inside the commit and trapped the module, leaving the
   document unusable. As in Yjs, every observer now runs, the transaction finishes, and the call
   that committed (an edit, `applyUpdate`, `YTransaction.commit`, `YDoc.load` and `destroy`, or
